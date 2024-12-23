@@ -21,10 +21,6 @@ typedef enum {
   TOKEN_NAME,
   TOKEN_AUTHOR,
   TOKEN_VERSION,
-  TOKEN_H1,
-  TOKEN_P,
-  TOKEN_LINK,
-  TOKEN_IMAGE,
   TOKEN_ALT,
 
   TOKEN_STRING,
@@ -48,10 +44,6 @@ static const char* getTokenTypeName(TokenType type) {
         case TOKEN_NAME: return "NAME";
         case TOKEN_AUTHOR: return "AUTHOR";
         case TOKEN_VERSION: return "VERSION";
-        case TOKEN_H1: return "H1";
-        case TOKEN_P: return "P";
-        case TOKEN_LINK: return "LINK";
-        case TOKEN_IMAGE: return "IMAGE";
         case TOKEN_ALT: return "ALT";
         case TOKEN_STRING: return "STRING";
         case TOKEN_OPEN_BRACE: return "OPEN_BRACE";
@@ -173,10 +165,6 @@ static TokenType checkKeyword(const char *start, size_t length) {
   KW_MATCH("name", TOKEN_NAME)
   KW_MATCH("author", TOKEN_AUTHOR)
   KW_MATCH("version", TOKEN_VERSION)
-  KW_MATCH("h1", TOKEN_H1)
-  KW_MATCH("p", TOKEN_P)
-  KW_MATCH("link", TOKEN_LINK)
-  KW_MATCH("image", TOKEN_IMAGE)
   KW_MATCH("alt", TOKEN_ALT)
 
   return TOKEN_UNKNOWN;
@@ -219,8 +207,8 @@ static Token getNextToken(Lexer *lexer) {
 
     if (isAtEnd(lexer)) {
         Token token = makeToken(lexer, TOKEN_EOF);
-        printf("TOKEN: %-12s  LINE: %d  LEXEME: 'EOF'\n", 
-               getTokenTypeName(token.type), token.line);
+        // printf("TOKEN: %-12s  LINE: %d  LEXEME: 'EOF'\n", 
+        //        getTokenTypeName(token.type), token.line);
         return token;
     }
 
@@ -266,6 +254,7 @@ typedef struct ContentNode {
   char *arg1;
   char *arg2;
   struct ContentNode *next;
+  struct ContentNode *children;
 } ContentNode;
 
 typedef struct PageNode {
@@ -487,66 +476,33 @@ static ContentNode *parseContent(Parser *parser) {
          parser->current.type != TOKEN_EOF && !parser->hadError) {
     ContentNode *node = (ContentNode *)calloc(1, sizeof(ContentNode));
 
-    switch (parser->current.type) {
-      case TOKEN_H1: {
-        node->type = copyString("h1");
-        advanceParser(parser); // consume 'h1'
-        consume(parser, TOKEN_STRING, "Expected string after 'h1'.");
-        node->arg1 = copyString(parser->previous.lexeme);
-        break;
-      }
-      case TOKEN_P: {
-        node->type = copyString("p");
-        advanceParser(parser); // consume 'p'
-        consume(parser, TOKEN_STRING, "Expected string after 'p'.");
-        node->arg1 = copyString(parser->previous.lexeme);
-        break;
-      }
-      case TOKEN_LINK: {
-        node->type = copyString("link");
-        advanceParser(parser); // consume 'link'
-        // Expect 2 strings: URL and link text
-        consume(parser, TOKEN_STRING, "Expected URL string after 'link'.");
+    if (parser->current.type == TOKEN_STRING) {
+      // The first string is the tag type
+      node->type = copyString(parser->current.lexeme);
+      advanceParser(parser);
+
+      // Check if this tag has nested content
+      if (parser->current.type == TOKEN_OPEN_BRACE) {
+        advanceParser(parser); // consume '{'
+        node->children = parseContent(parser);
+      } else {
+        // All tags require at least one string argument if not nested
+        consume(parser, TOKEN_STRING, "Expected string after tag");
         node->arg1 = copyString(parser->previous.lexeme);
 
-        consume(parser, TOKEN_STRING, "Expected link text after URL string.");
-        node->arg2 = copyString(parser->previous.lexeme);
-        break;
-      }
-      case TOKEN_IMAGE: {
-        node->type = copyString("image");
-        advanceParser(parser); // consume 'image'
-        // Expect 1 string for image source
-        consume(parser, TOKEN_STRING, "Expected string after 'image'.");
-        node->arg1 = copyString(parser->previous.lexeme);
-
-        // Optional alt
-        if (parser->current.type == TOKEN_ALT) {
-          advanceParser(parser); // consume 'alt'
-          consume(parser, TOKEN_STRING, "Expected alt text after 'alt'.");
+        // Special handling for tags that need two arguments (like links)
+        if (strcmp(node->type, "link") == 0) {
+          consume(parser, TOKEN_STRING, "Expected link text after URL string");
           node->arg2 = copyString(parser->previous.lexeme);
         }
-        break;
-      }
-      default: {
-        // We can handle a close brace or unknown token here
-        if (parser->current.type == TOKEN_CLOSE_BRACE) {
-          // If it's a '}', content block is done
-          free(node);
-          node = NULL;
-          break;
+        // Handle alt text for images
+        else if (strcmp(node->type, "image") == 0 && parser->current.type == TOKEN_ALT) {
+          advanceParser(parser);
+          consume(parser, TOKEN_STRING, "Expected alt text after 'alt'");
+          node->arg2 = copyString(parser->previous.lexeme);
         }
-        fprintf(stderr,
-                "Parse error at line %d: Unexpected token '%s' in content.\n",
-                parser->current.line, parser->current.lexeme);
-        free(node);
-        node = NULL;
-        parser->hadError = 1;
-        break;
       }
-    }
 
-    if (node) {
       // Link into the content list
       if (!head) {
         head = node;
@@ -555,15 +511,13 @@ static ContentNode *parseContent(Parser *parser) {
         tail->next = node;
         tail = node;
       }
-    }
-
-    if (parser->hadError)
+    } else {
+      free(node);
       break;
-    // IMPORTANT: Do NOT advance again here; we've already advanced
-    // in each case (and 'consume' calls advanceParser too).
+    }
   }
 
-  consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of content block.");
+  consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of content block");
   return head;
 }
 
@@ -586,8 +540,7 @@ static StyleBlockNode *parseStyles(Parser *parser) {
         // We expect either a selector (STRING) or a closing brace
         if (parser->current.type == TOKEN_CLOSE_BRACE) {
             break;
-        } else if (parser->current.type == TOKEN_STRING || 
-                   parser->current.type == TOKEN_H1) {  // Allow H1 as a selector too
+        } else if (parser->current.type == TOKEN_STRING) {
             StyleBlockNode *block = parseStyleBlock(parser);
             if (block) {
                 if (!head) {
@@ -619,8 +572,8 @@ static StyleBlockNode *parseStyles(Parser *parser) {
 static StyleBlockNode *parseStyleBlock(Parser *parser) {
     StyleBlockNode *block = (StyleBlockNode *)calloc(1, sizeof(StyleBlockNode));
     
-    // Save the selector (which can be either a STRING or H1 token)
-    if (parser->current.type != TOKEN_STRING && parser->current.type != TOKEN_H1) {
+    // Now we just check for STRING token for all selectors
+    if (parser->current.type != TOKEN_STRING) {
         fprintf(stderr, "Expected style selector at line %d\n", parser->current.line);
         parser->hadError = 1;
         free(block);
@@ -628,7 +581,7 @@ static StyleBlockNode *parseStyleBlock(Parser *parser) {
     }
     
     block->selector = copyString(parser->current.lexeme);
-    advanceParser(parser); // consume the selector
+    advanceParser(parser);
     
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after style selector.");
     
@@ -687,6 +640,36 @@ static StylePropNode *parseStyleProps(Parser *parser) {
  *                INTERPRET / VISIT AST
  * -------------------------------------------------- */
 
+static void printContent(const ContentNode *cn, int indent) {
+  while (cn) {
+    for (int i = 0; i < indent; i++) printf("  ");
+    
+    if (cn->children) {
+      // Handle nested content
+      if (strcmp(cn->type, "p") == 0) {
+        printf("      <p>\n");
+        printContent(cn->children, indent + 1);
+        for (int i = 0; i < indent; i++) printf("  ");
+        printf("      </p>\n");
+      }
+      // Add other nested tag types here as needed
+    } else {
+      // Handle non-nested content as before
+      if (strcmp(cn->type, "h1") == 0) {
+        printf("      <h1>%s</h1>\n", cn->arg1);
+      } else if (strcmp(cn->type, "p") == 0) {
+        printf("      <p>%s</p>\n", cn->arg1);
+      } else if (strcmp(cn->type, "link") == 0) {
+        printf("      <a href=\"%s\">%s</a>\n", cn->arg1, cn->arg2);
+      } else if (strcmp(cn->type, "image") == 0) {
+        printf("      <img src=\"%s\" alt=\"%s\"/>\n", cn->arg1,
+               cn->arg2 ? cn->arg2 : "");
+      }
+    }
+    cn = cn->next;
+  }
+}
+
 static void interpretWebsite(const WebsiteNode *website) {
   printf("Website:\n");
   if (website->name)
@@ -707,20 +690,7 @@ static void interpretWebsite(const WebsiteNode *website) {
       printf("    Layout: %s\n", p->layout);
 
     printf("    Content:\n");
-    ContentNode *cn = p->contentHead;
-    while (cn) {
-      if (strcmp(cn->type, "h1") == 0) {
-        printf("      <h1>%s</h1>\n", cn->arg1);
-      } else if (strcmp(cn->type, "p") == 0) {
-        printf("      <p>%s</p>\n", cn->arg1);
-      } else if (strcmp(cn->type, "link") == 0) {
-        printf("      <a href=\"%s\">%s</a>\n", cn->arg1, cn->arg2);
-      } else if (strcmp(cn->type, "image") == 0) {
-        printf("      <img src=\"%s\" alt=\"%s\"/>\n", cn->arg1,
-               cn->arg2 ? cn->arg2 : "");
-      }
-      cn = cn->next;
-    }
+    printContent(p->contentHead, 0);
     p = p->next;
   }
 
@@ -756,8 +726,10 @@ int main(void) {
                            "            layout \"main\"\n"
                            "            content {\n"
                            "                h1 \"Welcome!\"\n"
-                           "                p \"This is the home page.\"\n"
-                           "                link \"/about\" \"Learn more\"\n"
+                           "                p {\n"
+                           "                    link \"/about\" \"Learn more about our site\"\n"
+                           "                }\n"
+                           "                p \"This is a regular paragraph.\"\n"
                            "            }\n"
                            "        }\n"
                            "    }\n"
