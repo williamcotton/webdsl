@@ -1,7 +1,6 @@
 /***************************************************
  *  dsl_interpreter.c
  ***************************************************/
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,6 +67,7 @@ typedef enum {
   TOKEN_AUTHOR,
   TOKEN_VERSION,
   TOKEN_ALT,
+  TOKEN_LAYOUTS,
 
   TOKEN_STRING,
   TOKEN_OPEN_BRACE,
@@ -98,6 +98,7 @@ static const char* getTokenTypeName(TokenType type) {
         case TOKEN_CLOSE_PAREN: return "CLOSE_PAREN";
         case TOKEN_EOF: return "EOF";
         case TOKEN_UNKNOWN: return "UNKNOWN";
+        case TOKEN_LAYOUTS: return "LAYOUTS";
     }
     return "INVALID";
 }
@@ -226,6 +227,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
   KW_MATCH("author", TOKEN_AUTHOR)
   KW_MATCH("version", TOKEN_VERSION)
   KW_MATCH("alt", TOKEN_ALT)
+  KW_MATCH("layouts", TOKEN_LAYOUTS)
 
   return TOKEN_UNKNOWN;
 }
@@ -337,6 +339,12 @@ typedef struct StyleBlockNode {
   struct StyleBlockNode *next;
 } StyleBlockNode;
 
+typedef struct LayoutNode {
+    char *identifier;
+    ContentNode *contentHead;
+    struct LayoutNode *next;
+} LayoutNode;
+
 typedef struct WebsiteNode {
   char *name;
   char *author;
@@ -344,6 +352,7 @@ typedef struct WebsiteNode {
 
   PageNode *pageHead;
   StyleBlockNode *styleHead;
+  LayoutNode *layoutHead;
 } WebsiteNode;
 
 /* --------------------------------------------------
@@ -369,6 +378,8 @@ static StyleBlockNode *parseStyles(Parser *parser);
 static StyleBlockNode *parseStyleBlock(Parser *parser);
 static StylePropNode *parseStyleProps(Parser *parser);
 static char *copyString(Parser *parser, const char *source);
+static LayoutNode *parseLayouts(Parser *parser);
+static LayoutNode *parseLayout(Parser *parser);
 
 static void advanceParser(Parser *parser) {
   parser->previous = parser->current;
@@ -437,6 +448,13 @@ static WebsiteNode *parseProgram(Parser *parser) {
         consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'styles'.");
         StyleBlockNode *styleHead = parseStyles(parser);
         website->styleHead = styleHead;
+        break;
+      }
+      case TOKEN_LAYOUTS: {
+        advanceParser(parser); // consume 'layouts'
+        consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'layouts'.");
+        LayoutNode *layoutHead = parseLayouts(parser);
+        website->layoutHead = layoutHead;
         break;
       }
       default: {
@@ -544,12 +562,29 @@ static ContentNode *parseContent(Parser *parser) {
     memset(node, 0, sizeof(ContentNode));
 
     if (parser->current.type == TOKEN_STRING) {
-      // The first string is the tag type
-      node->type = copyString(parser, parser->current.lexeme);
+      const char *value = parser->current.lexeme;
+      node->type = copyString(parser, value);
       advanceParser(parser);
 
-      // Check if this tag has nested content
-      if (parser->current.type == TOKEN_OPEN_BRACE) {
+      // Check if this is a string literal (starts with quote)
+      if (value[0] == '"') {
+        // This is the special "content" placeholder
+        if (strcmp(node->type, "\"content\"") == 0) {
+          // Just store it as "content" without quotes
+          node->type = "content";
+        } else {
+          // Unexpected quoted string
+          char buffer[256];
+          snprintf(buffer, sizeof(buffer),
+                  "Unexpected quoted string '%s' in content block\n", value);
+          fputs(buffer, stderr);
+          parser->hadError = 1;
+          free(node);
+          break;
+        }
+      }
+      // Otherwise it's a tag type that needs arguments
+      else if (parser->current.type == TOKEN_OPEN_BRACE) {
         advanceParser(parser); // consume '{'
         node->children = parseContent(parser);
       } else {
@@ -712,6 +747,43 @@ static StylePropNode *parseStyleProps(Parser *parser) {
   return head;
 }
 
+static LayoutNode *parseLayout(Parser *parser) {
+    LayoutNode *layout = arenaAlloc(parser->arena, sizeof(LayoutNode));
+    memset(layout, 0, sizeof(LayoutNode));
+
+    consume(parser, TOKEN_STRING, "Expected string for layout identifier.");
+    layout->identifier = copyString(parser, parser->previous.lexeme);
+
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after layout identifier.");
+
+    // Parse content
+    consume(parser, TOKEN_CONTENT, "Expected 'content' in layout.");
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
+    layout->contentHead = parseContent(parser);
+
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after layout block.");
+    return layout;
+}
+
+static LayoutNode *parseLayouts(Parser *parser) {
+    LayoutNode *head = NULL;
+    LayoutNode *tail = NULL;
+
+    while (parser->current.type == TOKEN_STRING && !parser->hadError) {
+        LayoutNode *layout = parseLayout(parser);
+        if (!head) {
+            head = layout;
+            tail = layout;
+        } else {
+            tail->next = layout;
+            tail = layout;
+        }
+    }
+
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of layouts block.");
+    return head;
+}
+
 /* --------------------------------------------------
  *                INTERPRET / VISIT AST
  * -------------------------------------------------- */
@@ -728,7 +800,9 @@ static void printContent(const ContentNode *cn, int indent) {
         printf("      </p>\n");
       }
     } else {
-      if (strcmp(cn->type, "h1") == 0) {
+      if (strcmp(cn->type, "content") == 0) {
+        printf("      <!-- Page Content Goes Here -->\n");
+      } else if (strcmp(cn->type, "h1") == 0) {
         printf("      <h1>%s</h1>\n", cn->arg1);
       } else if (strcmp(cn->type, "p") == 0) {
         printf("      <p>%s</p>\n", cn->arg1);
@@ -780,6 +854,16 @@ static void interpretWebsite(const WebsiteNode *website) {
     printf("  }\n\n");
     sb = sb->next;
   }
+
+  // Print Layouts
+  printf("\nLayouts:\n");
+  LayoutNode *l = website->layoutHead;
+  while (l) {
+    printf("  Layout '%s':\n", l->identifier);
+    printf("    Content:\n");
+    printContent(l->contentHead, 0);
+    l = l->next;
+  }
 }
 
 /* --------------------------------------------------
@@ -789,34 +873,60 @@ static void interpretWebsite(const WebsiteNode *website) {
 int main(void) {
   // Example DSL input:
   const char *sourceCode = "website {\n"
-                           "    name \"My Awesome Site\"\n"
-                           "    author \"John Smith\"\n"
-                           "    version \"1.0\"\n"
-                           "\n"
-                           "    pages {\n"
-                           "        page \"home\" {\n"
-                           "            route \"/\"\n"
-                           "            layout \"main\"\n"
-                           "            content {\n"
-                           "                h1 \"Welcome!\"\n"
-                           "                p {\n"
-                           "                    link \"/about\" \"Learn more about our site\"\n"
-                           "                }\n"
-                           "                p \"This is a regular paragraph.\"\n"
-                           "            }\n"
-                           "        }\n"
-                           "    }\n"
-                           "\n"
-                           "    styles {\n"
-                           "        body {\n"
-                           "            background \"#ffffff\"\n"
-                           "            color \"#333\"\n"
-                           "        }\n"
-                           "        h1 {\n"
-                           "            color \"#ff6600\"\n"
-                           "        }\n"
-                           "    }\n"
-                           "}\n";
+                          "    name \"My Awesome Site\"\n"
+                          "    author \"John Smith\"\n"
+                          "    version \"1.0\"\n"
+                          "\n"
+                          "    layouts {\n"
+                          "        \"main\" {\n"
+                          "            content {\n"
+                          "                h1 \"Site Header\"\n"
+                          "                p \"Welcome to our website\"\n"
+                          "                \"content\"\n"
+                          "                p \"Footer text\"\n"
+                          "            }\n"
+                          "        }\n"
+                          "        \"blog\" {\n"
+                          "            content {\n"
+                          "                h1 \"Blog Layout\"\n"
+                          "                \"content\"\n"
+                          "                p \"Blog footer\"\n"
+                          "            }\n"
+                          "        }\n"
+                          "    }\n"
+                          "\n"
+                          "    pages {\n"
+                          "        page \"home\" {\n"
+                          "            route \"/\"\n"
+                          "            layout \"main\"\n"
+                          "            content {\n"
+                          "                h1 \"Welcome!\"\n"
+                          "                p {\n"
+                          "                    link \"/about\" \"Learn more about our site\"\n"
+                          "                }\n"
+                          "                p \"This is a regular paragraph.\"\n"
+                          "            }\n"
+                          "        }\n"
+                          "        page \"blog\" {\n"
+                          "            route \"/blog\"\n"
+                          "            layout \"blog\"\n"
+                          "            content {\n"
+                          "                h1 \"Latest Posts\"\n"
+                          "                p \"Check out our latest blog posts!\"\n"
+                          "            }\n"
+                          "        }\n"
+                          "    }\n"
+                          "\n"
+                          "    styles {\n"
+                          "        body {\n"
+                          "            background \"#ffffff\"\n"
+                          "            color \"#333\"\n"
+                          "        }\n"
+                          "        h1 {\n"
+                          "            color \"#ff6600\"\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n";
 
   Parser parser;
   initParser(&parser, sourceCode);
