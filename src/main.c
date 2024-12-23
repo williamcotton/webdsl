@@ -6,6 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* --------------------------------------------------
+ *                   ARENA ALLOCATION
+ * -------------------------------------------------- */
+
 #define ARENA_SIZE (1024 * 1024)  // 1MB arena
 
 typedef struct {
@@ -27,7 +31,7 @@ static void* arenaAlloc(Arena *arena, size_t size) {
     size = (size + 7) & ~((size_t)7);
     
     if (arena->used + size > arena->size) {
-        fprintf(stderr, "Arena out of memory\n");
+        fputs("Arena out of memory\n", stderr);
         exit(1);
     }
     
@@ -376,8 +380,10 @@ static void consume(struct Parser *parser, TokenType type, const char *errorMsg)
     advanceParser(parser);
     return;
   }
-  fprintf(stderr, "Parse error at line %d: %s (got \"%s\")\n",
+  char buffer[256];
+  snprintf(buffer, sizeof(buffer), "Parse error at line %d: %s (got \"%s\")\n",
           parser->current.line, errorMsg, parser->current.lexeme);
+  fputs(buffer, stderr);
   parser->hadError = 1;
 }
 
@@ -435,8 +441,11 @@ static WebsiteNode *parseProgram(struct Parser *parser) {
       }
       default: {
         // Catch-all for tokens we didn't explicitly handle
-        fprintf(stderr, "Parse error at line %d: Unexpected token '%s'\n",
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer), 
+                "Parse error at line %d: Unexpected token '%s'\n",
                 parser->current.line, parser->current.lexeme);
+        fputs(buffer, stderr);
         parser->hadError = 1;
         break;
       }
@@ -503,9 +512,11 @@ static PageNode *parsePage(struct Parser *parser) {
         break;
       }
       default: {
-        fprintf(stderr,
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer),
                 "Parse error at line %d: Unexpected token '%s' in page.\n",
                 parser->current.line, parser->current.lexeme);
+        fputs(buffer, stderr);
         parser->hadError = 1;
         break;
       }
@@ -608,8 +619,11 @@ static StyleBlockNode *parseStyles(struct Parser *parser) {
                 }
             }
         } else {
-            fprintf(stderr, "Expected style selector or '}' at line %d\n", 
+            char buffer[256];
+            snprintf(buffer, sizeof(buffer), 
+                    "Expected style selector or '}' at line %d\n",
                     parser->current.line);
+            fputs(buffer, stderr);
             parser->hadError = 1;
             break;
         }
@@ -631,7 +645,11 @@ static StyleBlockNode *parseStyleBlock(struct Parser *parser) {
     
     // Now we just check for STRING token for all selectors
     if (parser->current.type != TOKEN_STRING) {
-        fprintf(stderr, "Expected style selector at line %d\n", parser->current.line);
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer),
+                "Expected style selector at line %d\n",
+                parser->current.line);
+        fputs(buffer, stderr);
         parser->hadError = 1;
         free(block);
         return NULL;
@@ -671,7 +689,7 @@ static StylePropNode *parseStyleProps(struct Parser *parser) {
         prop->value = copyString(parser, parser->current.lexeme);
         advanceParser(parser);
       } else {
-        fprintf(stderr, "Expected string value after style property.\n");
+        fputs("Expected string value after style property.\n", stderr);
         free(prop);
         parser->hadError = 1;
         break;
@@ -808,7 +826,7 @@ int main(void) {
   if (!parser.hadError) {
     interpretWebsite(website);
   } else {
-    fprintf(stderr, "\nParsing failed due to errors.\n");
+    fputs("\nParsing failed due to errors.\n", stderr);
   }
 
   // Free all memory at once
