@@ -1,0 +1,9 @@
+-std=gnu2x
+-Ideps
+-Isrc
+-fno-common
+-fblocks
+-Weverything
+-Wno-declaration-after-statement
+-Wno-unsafe-buffer-usage
+-Wno-switch-default
