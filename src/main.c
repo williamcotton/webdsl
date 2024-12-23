@@ -133,7 +133,7 @@ typedef struct Parser {
   uint32_t : 32;
 } Parser;
 
-static void initLexer(Lexer *lexer, const char *source, struct Parser *parser) {
+static void initLexer(Lexer *lexer, const char *source, Parser *parser) {
   lexer->start = source;
   lexer->current = source;
   lexer->line = 1;
@@ -202,7 +202,7 @@ static Token makeToken(Lexer *lexer, TokenType type) {
   return token;
 }
 
-static Token errorToken(struct Parser *parser, const char *message, int line) {
+static Token errorToken(Parser *parser, const char *message, int line) {
   Token token;
   token.type = TOKEN_UNKNOWN;
   token.lexeme = arenaDupString(parser->arena, message);
@@ -359,23 +359,23 @@ static void initParser(Parser *parser, const char *source) {
 }
 
 /* Forward declarations */
-static WebsiteNode *parseProgram(struct Parser *parser);
-static void advanceParser(struct Parser *parser);
-static void consume(struct Parser *parser, TokenType type, const char *errorMsg);
-static PageNode *parsePages(struct Parser *parser);
-static PageNode *parsePage(struct Parser *parser);
-static ContentNode *parseContent(struct Parser *parser);
-static StyleBlockNode *parseStyles(struct Parser *parser);
-static StyleBlockNode *parseStyleBlock(struct Parser *parser);
-static StylePropNode *parseStyleProps(struct Parser *parser);
-static char *copyString(struct Parser *parser, const char *source);
+static WebsiteNode *parseProgram(Parser *parser);
+static void advanceParser(Parser *parser);
+static void consume(Parser *parser, TokenType type, const char *errorMsg);
+static PageNode *parsePages(Parser *parser);
+static PageNode *parsePage(Parser *parser);
+static ContentNode *parseContent(Parser *parser);
+static StyleBlockNode *parseStyles(Parser *parser);
+static StyleBlockNode *parseStyleBlock(Parser *parser);
+static StylePropNode *parseStyleProps(Parser *parser);
+static char *copyString(Parser *parser, const char *source);
 
-static void advanceParser(struct Parser *parser) {
+static void advanceParser(Parser *parser) {
   parser->previous = parser->current;
   parser->current = getNextToken(&parser->lexer);
 }
 
-static void consume(struct Parser *parser, TokenType type, const char *errorMsg) {
+static void consume(Parser *parser, TokenType type, const char *errorMsg) {
   if (parser->current.type == type) {
     advanceParser(parser);
     return;
@@ -388,12 +388,12 @@ static void consume(struct Parser *parser, TokenType type, const char *errorMsg)
 }
 
 /* Copy a token’s lexeme into a new heap-allocated string. */
-static char *copyString(struct Parser *parser, const char *source) {
+static char *copyString(Parser *parser, const char *source) {
   return arenaDupString(parser->arena, source);
 }
 
 /* The top-level parse: parse `website { ... }` */
-static WebsiteNode *parseProgram(struct Parser *parser) {
+static WebsiteNode *parseProgram(Parser *parser) {
   WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
   memset(website, 0, sizeof(WebsiteNode));
   advanceParser(parser); // read the first token
@@ -458,7 +458,7 @@ static WebsiteNode *parseProgram(struct Parser *parser) {
 }
 
 /* Parse multiple `page "identifier" { ... }` blocks. */
-static PageNode *parsePages(struct Parser *parser) {
+static PageNode *parsePages(Parser *parser) {
   PageNode *head = NULL;
   PageNode *tail = NULL;
 
@@ -478,7 +478,7 @@ static PageNode *parsePages(struct Parser *parser) {
 }
 
 /* Parse a single `page "identifier" { ... }` block */
-static PageNode *parsePage(struct Parser *parser) {
+static PageNode *parsePage(Parser *parser) {
   PageNode *page = arenaAlloc(parser->arena, sizeof(PageNode));
   memset(page, 0, sizeof(PageNode));
   advanceParser(parser); // consume 'page'
@@ -534,7 +534,7 @@ static PageNode *parsePage(struct Parser *parser) {
      link "/some-url" "Some link"
    }
 */
-static ContentNode *parseContent(struct Parser *parser) {
+static ContentNode *parseContent(Parser *parser) {
   ContentNode *head = NULL;
   ContentNode *tail = NULL;
 
@@ -599,7 +599,7 @@ static ContentNode *parseContent(struct Parser *parser) {
        }
    }
 */
-static StyleBlockNode *parseStyles(struct Parser *parser) {
+static StyleBlockNode *parseStyles(Parser *parser) {
     StyleBlockNode *head = NULL;
     StyleBlockNode *tail = NULL;
 
@@ -639,7 +639,7 @@ static StyleBlockNode *parseStyles(struct Parser *parser) {
        color "#333"
    }
 */
-static StyleBlockNode *parseStyleBlock(struct Parser *parser) {
+static StyleBlockNode *parseStyleBlock(Parser *parser) {
     StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
     memset(block, 0, sizeof(StyleBlockNode));
     
@@ -670,7 +670,7 @@ static StyleBlockNode *parseStyleBlock(struct Parser *parser) {
    background "#fff"
    color "#333"
 */
-static StylePropNode *parseStyleProps(struct Parser *parser) {
+static StylePropNode *parseStyleProps(Parser *parser) {
   StylePropNode *head = NULL;
   StylePropNode *tail = NULL;
 
