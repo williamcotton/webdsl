@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
 // Forward declarations
 static void advanceParser(Parser *parser);
@@ -15,6 +16,7 @@ static StylePropNode *parseStyleProps(Parser *parser);
 static LayoutNode *parseLayouts(Parser *parser);
 static LayoutNode *parseLayout(Parser *parser);
 static char *copyString(Parser *parser, const char *source);
+static bool parsePort(const char* str, int* result);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -57,7 +59,7 @@ static LayoutNode *parseLayout(Parser *parser) {
     // Parse content
     consume(parser, TOKEN_CONTENT, "Expected 'content' in layout.");
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
-    layout->contentHead = parseContent(parser);
+    layout->bodyContent = parseContent(parser);
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after layout block.");
     return layout;
@@ -311,6 +313,23 @@ static StyleBlockNode *parseStyles(Parser *parser) {
     return head;
 }
 
+static bool parsePort(const char* str, int* result) {
+    char* endptr;
+    errno = 0;  // Reset errno before the call
+    long val = strtol(str, &endptr, 10);
+    
+    // Check for conversion errors
+    if (errno == ERANGE) return false;  // Overflow/underflow
+    if (endptr == str) return false;    // No conversion performed
+    if (*endptr != '\0') return false;  // Not all characters consumed
+    
+    // Check if value is in valid port range (1-65535)
+    if (val < 1 || val > 65535) return false;
+    
+    *result = (int)val;
+    return true;
+}
+
 WebsiteNode *parseProgram(Parser *parser) {
     WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
     memset(website, 0, sizeof(WebsiteNode));
@@ -361,6 +380,22 @@ WebsiteNode *parseProgram(Parser *parser) {
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'layouts'.");
                 LayoutNode *layoutHead = parseLayouts(parser);
                 website->layoutHead = layoutHead;
+                break;
+            }
+            case TOKEN_PORT: {
+                advanceParser(parser);
+                if (parser->current.type != TOKEN_NUMBER) {
+                    fputs("Expected number after 'port'.\n", stderr);
+                    parser->hadError = 1;
+                    break;
+                }
+                if (!parsePort(parser->current.lexeme, &website->port)) {
+                    fprintf(stderr, "Invalid port number: %s (must be between 1 and 65535)\n", 
+                            parser->current.lexeme);
+                    parser->hadError = 1;
+                    break;
+                }
+                advanceParser(parser);
                 break;
             }
             default: {

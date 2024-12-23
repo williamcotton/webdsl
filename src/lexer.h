@@ -16,6 +16,8 @@ typedef enum {
     TOKEN_VERSION,
     TOKEN_ALT,
     TOKEN_LAYOUTS,
+    TOKEN_PORT,
+    TOKEN_NUMBER,
 
     TOKEN_STRING,
     TOKEN_OPEN_BRACE,

@@ -1,78 +1,146 @@
 #include "parser.h"
-#include "interpreter.h"
+#include "server.h"
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <signal.h>
 
-int main(void) {
-    // Example DSL input
-    const char *sourceCode = "website {\n"
-                          "    name \"My Awesome Site\"\n"
-                          "    author \"John Smith\"\n"
-                          "    version \"1.0\"\n"
-                          "\n"
-                          "    layouts {\n"
-                          "        \"main\" {\n"
-                          "            content {\n"
-                          "                h1 \"Site Header\"\n"
-                          "                p \"Welcome to our website\"\n"
-                          "                \"content\"\n"
-                          "                p \"Footer text\"\n"
-                          "            }\n"
-                          "        }\n"
-                          "        \"blog\" {\n"
-                          "            content {\n"
-                          "                h1 \"Blog Layout\"\n"
-                          "                \"content\"\n"
-                          "                p \"Blog footer\"\n"
-                          "            }\n"
-                          "        }\n"
-                          "    }\n"
-                          "\n"
-                          "    pages {\n"
-                          "        page \"home\" {\n"
-                          "            route \"/\"\n"
-                          "            layout \"main\"\n"
-                          "            content {\n"
-                          "                h1 \"Welcome!\"\n"
-                          "                p {\n"
-                          "                    link \"/about\" \"Learn more about our site\"\n"
-                          "                }\n"
-                          "                p \"This is a regular paragraph.\"\n"
-                          "            }\n"
-                          "        }\n"
-                          "        page \"blog\" {\n"
-                          "            route \"/blog\"\n"
-                          "            layout \"blog\"\n"
-                          "            content {\n"
-                          "                h1 \"Latest Posts\"\n"
-                          "                p \"Check out our latest blog posts!\"\n"
-                          "            }\n"
-                          "        }\n"
-                          "    }\n"
-                          "\n"
-                          "    styles {\n"
-                          "        body {\n"
-                          "            background \"#ffffff\"\n"
-                          "            color \"#333\"\n"
-                          "        }\n"
-                          "        h1 {\n"
-                          "            color \"#ff6600\"\n"
-                          "        }\n"
-                          "    }\n"
-                          "}\n";
-
-    Parser parser;
-    initParser(&parser, sourceCode);
-
-    WebsiteNode *website = parseProgram(&parser);
-
-    if (!parser.hadError) {
-        interpretWebsite(website);
-    } else {
-        fputs("\nParsing failed due to errors.\n", stderr);
+static char* readFile(const char* path) {
+    errno = 0;
+    FILE* file = fopen(path, "rb");
+    if (file == NULL) {
+        perror("Could not open file");
+        exit(74);
     }
 
-    // Free all memory at once
-    freeArena(parser.arena);
+    // Find file size
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        perror("Failed to seek file");
+        fclose(file);
+        exit(74);
+    }
+    
+    long fileLength = ftell(file);
+    if (fileLength < 0) {
+        perror("Failed to get file size");
+        fclose(file);
+        exit(74);
+    }
+    
+    if (fseek(file, 0L, SEEK_SET) != 0) {
+        perror("Failed to seek file");
+        fclose(file);
+        exit(74);
+    }
+    
+    size_t fileSize = (size_t)fileLength;
+    errno = 0;
+    char* buffer = malloc(fileSize + 1);
+    if (buffer == NULL || errno != 0) {
+        perror("Memory allocation failed");
+        fclose(file);
+        exit(74);
+    }
 
-    return parser.hadError ? 1 : 0;
+    // Read file
+    size_t bytesRead = fread(buffer, 1, fileSize, file);
+    if (bytesRead < fileSize) {
+        perror("Failed to read file");
+        free(buffer);
+        fclose(file);
+        exit(74);
+    }
+
+    buffer[bytesRead] = '\0';
+    fclose(file);
+    return buffer;
+}
+
+static volatile int keepRunning = 1;
+
+static void intHandler(int dummy) {
+    (void)dummy;
+    keepRunning = 0;
+}
+
+static time_t getFileModTime(const char* path) {
+    struct stat attr;
+    if (stat(path, &attr) == 0) {
+        return attr.st_mtime;
+    }
+    return 0;
+}
+
+static WebsiteNode* loadWebsite(const char* path, Parser* parser) {
+    char* sourceCode = readFile(path);
+    initParser(parser, sourceCode);
+    WebsiteNode* website = parseProgram(parser);
+    free(sourceCode);
+    return website;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        fputs("Usage: ", stderr);
+        fputs(argv[0], stderr);
+        fputs(" [path to .webdsl file]\n", stderr);
+        return 64;
+    }
+
+    // Set up signal handler for clean shutdown
+    signal(SIGINT, intHandler);
+
+    Parser parser;
+    WebsiteNode* website = NULL;
+    time_t lastMod = 0;
+    Arena* lastArena = NULL;
+
+    while (keepRunning) {
+        time_t currentMod = getFileModTime(argv[1]);
+        
+        if (currentMod > lastMod) {
+            printf("\nReloading website configuration...\n");
+            
+            // Stop current server if running
+            if (website != NULL) {
+                stopServer();
+                website = NULL;
+            }
+
+            // Free old arena if it exists
+            if (lastArena != NULL) {
+                freeArena(lastArena);
+                lastArena = NULL;
+            }
+
+            // Create new parser arena
+            parser.arena = createArena(1024 * 1024);
+            lastArena = parser.arena;
+
+            // Load and start new configuration
+            website = loadWebsite(argv[1], &parser);
+            
+            if (!parser.hadError) {
+                startServer(website, parser.arena);
+                lastMod = currentMod;
+                printf("Website reloaded successfully!\n");
+            } else {
+                fputs("Parsing failed, keeping previous configuration\n", stderr);
+            }
+        }
+        
+        usleep(100000);  // Check for changes every 100ms
+    }
+
+    // Cleanup
+    stopServer();
+    if (lastArena != NULL) {
+        freeArena(lastArena);
+    }
+
+    printf("\nShutdown complete\n");
+    return 0;
 }

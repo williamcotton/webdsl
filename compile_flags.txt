@@ -7,3 +7,12 @@
 -Wno-declaration-after-statement
 -Wno-unsafe-buffer-usage
 -Wno-switch-default
+-Wno-documentation-deprecated-sync
+-Wno-documentation
+-Wno-reserved-macro-identifier
+-Wno-format-nonliteral
+-Wno-unused-command-line-argument
+-Wno-pre-c23-compat
+-I/opt/homebrew/include
+-L/opt/homebrew/lib
+-lmicrohttpd

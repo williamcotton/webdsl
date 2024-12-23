@@ -1,0 +1,56 @@
+website {
+    name "My Awesome Site"
+    author "John Smith"
+    version "1.0"
+    port 3123
+
+    layouts {
+        "main" {
+            content {
+                h1 "Site Header"
+                p "Welcome to our website"
+                "content"
+                p "Footer text"
+            }
+        }
+        "blog" {
+            content {
+                h1 "Blog Layout"
+                "content"
+                p "Blog footer"
+            }
+        }
+    }
+
+    pages {
+        page "home" {
+            route "/"
+            layout "main"
+            content {
+                h1 "Welcome!"
+                p {
+                    link "/about" "Learn more about our site"
+                }
+                p "This is a regular paragraph."
+            }
+        }
+        page "blog" {
+            route "/blog"
+            layout "blog"
+            content {
+                h1 "Latest Posts"
+                p "Check out our latest blog posts!"
+            }
+        }
+    }
+
+    styles {
+        body {
+            background "#ffffff"
+            color "#333"
+        }
+        h1 {
+            color "#ff6600"
+        }
+    }
+} 

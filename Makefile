@@ -48,7 +48,7 @@ $(BUILD_DIR)/main:
 test:
 	mkdir -p $(BUILD_DIR)
 	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS)
-	$(BUILD_DIR)/$@
+	$(BUILD_DIR)/$@ app.webdsl
 
 test-coverage-output:
 	mkdir -p $(BUILD_DIR)
@@ -78,7 +78,7 @@ lint:
 ifeq ($(PLATFORM),LINUX)
 	$(TIDY) --checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c
 else ifeq ($(PLATFORM),DARWIN)
-	$(TIDY) -warnings-as-errors=* src/main.c
+	$(TIDY) --checks=-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c
 endif
 
 format:

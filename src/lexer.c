@@ -96,6 +96,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("version", TOKEN_VERSION)
     KW_MATCH("alt", TOKEN_ALT)
     KW_MATCH("layouts", TOKEN_LAYOUTS)
+    KW_MATCH("port", TOKEN_PORT)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -143,6 +144,8 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_VERSION: return "VERSION";
         case TOKEN_ALT: return "ALT";
         case TOKEN_LAYOUTS: return "LAYOUTS";
+        case TOKEN_PORT: return "PORT";
+        case TOKEN_NUMBER: return "NUMBER";
         case TOKEN_STRING: return "STRING";
         case TOKEN_OPEN_BRACE: return "OPEN_BRACE";
         case TOKEN_CLOSE_BRACE: return "CLOSE_BRACE";
@@ -181,13 +184,15 @@ Token getNextToken(Lexer *lexer) {
         default:
             if (isAlpha(c)) {
                 token = identifierOrKeyword(lexer);
+            } else if (isDigit(c)) {
+                // Handle numbers
+                while (isDigit(peek(lexer))) advance(lexer);
+                token = makeToken(lexer, TOKEN_NUMBER);
             } else {
                 token = errorToken(lexer->parser, "Unexpected character.", lexer->line);
             }
             break;
     }
 
-    printf("TOKEN: %-12s  LINE: %d  LEXEME: '%s'\n", 
-           getTokenTypeName(token.type), token.line, token.lexeme);
     return token;
 }
