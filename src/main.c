@@ -6,6 +6,48 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define ARENA_SIZE (1024 * 1024)  // 1MB arena
+
+typedef struct {
+    char *buffer;
+    size_t size;
+    size_t used;
+} Arena;
+
+static Arena* createArena(size_t size) {
+    Arena *arena = malloc(sizeof(Arena));
+    arena->buffer = malloc(size);
+    arena->size = size;
+    arena->used = 0;
+    return arena;
+}
+
+static void* arenaAlloc(Arena *arena, size_t size) {
+    // Align to 8 bytes
+    size = (size + 7) & ~((size_t)7);
+    
+    if (arena->used + size > arena->size) {
+        fprintf(stderr, "Arena out of memory\n");
+        exit(1);
+    }
+    
+    void *ptr = arena->buffer + arena->used;
+    arena->used += size;
+    return ptr;
+}
+
+static char* arenaDupString(Arena *arena, const char *str) {
+    size_t len = strlen(str) + 1;
+    char *dup = arenaAlloc(arena, len);
+    memcpy(dup, str, len);
+    return dup;
+}
+
+static void freeArena(Arena *arena) {
+    free(arena->buffer);
+    free(arena);
+}
+
 /* --------------------------------------------------
  *                 TOKEN DEFINITIONS
  * -------------------------------------------------- */
@@ -67,17 +109,31 @@ typedef struct {
  *                   LEXER (TOKENIZER)
  * -------------------------------------------------- */
 
-typedef struct {
-  const char *start;   // token start
-  const char *current; // current char
+struct Parser;  // Forward declaration
+struct Lexer;   // Forward declaration
+
+typedef struct Lexer {
+  const char *start;   
+  const char *current;
+  struct Parser *parser;
   int line;
-  uint32_t : 32; // Padding to 4 bytes
+  uint32_t : 32;
 } Lexer;
 
-static void initLexer(Lexer *lexer, const char *source) {
+typedef struct Parser {
+  Lexer lexer;        // Now Lexer is fully defined
+  Token current;
+  Token previous;
+  Arena *arena;
+  int hadError;
+  uint32_t : 32;
+} Parser;
+
+static void initLexer(Lexer *lexer, const char *source, struct Parser *parser) {
   lexer->start = source;
   lexer->current = source;
   lexer->line = 1;
+  lexer->parser = parser;
 }
 
 static int isAlpha(char c) {
@@ -135,17 +191,17 @@ static Token makeToken(Lexer *lexer, TokenType type) {
   Token token;
   token.type = type;
   size_t length = (size_t)(lexer->current - lexer->start);
-  token.lexeme = (char *)malloc(length + 1);
+  token.lexeme = arenaAlloc(lexer->parser->arena, length + 1);
   memcpy(token.lexeme, lexer->start, length);
   token.lexeme[length] = '\0';
   token.line = lexer->line;
   return token;
 }
 
-static Token errorToken(const char *message, int line) {
+static Token errorToken(struct Parser *parser, const char *message, int line) {
   Token token;
   token.type = TOKEN_UNKNOWN;
-  token.lexeme = strdup(message);
+  token.lexeme = arenaDupString(parser->arena, message);
   token.line = line;
   return token;
 }
@@ -194,7 +250,7 @@ static Token stringLiteral(Lexer *lexer) {
   }
 
   if (isAtEnd(lexer)) {
-    return errorToken("Unterminated string.", lexer->line);
+    return errorToken(lexer->parser, "Unterminated string.", lexer->line);
   }
   // Consume the closing quote
   advance(lexer);
@@ -235,7 +291,7 @@ static Token getNextToken(Lexer *lexer) {
         if (isAlpha(c)) {
             token = identifierOrKeyword(lexer);
         } else {
-            token = errorToken("Unexpected character.", lexer->line);
+            token = errorToken(lexer->parser, "Unexpected character.", lexer->line);
         }
         break;
     }
@@ -290,39 +346,32 @@ typedef struct WebsiteNode {
  *                      PARSER
  * -------------------------------------------------- */
 
-typedef struct {
-  Lexer lexer;
-  Token current;
-  Token previous;
-  int hadError;
-  uint32_t : 32; // Padding to 4 bytes
-} Parser;
-
 static void initParser(Parser *parser, const char *source) {
-  initLexer(&parser->lexer, source);
+  initLexer(&parser->lexer, source, parser);
   parser->current.type = TOKEN_UNKNOWN;
   parser->previous.type = TOKEN_UNKNOWN;
   parser->hadError = 0;
+  parser->arena = createArena(ARENA_SIZE);
 }
 
 /* Forward declarations */
-static WebsiteNode *parseProgram(Parser *parser);
-static void advanceParser(Parser *parser);
-static void consume(Parser *parser, TokenType type, const char *errorMsg);
-static PageNode *parsePages(Parser *parser);
-static PageNode *parsePage(Parser *parser);
-static ContentNode *parseContent(Parser *parser);
-static StyleBlockNode *parseStyles(Parser *parser);
-static StyleBlockNode *parseStyleBlock(Parser *parser);
-static StylePropNode *parseStyleProps(Parser *parser);
-static char *copyString(const char *source);
+static WebsiteNode *parseProgram(struct Parser *parser);
+static void advanceParser(struct Parser *parser);
+static void consume(struct Parser *parser, TokenType type, const char *errorMsg);
+static PageNode *parsePages(struct Parser *parser);
+static PageNode *parsePage(struct Parser *parser);
+static ContentNode *parseContent(struct Parser *parser);
+static StyleBlockNode *parseStyles(struct Parser *parser);
+static StyleBlockNode *parseStyleBlock(struct Parser *parser);
+static StylePropNode *parseStyleProps(struct Parser *parser);
+static char *copyString(struct Parser *parser, const char *source);
 
-static void advanceParser(Parser *parser) {
+static void advanceParser(struct Parser *parser) {
   parser->previous = parser->current;
   parser->current = getNextToken(&parser->lexer);
 }
 
-static void consume(Parser *parser, TokenType type, const char *errorMsg) {
+static void consume(struct Parser *parser, TokenType type, const char *errorMsg) {
   if (parser->current.type == type) {
     advanceParser(parser);
     return;
@@ -333,15 +382,14 @@ static void consume(Parser *parser, TokenType type, const char *errorMsg) {
 }
 
 /* Copy a token’s lexeme into a new heap-allocated string. */
-static char *copyString(const char *source) {
-  char *out = (char *)malloc(strlen(source) + 1);
-  strcpy(out, source);
-  return out;
+static char *copyString(struct Parser *parser, const char *source) {
+  return arenaDupString(parser->arena, source);
 }
 
 /* The top-level parse: parse `website { ... }` */
-static WebsiteNode *parseProgram(Parser *parser) {
-  WebsiteNode *website = (WebsiteNode *)calloc(1, sizeof(WebsiteNode));
+static WebsiteNode *parseProgram(struct Parser *parser) {
+  WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
+  memset(website, 0, sizeof(WebsiteNode));
   advanceParser(parser); // read the first token
 
   consume(parser, TOKEN_WEBSITE, "Expected 'website' at start.");
@@ -349,23 +397,26 @@ static WebsiteNode *parseProgram(Parser *parser) {
 
   while (parser->current.type != TOKEN_CLOSE_BRACE &&
          parser->current.type != TOKEN_EOF && !parser->hadError) {
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wswitch-enum"
     switch (parser->current.type) {
+    #pragma clang diagnostic pop
       case TOKEN_NAME: {
         advanceParser(parser); // consume 'name'
         consume(parser, TOKEN_STRING, "Expected string after 'name'.");
-        website->name = copyString(parser->previous.lexeme);
+        website->name = copyString(parser, parser->previous.lexeme);
         break;
       }
       case TOKEN_AUTHOR: {
         advanceParser(parser); // consume 'author'
         consume(parser, TOKEN_STRING, "Expected string after 'author'.");
-        website->author = copyString(parser->previous.lexeme);
+        website->author = copyString(parser, parser->previous.lexeme);
         break;
       }
       case TOKEN_VERSION: {
         advanceParser(parser); // consume 'version'
         consume(parser, TOKEN_STRING, "Expected string after 'version'.");
-        website->version = copyString(parser->previous.lexeme);
+        website->version = copyString(parser, parser->previous.lexeme);
         break;
       }
       case TOKEN_PAGES: {
@@ -398,7 +449,7 @@ static WebsiteNode *parseProgram(Parser *parser) {
 }
 
 /* Parse multiple `page "identifier" { ... }` blocks. */
-static PageNode *parsePages(Parser *parser) {
+static PageNode *parsePages(struct Parser *parser) {
   PageNode *head = NULL;
   PageNode *tail = NULL;
 
@@ -418,27 +469,31 @@ static PageNode *parsePages(Parser *parser) {
 }
 
 /* Parse a single `page "identifier" { ... }` block */
-static PageNode *parsePage(Parser *parser) {
-  PageNode *page = (PageNode *)calloc(1, sizeof(PageNode));
+static PageNode *parsePage(struct Parser *parser) {
+  PageNode *page = arenaAlloc(parser->arena, sizeof(PageNode));
+  memset(page, 0, sizeof(PageNode));
   advanceParser(parser); // consume 'page'
   consume(parser, TOKEN_STRING, "Expected string for page identifier.");
-  page->identifier = copyString(parser->previous.lexeme);
+  page->identifier = copyString(parser, parser->previous.lexeme);
 
   consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after page identifier.");
 
   while (parser->current.type != TOKEN_CLOSE_BRACE &&
          parser->current.type != TOKEN_EOF && !parser->hadError) {
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wswitch-enum"
     switch (parser->current.type) {
+    #pragma clang diagnostic pop
       case TOKEN_ROUTE: {
         advanceParser(parser); // consume 'route'
         consume(parser, TOKEN_STRING, "Expected string after 'route'.");
-        page->route = copyString(parser->previous.lexeme);
+        page->route = copyString(parser, parser->previous.lexeme);
         break;
       }
       case TOKEN_LAYOUT: {
         advanceParser(parser); // consume 'layout'
         consume(parser, TOKEN_STRING, "Expected string after 'layout'.");
-        page->layout = copyString(parser->previous.lexeme);
+        page->layout = copyString(parser, parser->previous.lexeme);
         break;
       }
       case TOKEN_CONTENT: {
@@ -468,17 +523,18 @@ static PageNode *parsePage(Parser *parser) {
      link "/some-url" "Some link"
    }
 */
-static ContentNode *parseContent(Parser *parser) {
+static ContentNode *parseContent(struct Parser *parser) {
   ContentNode *head = NULL;
   ContentNode *tail = NULL;
 
   while (parser->current.type != TOKEN_CLOSE_BRACE &&
          parser->current.type != TOKEN_EOF && !parser->hadError) {
-    ContentNode *node = (ContentNode *)calloc(1, sizeof(ContentNode));
+    ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
+    memset(node, 0, sizeof(ContentNode));
 
     if (parser->current.type == TOKEN_STRING) {
       // The first string is the tag type
-      node->type = copyString(parser->current.lexeme);
+      node->type = copyString(parser, parser->current.lexeme);
       advanceParser(parser);
 
       // Check if this tag has nested content
@@ -488,18 +544,18 @@ static ContentNode *parseContent(Parser *parser) {
       } else {
         // All tags require at least one string argument if not nested
         consume(parser, TOKEN_STRING, "Expected string after tag");
-        node->arg1 = copyString(parser->previous.lexeme);
+        node->arg1 = copyString(parser, parser->previous.lexeme);
 
         // Special handling for tags that need two arguments (like links)
         if (strcmp(node->type, "link") == 0) {
           consume(parser, TOKEN_STRING, "Expected link text after URL string");
-          node->arg2 = copyString(parser->previous.lexeme);
+          node->arg2 = copyString(parser, parser->previous.lexeme);
         }
         // Handle alt text for images
         else if (strcmp(node->type, "image") == 0 && parser->current.type == TOKEN_ALT) {
           advanceParser(parser);
           consume(parser, TOKEN_STRING, "Expected alt text after 'alt'");
-          node->arg2 = copyString(parser->previous.lexeme);
+          node->arg2 = copyString(parser, parser->previous.lexeme);
         }
       }
 
@@ -532,7 +588,7 @@ static ContentNode *parseContent(Parser *parser) {
        }
    }
 */
-static StyleBlockNode *parseStyles(Parser *parser) {
+static StyleBlockNode *parseStyles(struct Parser *parser) {
     StyleBlockNode *head = NULL;
     StyleBlockNode *tail = NULL;
 
@@ -569,8 +625,9 @@ static StyleBlockNode *parseStyles(Parser *parser) {
        color "#333"
    }
 */
-static StyleBlockNode *parseStyleBlock(Parser *parser) {
-    StyleBlockNode *block = (StyleBlockNode *)calloc(1, sizeof(StyleBlockNode));
+static StyleBlockNode *parseStyleBlock(struct Parser *parser) {
+    StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
+    memset(block, 0, sizeof(StyleBlockNode));
     
     // Now we just check for STRING token for all selectors
     if (parser->current.type != TOKEN_STRING) {
@@ -580,7 +637,7 @@ static StyleBlockNode *parseStyleBlock(Parser *parser) {
         return NULL;
     }
     
-    block->selector = copyString(parser->current.lexeme);
+    block->selector = copyString(parser, parser->current.lexeme);
     advanceParser(parser);
     
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after style selector.");
@@ -595,7 +652,7 @@ static StyleBlockNode *parseStyleBlock(Parser *parser) {
    background "#fff"
    color "#333"
 */
-static StylePropNode *parseStyleProps(Parser *parser) {
+static StylePropNode *parseStyleProps(struct Parser *parser) {
   StylePropNode *head = NULL;
   StylePropNode *tail = NULL;
 
@@ -603,14 +660,15 @@ static StylePropNode *parseStyleProps(Parser *parser) {
          parser->current.type != TOKEN_EOF && !parser->hadError) {
     if (parser->current.type == TOKEN_STRING) {
       // e.g. property name
-      StylePropNode *prop = (StylePropNode *)calloc(1, sizeof(StylePropNode));
-      prop->property = copyString(parser->current.lexeme);
+      StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
+      memset(prop, 0, sizeof(StylePropNode));
+      prop->property = copyString(parser, parser->current.lexeme);
 
       advanceParser(parser); // consume property
 
       // Expect a string for the value
       if (parser->current.type == TOKEN_STRING) {
-        prop->value = copyString(parser->current.lexeme);
+        prop->value = copyString(parser, parser->current.lexeme);
         advanceParser(parser);
       } else {
         fprintf(stderr, "Expected string value after style property.\n");
@@ -645,16 +703,13 @@ static void printContent(const ContentNode *cn, int indent) {
     for (int i = 0; i < indent; i++) printf("  ");
     
     if (cn->children) {
-      // Handle nested content
       if (strcmp(cn->type, "p") == 0) {
         printf("      <p>\n");
         printContent(cn->children, indent + 1);
         for (int i = 0; i < indent; i++) printf("  ");
         printf("      </p>\n");
       }
-      // Add other nested tag types here as needed
     } else {
-      // Handle non-nested content as before
       if (strcmp(cn->type, "h1") == 0) {
         printf("      <h1>%s</h1>\n", cn->arg1);
       } else if (strcmp(cn->type, "p") == 0) {
@@ -756,7 +811,8 @@ int main(void) {
     fprintf(stderr, "\nParsing failed due to errors.\n");
   }
 
-  // NOTE: In real code, you'd free all allocated memory here.
+  // Free all memory at once
+  freeArena(parser.arena);
 
-  return 0;
+  return parser.hadError ? 1 : 0;
 }
