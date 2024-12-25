@@ -123,9 +123,9 @@ manual-test-trace: build-test-trace
 # Test-related variables
 TEST_DIR = test
 TEST_BUILD_DIR = build/test
-TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
+TEST_SRCS = test/test_main.c test/test_lexer.c test/test_parser.c
 TEST_OBJS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_BUILD_DIR)/%.o)
-TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_BUILD_DIR)/%)
+TEST_BINS = $(TEST_BUILD_DIR)/test_runner
 
 # Add unity source to test objects
 TEST_OBJS += $(TEST_BUILD_DIR)/unity.o
@@ -144,17 +144,14 @@ $(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(TEST_BUILD_DIR)
 	$(CC) $(CFLAGS) -I$(SRC_DIR) -c $< -o $@
 
 # Link test executables - updated to include source files
-$(TEST_BUILD_DIR)/%: $(TEST_BUILD_DIR)/%.o $(TEST_BUILD_DIR)/unity.o $(filter-out $(BUILD_DIR)/main.o,$(wildcard $(SRC_DIR)/*.c))
-	$(CC) $(TEST_BUILD_DIR)/unity.o $< $(LIB_SRC) $(CFLAGS) -o $@
+$(TEST_BUILD_DIR)/test_runner: $(TEST_OBJS) $(filter-out $(BUILD_DIR)/main.o,$(wildcard $(SRC_DIR)/*.c))
+	$(CC) $^ $(CFLAGS) -o $@
 
 # Test targets
 .PHONY: unit-test clean-test
 
 unit-test: $(TEST_BUILD_DIR) $(TEST_BINS)
-	@for test in $(TEST_BINS) ; do \
-		echo "Running $$test..." ; \
-		./$$test ; \
-	done
+	./$(TEST_BUILD_DIR)/test_runner
 
 clean-test:
 	rm -rf $(TEST_BUILD_DIR)

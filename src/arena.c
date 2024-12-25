@@ -16,8 +16,7 @@ void* arenaAlloc(Arena *arena, size_t size) {
     size = (size + 7) & ~((size_t)7);
     
     if (arena->used + size > arena->size) {
-        fputs("Arena out of memory\n", stderr);
-        exit(1);
+        return NULL;
     }
     
     void *ptr = arena->buffer + arena->used;
