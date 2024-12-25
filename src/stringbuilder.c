@@ -6,12 +6,19 @@
 #define INITIAL_CAPACITY 1024
 
 StringBuilder *StringBuilder_new(Arena *arena) {
+    if (!arena) return NULL;
+    
     StringBuilder *sb = arenaAlloc(arena, sizeof(StringBuilder));
+    if (!sb) return NULL;
+    
+    sb->arena = arena;
     sb->buffer = arenaAlloc(arena, INITIAL_CAPACITY);
+    if (!sb->buffer) return NULL;
+    
     sb->capacity = INITIAL_CAPACITY;
     sb->length = 0;
-    sb->arena = arena;
     sb->buffer[0] = '\0';
+    
     return sb;
 }
 

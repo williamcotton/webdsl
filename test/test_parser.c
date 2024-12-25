@@ -145,6 +145,71 @@ static void test_parse_error_handling(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_website_with_port(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  port 3000\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(3000, website->port);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_nested_content(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  pages {\n"
+        "    page \"test\" {\n"
+        "      content {\n"
+        "        div {\n"
+        "          p \"nested\"\n"
+        "          span \"content\"\n"
+        "        }\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
+    TEST_ASSERT_EQUAL_STRING("div", website->pageHead->contentHead->type);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_error_recovery(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  pages {\n"
+        "    page \"test\" {\n"
+        "      invalid_token\n"
+        "      route \"/test\"\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(1, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -153,5 +218,8 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_website_with_styles);
     RUN_TEST(test_parse_website_with_layout);
     RUN_TEST(test_parse_error_handling);
+    RUN_TEST(test_parse_website_with_port);
+    RUN_TEST(test_parse_nested_content);
+    RUN_TEST(test_parse_error_recovery);
     return UNITY_END();
 }

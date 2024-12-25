@@ -15,6 +15,8 @@ int main(void) {
     result |= run_lexer_tests();
     result |= run_parser_tests();
     result |= run_arena_tests();
+    result |= run_server_tests();
+    result |= run_stringbuilder_tests();
     
     return result;
 }
