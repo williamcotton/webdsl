@@ -6,10 +6,30 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stddef.h>
 
 static WebsiteNode *currentWebsite = NULL;
 static struct MHD_Daemon *httpd = NULL;
 static Arena *serverArena = NULL;
+
+#define HASH_TABLE_SIZE 64  // Should be power of 2
+#define HASH_MASK (HASH_TABLE_SIZE - 1)
+
+typedef struct RouteHashEntry {
+    const char *route;
+    PageNode *page;
+    struct RouteHashEntry *next;  // For collision handling
+} RouteHashEntry;
+
+typedef struct LayoutHashEntry {
+    const char *identifier;
+    LayoutNode *layout;
+    struct LayoutHashEntry *next;
+} LayoutHashEntry;
+
+// Add this to WebsiteNode struct in ast.h if you can, otherwise we'll work with the routeMap
+static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
+static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
 
 char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
     StringBuilder *sb = StringBuilder_new(arena);
@@ -127,48 +147,78 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
     return result;
 }
 
+static uint32_t hashString(const char *str) {
+    uint32_t hash = 0;
+    
+    for (size_t i = 0; str[i] != '\0'; i++) {
+        hash = (hash * 31 + (unsigned char)str[i]) % UINT32_MAX;
+    }
+    
+    return hash;
+}
+
+static void insertRoute(const char *route, PageNode *page, Arena *arena) {
+    uint32_t hash = hashString(route) & HASH_MASK;
+    RouteHashEntry *entry = arenaAlloc(arena, sizeof(RouteHashEntry));
+    entry->route = route;
+    entry->page = page;
+    entry->next = routeTable[hash];
+    routeTable[hash] = entry;
+}
+
+static void insertLayout(const char *identifier, LayoutNode *layout, Arena *arena) {
+    uint32_t hash = hashString(identifier) & HASH_MASK;
+    LayoutHashEntry *entry = arenaAlloc(arena, sizeof(LayoutHashEntry));
+    entry->identifier = identifier;
+    entry->layout = layout;
+    entry->next = layoutTable[hash];
+    layoutTable[hash] = entry;
+}
+
 static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
-    // Build route map
+    // Initialize hash tables
+    memset(routeTable, 0, sizeof(routeTable));
+    memset(layoutTable, 0, sizeof(layoutTable));
+    
+    // Build route hash table
     PageNode *page = website->pageHead;
     while (page) {
-        RouteMap *rm = arenaAlloc(arena, sizeof(RouteMap));
-        rm->page = page;
-        rm->route = arenaDupString(arena, stripQuotes(page->route));
-        rm->next = website->routeMap;
-        website->routeMap = rm;
+        const char *route = arenaDupString(arena, stripQuotes(page->route));
+        insertRoute(route, page, arena);
         page = page->next;
     }
 
-    // Build layout map
+    // Build layout hash table
     LayoutNode *layout = website->layoutHead;
     while (layout) {
-        LayoutMap *lm = arenaAlloc(arena, sizeof(LayoutMap));
-        lm->layout = layout;
-        lm->identifier = arenaDupString(arena, layout->identifier);
-        lm->next = website->layoutMap;
-        website->layoutMap = lm;
+        const char *identifier = arenaDupString(arena, layout->identifier);
+        insertLayout(identifier, layout, arena);
         layout = layout->next;
     }
 }
 
-static PageNode* findPage(WebsiteNode *website, const char *url) {
-    RouteMap *rm = website->routeMap;
-    while (rm) {
-        if (strcmp(rm->route, url) == 0) {
-            return rm->page;
+static PageNode* findPage(const char *url) {
+    uint32_t hash = hashString(url) & HASH_MASK;
+    RouteHashEntry *entry = routeTable[hash];
+
+    while (entry) {
+        if (strcmp(entry->route, url) == 0) {
+            return entry->page;
         }
-        rm = rm->next;
+        entry = entry->next;
     }
     return NULL;
 }
 
-static LayoutNode* findLayout(WebsiteNode *website, const char *identifier) {
-    LayoutMap *lm = website->layoutMap;
-    while (lm) {
-        if (strcmp(lm->identifier, identifier) == 0) {
-            return lm->layout;
+static LayoutNode* findLayout(const char *identifier) {
+    uint32_t hash = hashString(identifier) & HASH_MASK;
+    LayoutHashEntry *entry = layoutTable[hash];
+    
+    while (entry) {
+        if (strcmp(entry->identifier, identifier) == 0) {
+            return entry->layout;
         }
-        lm = lm->next;
+        entry = entry->next;
     }
     return NULL;
 }
@@ -184,10 +234,10 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
         freeArena(request_arena);
         return MHD_NO;
     }
-    
+
     struct MHD_Response *response;
     enum MHD_Result ret;
-    
+
     if (strcmp(url, "/styles.css") == 0) {
         char *css = generateCss(request_arena, currentWebsite->styleHead);
         char *css_copy = strdup(css);
@@ -196,8 +246,8 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
         MHD_add_response_header(response, "Content-Type", "text/css");
     } else {
         // Find matching page
-        PageNode *page = findPage(currentWebsite, url);
-        
+        PageNode *page = findPage(url);
+
         if (!page) {
             const char *not_found_text = "<html><body><h1>404 Not Found</h1></body></html>";
             char *not_found = strdup(not_found_text);
@@ -209,10 +259,10 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
             freeArena(request_arena);
             return ret;
         }
-        
+
         // Find layout
-        LayoutNode *layout = findLayout(currentWebsite, page->layout);
-        
+        LayoutNode *layout = findLayout(page->layout);
+
         char *html = generateFullHtml(request_arena, page, layout);
         char *html_copy = strdup(html);
         response = MHD_create_response_from_buffer(strlen(html_copy), html_copy,
