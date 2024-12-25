@@ -130,6 +130,24 @@ static Token stringLiteral(Lexer *lexer) {
     return makeToken(lexer, TOKEN_STRING);
 }
 
+static Token number(Lexer *lexer) {
+    while (isDigit(peek(lexer))) advance(lexer);
+    
+    // Look for decimal point
+    if (peek(lexer) == '.') {
+        advance(lexer);  // Consume the '.'
+        
+        // Must have at least one digit after decimal
+        if (!isDigit(peek(lexer))) {
+            return errorToken(lexer->parser, "Expected digit after decimal point.", lexer->line);
+        }
+        
+        while (isDigit(peek(lexer))) advance(lexer);
+    }
+    
+    return makeToken(lexer, TOKEN_NUMBER);
+}
+
 const char* getTokenTypeName(TokenType type) {
     switch (type) {
         case TOKEN_WEBSITE: return "WEBSITE";
@@ -174,6 +192,10 @@ Token getNextToken(Lexer *lexer) {
 
     char c = advance(lexer);
 
+    if (isDigit(c)) {
+        return number(lexer);
+    }
+
     Token token;
     switch (c) {
         case '{': token = makeToken(lexer, TOKEN_OPEN_BRACE); break;
@@ -184,10 +206,6 @@ Token getNextToken(Lexer *lexer) {
         default:
             if (isAlpha(c)) {
                 token = identifierOrKeyword(lexer);
-            } else if (isDigit(c)) {
-                // Handle numbers
-                while (isDigit(peek(lexer))) advance(lexer);
-                token = makeToken(lexer, TOKEN_NUMBER);
             } else {
                 token = errorToken(lexer->parser, "Unexpected character.", lexer->line);
             }

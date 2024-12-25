@@ -23,6 +23,8 @@ StringBuilder *StringBuilder_new(Arena *arena) {
 }
 
 void StringBuilder_append(StringBuilder *sb, const char *format, ...) {
+    if (!sb || !format) return;
+    
     va_list args;
     va_start(args, format);
 
@@ -39,6 +41,7 @@ void StringBuilder_append(StringBuilder *sb, const char *format, ...) {
         }
 
         char *new_buffer = arenaAlloc(sb->arena, new_capacity);
+        if (!new_buffer) return;
         memcpy(new_buffer, sb->buffer, sb->length);
         sb->buffer = new_buffer;
         sb->capacity = new_capacity;
@@ -52,5 +55,6 @@ void StringBuilder_append(StringBuilder *sb, const char *format, ...) {
 }
 
 char *StringBuilder_get(StringBuilder *sb) {
+    if (!sb) return NULL;
     return sb->buffer;
 }

@@ -210,6 +210,103 @@ static void test_parse_error_recovery(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_complex_website(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  name \"Test Site\"\n"
+        "  author \"Test Author\"\n"
+        "  version \"1.0\"\n"
+        "  port 8080\n"
+        "  layouts {\n"
+        "    \"main\" {\n"
+        "      content {\n"
+        "        h1 \"Site Header\"\n"
+        "        p \"Welcome to our website\"\n"
+        "        \"content\"\n"
+        "        p \"Footer text\"\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "  styles {\n"
+        "    \"body\" {\n"
+        "      \"margin\" \"0\"\n"
+        "      \"padding\" \"20px\"\n"
+        "    }\n"
+        "    \"div\" {\n"
+        "      \"color\" \"#333\"\n"
+        "    }\n"
+        "  }\n"
+        "  pages {\n"
+        "    page \"index\" {\n"
+        "      route \"/\"\n"
+        "      layout \"main\"\n"
+        "      content {\n"
+        "        h1 \"Welcome!\"\n"
+        "        p {\n"
+        "          link \"/about\" \"Learn more about our site\"\n"
+        "        }\n"
+        "        p \"This is a regular paragraph.\"\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_EQUAL(8080, website->port);
+    TEST_ASSERT_EQUAL_STRING("\"Test Site\"", website->name);
+    TEST_ASSERT_EQUAL_STRING("\"Test Author\"", website->author);
+    TEST_ASSERT_EQUAL_STRING("\"1.0\"", website->version);
+    
+    TEST_ASSERT_NOT_NULL(website->layoutHead);
+    
+    TEST_ASSERT_NOT_NULL(website->styleHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_invalid_constructs(void) {
+    Parser parser;
+    
+    // Test invalid page without route
+    const char *input1 = 
+        "website {\n"
+        "  pages {\n"
+        "    page \"test\" {\n"
+        "      route \"/test\"\n"
+        "      content {}\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input1);
+    WebsiteNode *website = parseProgram(&parser);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    freeArena(parser.arena);
+    
+    // Test invalid layout without content
+    const char *input2 = 
+        "website {\n"
+        "  layouts {\n"
+        "    \"main\" {\n"
+        "      content {}\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input2);
+    website = parseProgram(&parser);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -221,5 +318,7 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_website_with_port);
     RUN_TEST(test_parse_nested_content);
     RUN_TEST(test_parse_error_recovery);
+    RUN_TEST(test_parse_complex_website);
+    RUN_TEST(test_parse_invalid_constructs);
     return UNITY_END();
 }

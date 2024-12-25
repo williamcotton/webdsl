@@ -157,6 +157,59 @@ static void test_lexer_error_handling(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_edge_cases(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test empty input
+    initLexer(&lexer, "", &parser);
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test whitespace only
+    initLexer(&lexer, "   \t\n  \r\n", &parser);
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test escaped characters in strings
+    initLexer(&lexer, "\"test\\n\\t\\\"\\\\\"", &parser);
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
+    
+    freeArena(parser.arena);
+}
+
+static void test_lexer_number_formats(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test various number formats
+    const char *input = "123 123.456 0.123 .123 123. 0";
+    initLexer(&lexer, input, &parser);
+    
+    Token token;
+    token = getNextToken(&lexer);
+    printf("First token type: %u, lexeme: %s\n", token.type, token.lexeme);
+    TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
+    TEST_ASSERT_EQUAL_STRING("123", token.lexeme);
+    
+    token = getNextToken(&lexer);
+    printf("Second token type: %u, lexeme: %s\n", token.type, token.lexeme);
+    TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
+    TEST_ASSERT_EQUAL_STRING("123.456", token.lexeme);
+    
+    // Test invalid number format
+    initLexer(&lexer, "123.456.789", &parser);
+    token = getNextToken(&lexer);
+    printf("Invalid number token type: %u, lexeme: %s\n", token.type, token.lexeme);
+    TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
+    TEST_ASSERT_EQUAL_STRING("123.456", token.lexeme);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -166,5 +219,7 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_numbers);
     RUN_TEST(test_lexer_line_counting);
     RUN_TEST(test_lexer_error_handling);
+    RUN_TEST(test_lexer_edge_cases);
+    RUN_TEST(test_lexer_number_formats);
     return UNITY_END();
 }
