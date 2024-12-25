@@ -37,12 +37,12 @@ endif
 	cp default.env .env
 
 .PHONY: start
-start: $(BUILD_DIR)/main
-	$(BUILD_DIR)/main
+start: $(BUILD_DIR)/webdsl
+	$(BUILD_DIR)/webdsl
 
-$(BUILD_DIR)/main:
+$(BUILD_DIR)/webdsl:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/main $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
+	$(CC) -o $(BUILD_DIR)/webdsl $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
 
 .PHONY: test
 test:
