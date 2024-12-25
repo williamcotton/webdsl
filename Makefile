@@ -10,13 +10,16 @@ PROFDATA = llvm-profdata
 COV = llvm-cov
 TIDY = clang-tidy
 FORMAT = clang-format
+SRC_DIR = src
 
 CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ')
 CFLAGS += -DBUILD_ENV=$(BUILD_ENV)
 DEV_CFLAGS = -g -O0
 # TEST_CFLAGS = -Werror
 PROJECT_SRC = $(wildcard src/*/*.c) $(wildcard src/*.c)
-SRC = $(PROJECT_SRC) $(wildcard deps/*/*.c)
+MAIN_SRC = src/main.c
+LIB_SRC = $(filter-out $(MAIN_SRC),$(PROJECT_SRC))
+SRC = $(LIB_SRC) $(wildcard deps/*/*.c)
 TEST_SRC = $(wildcard test/*.c) $(wildcard test/*/*.c)
 BUILD_DIR = build
 
@@ -47,7 +50,7 @@ $(BUILD_DIR)/webdsl:
 .PHONY: test
 test:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS)
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS)
 	$(BUILD_DIR)/$@ app.webdsl
 
 test-coverage-output:
@@ -116,3 +119,45 @@ test-threads:
 
 manual-test-trace: build-test-trace
 	SLEEP_TIME=5 RUN_X_TIMES=10 $(BUILD_DIR)/test
+
+# Test-related variables
+TEST_DIR = test
+TEST_BUILD_DIR = build/test
+TEST_SRCS = $(wildcard $(TEST_DIR)/*.c)
+TEST_OBJS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_BUILD_DIR)/%.o)
+TEST_BINS = $(TEST_SRCS:$(TEST_DIR)/%.c=$(TEST_BUILD_DIR)/%)
+
+# Add unity source to test objects
+TEST_OBJS += $(TEST_BUILD_DIR)/unity.o
+
+# Create test build directory - updated to create all necessary subdirectories
+$(TEST_BUILD_DIR):
+	mkdir -p $(TEST_BUILD_DIR)
+	mkdir -p build/src
+
+# Compile unity
+$(TEST_BUILD_DIR)/unity.o: $(TEST_DIR)/unity/unity.c | $(TEST_BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile test files
+$(TEST_BUILD_DIR)/%.o: $(TEST_DIR)/%.c | $(TEST_BUILD_DIR)
+	$(CC) $(CFLAGS) -I$(SRC_DIR) -c $< -o $@
+
+# Link test executables - updated to include source files
+$(TEST_BUILD_DIR)/%: $(TEST_BUILD_DIR)/%.o $(TEST_BUILD_DIR)/unity.o $(filter-out $(BUILD_DIR)/main.o,$(wildcard $(SRC_DIR)/*.c))
+	$(CC) $(TEST_BUILD_DIR)/unity.o $< $(LIB_SRC) $(CFLAGS) -o $@
+
+# Test targets
+.PHONY: unit-test clean-test
+
+unit-test: $(TEST_BUILD_DIR) $(TEST_BINS)
+	@for test in $(TEST_BINS) ; do \
+		echo "Running $$test..." ; \
+		./$$test ; \
+	done
+
+clean-test:
+	rm -rf $(TEST_BUILD_DIR)
+
+# Update the main clean target if not already done
+clean: clean-test

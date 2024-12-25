@@ -13,6 +13,7 @@
 -Wno-format-nonliteral
 -Wno-unused-command-line-argument
 -Wno-pre-c23-compat
+-Wno-covered-switch-default
 -I/opt/homebrew/include
 -L/opt/homebrew/lib
 -lmicrohttpd
