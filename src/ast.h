@@ -39,6 +39,13 @@ typedef struct LayoutNode {
     struct LayoutNode *next;
 } LayoutNode;
 
+typedef struct ApiEndpoint {
+    char *route;
+    char *method;
+    char *response;
+    struct ApiEndpoint *next;
+} ApiEndpoint;
+
 typedef struct RouteMap {
     PageNode *page;
     char *route;
@@ -61,6 +68,7 @@ typedef struct WebsiteNode {
     PageNode *pageHead;
     StyleBlockNode *styleHead;
     LayoutNode *layoutHead;
+    ApiEndpoint *apiHead;
     RouteMap *routeMap;
     LayoutMap *layoutMap;
 } WebsiteNode;

@@ -17,6 +17,7 @@ static LayoutNode *parseLayouts(Parser *parser);
 static LayoutNode *parseLayout(Parser *parser);
 static char *copyString(Parser *parser, const char *source);
 static bool parsePort(const char* str, int* result);
+static ApiEndpoint *parseApi(Parser *parser);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -330,6 +331,52 @@ static bool parsePort(const char* str, int* result) {
     return true;
 }
 
+static ApiEndpoint *parseApi(Parser *parser) {
+    ApiEndpoint *endpoint = arenaAlloc(parser->arena, sizeof(ApiEndpoint));
+    memset(endpoint, 0, sizeof(ApiEndpoint));
+
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'api'.");
+
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_ROUTE: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'route'.");
+                endpoint->route = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_METHOD: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'method'.");
+                endpoint->method = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_RESPONSE: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'response'.");
+                endpoint->response = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in API block at line %d: %s\n",
+                        parser->current.line, parser->current.lexeme);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after API block.");
+    return endpoint;
+}
+
 WebsiteNode *parseProgram(Parser *parser) {
     WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
     memset(website, 0, sizeof(WebsiteNode));
@@ -396,6 +443,21 @@ WebsiteNode *parseProgram(Parser *parser) {
                     break;
                 }
                 advanceParser(parser);
+                break;
+            }
+            case TOKEN_API: {
+                advanceParser(parser);
+                ApiEndpoint *endpoint = parseApi(parser);
+                if (!website->apiHead) {
+                    website->apiHead = endpoint;
+                } else {
+                    // Add to end of list
+                    ApiEndpoint *current = website->apiHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = endpoint;
+                }
                 break;
             }
             default: {

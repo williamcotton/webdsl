@@ -307,6 +307,62 @@ static void test_parse_invalid_constructs(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_website_with_api(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    method \"GET\"\n"
+        "    response \"users\"\n"
+        "  }\n"
+        "  api {\n"
+        "    route \"/api/v1/posts\"\n"
+        "    method \"POST\"\n"
+        "    response \"post\"\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    
+    ApiEndpoint *first = website->apiHead;
+    TEST_ASSERT_EQUAL_STRING("\"/api/v1/users\"", first->route);
+    TEST_ASSERT_EQUAL_STRING("\"GET\"", first->method);
+    TEST_ASSERT_EQUAL_STRING("\"users\"", first->response);
+    
+    ApiEndpoint *second = first->next;
+    TEST_ASSERT_NOT_NULL(second);
+    TEST_ASSERT_EQUAL_STRING("\"/api/v1/posts\"", second->route);
+    TEST_ASSERT_EQUAL_STRING("\"POST\"", second->method);
+    TEST_ASSERT_EQUAL_STRING("\"post\"", second->response);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_invalid_api(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    invalid_token\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(1, parser.hadError);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -320,5 +376,7 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_error_recovery);
     RUN_TEST(test_parse_complex_website);
     RUN_TEST(test_parse_invalid_constructs);
+    RUN_TEST(test_parse_website_with_api);
+    RUN_TEST(test_parse_invalid_api);
     return UNITY_END();
 }
