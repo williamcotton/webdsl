@@ -102,6 +102,13 @@ ifeq ($(PLATFORM),DARWIN)
 	codesign -s - -v -f --entitlements debug.plist $(BUILD_DIR)/test
 endif
 
+build-trace:
+	mkdir -p $(BUILD_DIR)
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
+ifeq ($(PLATFORM),DARWIN)
+	codesign -s - -v -f --entitlements debug.plist $(BUILD_DIR)/webdsl
+endif
+
 test-leaks: build-test-trace
 ifeq ($(PLATFORM),LINUX)
 	valgrind --tool=memcheck --leak-check=full --suppressions=main.supp --gen-suppressions=all --error-exitcode=1 --num-callers=30 -s $(BUILD_DIR)/test
