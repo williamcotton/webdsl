@@ -96,7 +96,6 @@ int main(int argc, char* argv[]) {
     Parser parser;
     WebsiteNode* website = NULL;
     time_t lastMod = 0;
-    Arena* lastArena = NULL;
 
     while (keepRunning) {
         time_t currentMod = getFileModTime(argv[1]);
@@ -111,14 +110,12 @@ int main(int argc, char* argv[]) {
             }
 
             // Free old arena if it exists
-            if (lastArena != NULL) {
-                freeArena(lastArena);
-                lastArena = NULL;
+            if (parser.arena != NULL) {
+                freeArena(parser.arena);
+                parser.arena = NULL;
             }
 
             // Create new parser arena
-            parser.arena = createArena(1024 * 1024);
-            lastArena = parser.arena;
 
             // Load and start new configuration
             website = loadWebsite(argv[1], &parser);
@@ -137,8 +134,8 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     stopServer();
-    if (lastArena != NULL) {
-        freeArena(lastArena);
+    if (parser.arena != NULL) {
+        freeArena(parser.arena);
     }
 
     printf("\nShutdown complete\n");
