@@ -45,7 +45,7 @@ start: $(BUILD_DIR)/webdsl
 
 $(BUILD_DIR)/webdsl:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/webdsl $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
 
 .PHONY: test
 test:
@@ -158,3 +158,9 @@ clean-test:
 
 # Update the main clean target if not already done
 clean: clean-test
+
+# Update the source files list to include main.c
+SRC_FILES = src/arena.c src/lexer.c src/parser.c src/server.c src/stringbuilder.c src/main.c
+
+# If you have a variable for object files, it should look like:
+OBJ_FILES = $(SRC_FILES:.c=.o)
