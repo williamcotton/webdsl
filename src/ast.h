@@ -46,6 +46,12 @@ typedef struct ApiEndpoint {
     struct ApiEndpoint *next;
 } ApiEndpoint;
 
+typedef struct QueryNode {
+    char *name;
+    char *sql;
+    struct QueryNode *next;
+} QueryNode;
+
 typedef struct RouteMap {
     PageNode *page;
     char *route;
@@ -69,6 +75,7 @@ typedef struct WebsiteNode {
     StyleBlockNode *styleHead;
     LayoutNode *layoutHead;
     ApiEndpoint *apiHead;
+    QueryNode *queryHead;
     RouteMap *routeMap;
     LayoutMap *layoutMap;
 } WebsiteNode;

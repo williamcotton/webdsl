@@ -18,6 +18,7 @@ static LayoutNode *parseLayout(Parser *parser);
 static char *copyString(Parser *parser, const char *source);
 static bool parsePort(const char* str, int* result);
 static ApiEndpoint *parseApi(Parser *parser);
+static QueryNode *parseQuery(Parser *parser);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -377,6 +378,46 @@ static ApiEndpoint *parseApi(Parser *parser) {
     return endpoint;
 }
 
+static QueryNode *parseQuery(Parser *parser) {
+    QueryNode *query = arenaAlloc(parser->arena, sizeof(QueryNode));
+    memset(query, 0, sizeof(QueryNode));
+
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'query'.");
+
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                query->name = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_SQL: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'sql'.");
+                query->sql = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in query block at line %d: %s\n",
+                        parser->current.line, parser->current.lexeme);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after query block.");
+    return query;
+}
+
 WebsiteNode *parseProgram(Parser *parser) {
     WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
     memset(website, 0, sizeof(WebsiteNode));
@@ -457,6 +498,21 @@ WebsiteNode *parseProgram(Parser *parser) {
                         current = current->next;
                     }
                     current->next = endpoint;
+                }
+                break;
+            }
+            case TOKEN_QUERY: {
+                advanceParser(parser);
+                QueryNode *query = parseQuery(parser);
+                if (!website->queryHead) {
+                    website->queryHead = query;
+                } else {
+                    // Add to end of list
+                    QueryNode *current = website->queryHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = query;
                 }
                 break;
             }

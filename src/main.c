@@ -8,6 +8,9 @@
 #include <sys/stat.h>
 #include <signal.h>
 
+#define MAX_PATH_LENGTH 4096
+#define ERROR_MSG_SIZE 256
+
 static char* readFile(const char* path) {
     errno = 0;
     FILE* file = fopen(path, "rb");
@@ -74,26 +77,27 @@ static time_t getFileModTime(const char* path) {
     return 0;
 }
 
-static WebsiteNode* loadWebsite(const char* path, Parser* parser) {
-    char* sourceCode = readFile(path);
-    initParser(parser, sourceCode);
-    WebsiteNode* website = parseProgram(parser);
-    free(sourceCode);
-    return website;
-}
-
 int main(int argc, char* argv[]) {
     if (argc != 2) {
-        fputs("Usage: ", stderr);
-        fputs(argv[0], stderr);
-        fputs(" [path to .webdsl file]\n", stderr);
+        char error_msg[ERROR_MSG_SIZE];
+        int written = snprintf(error_msg, ERROR_MSG_SIZE, 
+            "Usage: %s [path to .webdsl file]\n", argv[0]);
+        if (written > 0 && written < ERROR_MSG_SIZE) {
+            fputs(error_msg, stderr);
+        }
+        return 64;
+    }
+
+    // Validate path length
+    if (strlen(argv[1]) >= MAX_PATH_LENGTH) {
+        fputs("Error: File path too long\n", stderr);
         return 64;
     }
 
     // Set up signal handler for clean shutdown
     signal(SIGINT, intHandler);
 
-    Parser parser;
+    Parser parser = {0};  // Zero initialize all fields
     WebsiteNode* website = NULL;
     time_t lastMod = 0;
 
@@ -115,14 +119,27 @@ int main(int argc, char* argv[]) {
                 parser.arena = NULL;
             }
 
-            // Create new parser arena
+            // Read and parse file
+            char *source = readFile(argv[1]);
+            if (source == NULL) {
+                char error_msg[ERROR_MSG_SIZE];
+                int written = snprintf(error_msg, ERROR_MSG_SIZE, 
+                    "Could not read file %s\n", argv[1]);
+                if (written > 0 && written < ERROR_MSG_SIZE) {
+                    fputs(error_msg, stderr);
+                }
+                continue;
+            }
 
-            // Load and start new configuration
-            website = loadWebsite(argv[1], &parser);
-            
-            if (!parser.hadError) {
-                startServer(website, parser.arena);
+            // Initialize parser with new source
+            initParser(&parser, source);
+            website = parseProgram(&parser);
+            free(source);  // Free the source after parsing
+
+            if (website != NULL && !parser.hadError) {
+                // Handle successful parse
                 lastMod = currentMod;
+                startServer(website, parser.arena);
                 printf("Website reloaded successfully!\n");
             } else {
                 fputs("Parsing failed, keeping previous configuration\n", stderr);

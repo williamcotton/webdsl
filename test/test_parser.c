@@ -2,6 +2,7 @@
 #include "../src/parser.h"
 #include "../src/ast.h"
 #include "test_runners.h"
+#include <string.h>
 
 // Function prototype
 int run_parser_tests(void);
@@ -363,6 +364,33 @@ static void test_parse_invalid_api(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_website_with_query(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  query {\n"
+        "    name \"users\"\n"
+        "    sql \"\"\"\n"
+        "        SELECT * FROM users\n"
+        "    \"\"\"\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->queryHead);
+    
+    QueryNode *query = website->queryHead;
+    TEST_ASSERT_EQUAL_STRING("\"users\"", query->name);
+    TEST_ASSERT_NOT_NULL(query->sql);
+    TEST_ASSERT_TRUE(strstr(query->sql, "SELECT * FROM users") != NULL);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -378,5 +406,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_invalid_constructs);
     RUN_TEST(test_parse_website_with_api);
     RUN_TEST(test_parse_invalid_api);
+    RUN_TEST(test_parse_website_with_query);
     return UNITY_END();
 }
