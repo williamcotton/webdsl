@@ -154,7 +154,7 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
     return result;
 }
 
-static uint32_t hashString(const char *str) {
+static uint32_t hashString(const char *str) __attribute__((no_sanitize("unsigned-integer-overflow"))) {
     uint32_t hash = 0;
     
     for (size_t i = 0; str[i] != '\0'; i++) {
