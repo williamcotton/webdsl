@@ -20,6 +20,8 @@ typedef enum {
     TOKEN_API,
     TOKEN_METHOD,
     TOKEN_RESPONSE,
+    TOKEN_QUERY,
+    TOKEN_SQL,
     TOKEN_NUMBER,
 
     TOKEN_STRING,

@@ -59,4 +59,11 @@ website {
         method "GET"
         response "users"
     }
+
+    query {
+      name "users"
+      sql """
+        SELECT * FROM users
+      """
+    }
 }

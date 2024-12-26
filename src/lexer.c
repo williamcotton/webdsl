@@ -100,6 +100,8 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("api", TOKEN_API)
     KW_MATCH("method", TOKEN_METHOD)
     KW_MATCH("response", TOKEN_RESPONSE)
+    KW_MATCH("query", TOKEN_QUERY)
+    KW_MATCH("sql", TOKEN_SQL)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -120,17 +122,94 @@ static Token identifierOrKeyword(Lexer *lexer) {
 }
 
 static Token stringLiteral(Lexer *lexer) {
-    while (peek(lexer) != '"' && !isAtEnd(lexer)) {
-        if (peek(lexer) == '\n') lexer->line++;
+    // Check for triple quotes
+    printf("DEBUG: Checking for triple quotes at position %ld\n", (long)(lexer->current - lexer->start));
+    printf("DEBUG: Current char: '%c'\n", *lexer->current);
+    printf("DEBUG: Next chars: '%c%c%c'\n", 
+           peekNext(lexer), 
+           !isAtEnd(lexer) ? lexer->current[1] : '?',
+           !isAtEnd(lexer) ? lexer->current[2] : '?');
+    printf("DEBUG: Full string from current: '%.30s'\n", lexer->current);
+    
+    // First quote already consumed, check for two more
+    if (!isAtEnd(lexer) && 
+        peek(lexer) == '"' && 
+        peekNext(lexer) == '"') {
+        printf("DEBUG: Found triple quote start\n");
+        printf("DEBUG: Current content: '%.20s...'\n", lexer->current);
+        
+        // Consume the other two quotes
         advance(lexer);
-    }
+        advance(lexer);
+        
+        // Read until we find three closing quotes
+        while (!isAtEnd(lexer)) {
+            printf("DEBUG: Looking for end quotes at: '%.10s...'\n", lexer->current);
+            if (!isAtEnd(lexer) && 
+                peek(lexer) == '"' && 
+                peekNext(lexer) == '"' && 
+                lexer->current[2] == '"') {
+                printf("DEBUG: Found closing triple quotes\n");
+                break;
+            }
+            if (peek(lexer) == '\n') {
+                lexer->line++;
+                printf("DEBUG: Found newline, now at line %d\n", lexer->line);
+            }
+            advance(lexer);
+        }
+        
+        if (isAtEnd(lexer)) {
+            printf("DEBUG: Hit end of file in triple quote\n");
+            return errorToken(lexer->parser, "Unterminated triple-quoted string.", lexer->line);
+        }
+        
+        // For triple-quoted strings, trim the quotes
+        printf("DEBUG: Original lexeme before trim: '%.*s'\n", 
+               (int)(lexer->current - lexer->start), lexer->start);
+        lexer->start += 3;  // Skip past opening quotes
+        Token token = makeToken(lexer, TOKEN_STRING);
+        
+        // Consume the closing triple quotes after making the token
+        advance(lexer);
+        advance(lexer);
+        advance(lexer);
+        
+        printf("DEBUG: Triple quoted string token: '%s'\n", token.lexeme);
+        return token;
+    } else {
+        printf("DEBUG: Regular string start\n");
+        printf("DEBUG: Current content: '%.20s...'\n", lexer->current);
+        
+        // Regular string handling
+        while (!isAtEnd(lexer) && peek(lexer) != '"') {
+            if (peek(lexer) == '\n') {
+                lexer->line++;
+                printf("DEBUG: Found newline in regular string, now at line %d\n", lexer->line);
+            }
+            if (peek(lexer) == '\\') {
+                printf("DEBUG: Found escape sequence: '\\%c'\n", peekNext(lexer));
+                advance(lexer); // Skip the backslash
+                if (!isAtEnd(lexer)) {
+                    advance(lexer); // Include the escaped character
+                }
+                continue;
+            }
+            advance(lexer);
+        }
 
-    if (isAtEnd(lexer)) {
-        return errorToken(lexer->parser, "Unterminated string.", lexer->line);
-    }
+        if (isAtEnd(lexer)) {
+            printf("DEBUG: Hit end of file in regular string\n");
+            return errorToken(lexer->parser, "Unterminated string.", lexer->line);
+        }
 
-    advance(lexer);  // Closing quote
-    return makeToken(lexer, TOKEN_STRING);
+        advance(lexer);  // Closing quote
+        
+        // For regular strings, include the quotes
+        Token token = makeToken(lexer, TOKEN_STRING);
+        printf("DEBUG: Regular string token: '%s'\n", token.lexeme);
+        return token;
+    }
 }
 
 static Token number(Lexer *lexer) {
@@ -177,6 +256,8 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_CLOSE_PAREN: return "CLOSE_PAREN";
         case TOKEN_EOF: return "EOF";
         case TOKEN_UNKNOWN: return "UNKNOWN";
+        case TOKEN_QUERY: return "QUERY";
+        case TOKEN_SQL: return "SQL";
     }
     return "INVALID";
 }
