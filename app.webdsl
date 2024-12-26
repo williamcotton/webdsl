@@ -53,4 +53,10 @@ website {
             color "#ff6600"
         }
     }
-} 
+
+    api {
+        route "/api/v1/users"
+        method "GET"
+        response "users"
+    }
+}

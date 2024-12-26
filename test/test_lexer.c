@@ -27,7 +27,7 @@ static void test_lexer_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "website pages page styles route layout content name author version alt layouts port";
+    const char *input = "website pages page styles route layout content name author version alt layouts port api method response";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
@@ -43,7 +43,10 @@ static void test_lexer_keywords(void) {
         TOKEN_VERSION,
         TOKEN_ALT,
         TOKEN_LAYOUTS,
-        TOKEN_PORT
+        TOKEN_PORT,
+        TOKEN_API,
+        TOKEN_METHOD,
+        TOKEN_RESPONSE
     };
     
     for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
@@ -210,6 +213,61 @@ static void test_lexer_number_formats(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_api_features(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test a complete API block
+    const char *input = 
+        "api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    method \"GET\"\n"
+        "    response \"users\"\n"
+        "}";
+    
+    initLexer(&lexer, input, &parser);
+    
+    TokenType expected[] = {
+        TOKEN_API,
+        TOKEN_OPEN_BRACE,
+        TOKEN_ROUTE,
+        TOKEN_STRING,
+        TOKEN_METHOD,
+        TOKEN_STRING,
+        TOKEN_RESPONSE,
+        TOKEN_STRING,
+        TOKEN_CLOSE_BRACE
+    };
+    
+    const char *expectedStrings[] = {
+        NULL,           // TOKEN_API
+        NULL,           // TOKEN_OPEN_BRACE
+        NULL,           // TOKEN_ROUTE
+        "\"/api/v1/users\"",
+        NULL,           // TOKEN_METHOD
+        "\"GET\"",
+        NULL,           // TOKEN_RESPONSE
+        "\"users\"",
+        NULL            // TOKEN_CLOSE_BRACE
+    };
+    
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        Token token = getNextToken(&lexer);
+        TEST_ASSERT_EQUAL(expected[i], token.type);
+        
+        // If we expect a string value, verify it
+        if (expectedStrings[i] != NULL) {
+            TEST_ASSERT_EQUAL_STRING(expectedStrings[i], token.lexeme);
+        }
+    }
+    
+    Token eof = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, eof.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -221,5 +279,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_error_handling);
     RUN_TEST(test_lexer_edge_cases);
     RUN_TEST(test_lexer_number_formats);
+    RUN_TEST(test_lexer_api_features);
     return UNITY_END();
 }

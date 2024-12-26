@@ -97,6 +97,9 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("alt", TOKEN_ALT)
     KW_MATCH("layouts", TOKEN_LAYOUTS)
     KW_MATCH("port", TOKEN_PORT)
+    KW_MATCH("api", TOKEN_API)
+    KW_MATCH("method", TOKEN_METHOD)
+    KW_MATCH("response", TOKEN_RESPONSE)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -163,6 +166,9 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_ALT: return "ALT";
         case TOKEN_LAYOUTS: return "LAYOUTS";
         case TOKEN_PORT: return "PORT";
+        case TOKEN_API: return "API";
+        case TOKEN_METHOD: return "METHOD";
+        case TOKEN_RESPONSE: return "RESPONSE";
         case TOKEN_NUMBER: return "NUMBER";
         case TOKEN_STRING: return "STRING";
         case TOKEN_OPEN_BRACE: return "OPEN_BRACE";

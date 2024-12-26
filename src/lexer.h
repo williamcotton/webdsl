@@ -17,6 +17,9 @@ typedef enum {
     TOKEN_ALT,
     TOKEN_LAYOUTS,
     TOKEN_PORT,
+    TOKEN_API,
+    TOKEN_METHOD,
+    TOKEN_RESPONSE,
     TOKEN_NUMBER,
 
     TOKEN_STRING,
