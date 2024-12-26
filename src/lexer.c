@@ -122,21 +122,10 @@ static Token identifierOrKeyword(Lexer *lexer) {
 }
 
 static Token stringLiteral(Lexer *lexer) {
-    // Check for triple quotes
-    printf("DEBUG: Checking for triple quotes at position %ld\n", (long)(lexer->current - lexer->start));
-    printf("DEBUG: Current char: '%c'\n", *lexer->current);
-    printf("DEBUG: Next chars: '%c%c%c'\n", 
-           peekNext(lexer), 
-           !isAtEnd(lexer) ? lexer->current[1] : '?',
-           !isAtEnd(lexer) ? lexer->current[2] : '?');
-    printf("DEBUG: Full string from current: '%.30s'\n", lexer->current);
-    
     // First quote already consumed, check for two more
     if (!isAtEnd(lexer) && 
         peek(lexer) == '"' && 
         peekNext(lexer) == '"') {
-        printf("DEBUG: Found triple quote start\n");
-        printf("DEBUG: Current content: '%.20s...'\n", lexer->current);
         
         // Consume the other two quotes
         advance(lexer);
@@ -144,29 +133,23 @@ static Token stringLiteral(Lexer *lexer) {
         
         // Read until we find three closing quotes
         while (!isAtEnd(lexer)) {
-            printf("DEBUG: Looking for end quotes at: '%.10s...'\n", lexer->current);
             if (!isAtEnd(lexer) && 
                 peek(lexer) == '"' && 
                 peekNext(lexer) == '"' && 
                 lexer->current[2] == '"') {
-                printf("DEBUG: Found closing triple quotes\n");
                 break;
             }
             if (peek(lexer) == '\n') {
                 lexer->line++;
-                printf("DEBUG: Found newline, now at line %d\n", lexer->line);
             }
             advance(lexer);
         }
         
         if (isAtEnd(lexer)) {
-            printf("DEBUG: Hit end of file in triple quote\n");
             return errorToken(lexer->parser, "Unterminated triple-quoted string.", lexer->line);
         }
         
         // For triple-quoted strings, trim the quotes
-        printf("DEBUG: Original lexeme before trim: '%.*s'\n", 
-               (int)(lexer->current - lexer->start), lexer->start);
         lexer->start += 3;  // Skip past opening quotes
         Token token = makeToken(lexer, TOKEN_STRING);
         
@@ -175,20 +158,14 @@ static Token stringLiteral(Lexer *lexer) {
         advance(lexer);
         advance(lexer);
         
-        printf("DEBUG: Triple quoted string token: '%s'\n", token.lexeme);
         return token;
     } else {
-        printf("DEBUG: Regular string start\n");
-        printf("DEBUG: Current content: '%.20s...'\n", lexer->current);
-        
         // Regular string handling
         while (!isAtEnd(lexer) && peek(lexer) != '"') {
             if (peek(lexer) == '\n') {
                 lexer->line++;
-                printf("DEBUG: Found newline in regular string, now at line %d\n", lexer->line);
             }
             if (peek(lexer) == '\\') {
-                printf("DEBUG: Found escape sequence: '\\%c'\n", peekNext(lexer));
                 advance(lexer); // Skip the backslash
                 if (!isAtEnd(lexer)) {
                     advance(lexer); // Include the escaped character
@@ -199,7 +176,6 @@ static Token stringLiteral(Lexer *lexer) {
         }
 
         if (isAtEnd(lexer)) {
-            printf("DEBUG: Hit end of file in regular string\n");
             return errorToken(lexer->parser, "Unterminated string.", lexer->line);
         }
 
@@ -207,7 +183,6 @@ static Token stringLiteral(Lexer *lexer) {
         
         // For regular strings, include the quotes
         Token token = makeToken(lexer, TOKEN_STRING);
-        printf("DEBUG: Regular string token: '%s'\n", token.lexeme);
         return token;
     }
 }

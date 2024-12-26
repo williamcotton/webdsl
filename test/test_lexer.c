@@ -189,19 +189,16 @@ static void test_lexer_number_formats(void) {
     
     Token token;
     token = getNextToken(&lexer);
-    printf("First token type: %u, lexeme: %s\n", token.type, token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
     TEST_ASSERT_EQUAL_STRING("123", token.lexeme);
     
     token = getNextToken(&lexer);
-    printf("Second token type: %u, lexeme: %s\n", token.type, token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
     TEST_ASSERT_EQUAL_STRING("123.456", token.lexeme);
     
     // Test invalid number format
     initLexer(&lexer, "123.456.789", &parser);
     token = getNextToken(&lexer);
-    printf("Invalid number token type: %u, lexeme: %s\n", token.type, token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_NUMBER, token.type);
     TEST_ASSERT_EQUAL_STRING("123.456", token.lexeme);
     
@@ -272,7 +269,7 @@ static void test_lexer_query_features(void) {
         "query {\n"
         "    name \"users\"\n"
         "    sql \"\"\"\n"
-        "        SELECT * FROM users\n"
+        "        SELECT \"Test\" FROM users\n"
         "    \"\"\"\n"
         "}";
     
@@ -298,7 +295,7 @@ static void test_lexer_query_features(void) {
     
     token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
-    TEST_ASSERT_TRUE(strstr(token.lexeme, "SELECT * FROM users") != NULL);
+    TEST_ASSERT_TRUE(strstr(token.lexeme, "SELECT \"Test\" FROM users") != NULL);
     
     token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_CLOSE_BRACE, token.type);
