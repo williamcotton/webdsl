@@ -370,9 +370,9 @@ static void test_parse_website_with_query(void) {
         "website {\n"
         "  query {\n"
         "    name \"users\"\n"
-        "    sql \"\"\"\n"
+        "    sql {\n"
         "        SELECT * FROM users\n"
-        "    \"\"\"\n"
+        "    }\n"
         "  }\n"
         "}";
     
@@ -386,7 +386,7 @@ static void test_parse_website_with_query(void) {
     QueryNode *query = website->queryHead;
     TEST_ASSERT_EQUAL_STRING("\"users\"", query->name);
     TEST_ASSERT_NOT_NULL(query->sql);
-    TEST_ASSERT_TRUE(strstr(query->sql, "SELECT * FROM users") != NULL);
+    TEST_ASSERT_NOT_NULL(strstr(query->sql, "SELECT * FROM users"));
     
     freeArena(parser.arena);
 }

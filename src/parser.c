@@ -72,6 +72,14 @@ static LayoutNode *parseLayout(Parser *parser) {
                 layout->bodyContent->arg1 = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_RAW_BLOCK: {
+                advanceParser(parser);
+                layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                memset(layout->bodyContent, 0, sizeof(ContentNode));
+                layout->bodyContent->type = "raw_html";
+                layout->bodyContent->arg1 = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
@@ -150,6 +158,14 @@ static PageNode *parsePage(Parser *parser) {
                 page->contentHead->arg1 = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_RAW_BLOCK: {
+                advanceParser(parser);
+                page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
+                memset(page->contentHead, 0, sizeof(ContentNode));
+                page->contentHead->type = "raw_html";
+                page->contentHead->arg1 = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
@@ -199,10 +215,9 @@ static ContentNode *parseContent(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
         
-        // Handle raw HTML blocks
-        if (parser->current.type == TOKEN_HTML) {
+        // Handle raw HTML blocks - both """ style and { } style
+        if (parser->current.type == TOKEN_HTML || parser->current.type == TOKEN_RAW_BLOCK) {
             advanceParser(parser);
-            consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
             
             ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
             memset(node, 0, sizeof(ContentNode));
@@ -453,9 +468,9 @@ static QueryNode *parseQuery(Parser *parser) {
                 query->name = copyString(parser, parser->previous.lexeme);
                 break;
             }
-            case TOKEN_SQL: {
+            case TOKEN_SQL:
+            case TOKEN_RAW_BLOCK: {
                 advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'sql'.");
                 query->sql = copyString(parser, parser->previous.lexeme);
                 break;
             }
