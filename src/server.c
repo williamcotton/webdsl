@@ -286,6 +286,8 @@ static ApiEndpoint* findApi(const char *url) {
     return NULL;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
 static QueryNode* findQuery(const char *name) {
     uint32_t hash = hashString(name) & HASH_MASK;
     QueryHashEntry *entry = queryTable[hash];
@@ -298,6 +300,7 @@ static QueryNode* findQuery(const char *name) {
     }
     return NULL;
 }
+#pragma clang diagnostic pop
 
 static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint) {
     StringBuilder *sb = StringBuilder_new(arena);

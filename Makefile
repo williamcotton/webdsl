@@ -14,6 +14,9 @@ SRC_DIR = src
 
 CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ')
 CFLAGS += -DBUILD_ENV=$(BUILD_ENV)
+PG_CFLAGS = -I$(shell pg_config --includedir)
+PG_LDFLAGS = -L$(shell pg_config --libdir) -lpq
+LIBS = -lmicrohttpd $(PG_LDFLAGS)
 DEV_CFLAGS = -g -O0
 # TEST_CFLAGS = -Werror
 PROJECT_SRC = $(wildcard src/*/*.c) $(wildcard src/*.c)
@@ -50,13 +53,13 @@ $(BUILD_DIR)/webdsl:
 .PHONY: test
 test:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS)
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) $(LIBS)
 	$(BUILD_DIR)/$@ app.webdsl
 
 test-coverage-output:
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/coverage
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
 	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/"
@@ -64,7 +67,7 @@ test-coverage-output:
 test-coverage-html:
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/coverage
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
 	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/" -format=html > $(BUILD_DIR)/code-coverage.html
@@ -72,7 +75,7 @@ test-coverage-html:
 test-coverage:
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/coverage
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
 	$(COV) report $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/"
@@ -97,14 +100,14 @@ test-watch:
 
 build-test-trace:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/test $(TEST_SRC) $(SRC) $(TEST_CFLAGS) $(CFLAGS) -g -O0 -gdwarf-4
+	$(CC) -o $(BUILD_DIR)/test $(TEST_SRC) $(SRC) $(TEST_CFLAGS) $(CFLAGS) $(PG_CFLAGS) -g -O0 -gdwarf-4 $(LIBS)
 ifeq ($(PLATFORM),DARWIN)
 	codesign -s - -v -f --entitlements debug.plist $(BUILD_DIR)/test
 endif
 
 build-trace:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LIBS)
 ifeq ($(PLATFORM),DARWIN)
 	codesign -s - -v -f --entitlements debug.plist $(BUILD_DIR)/webdsl
 endif

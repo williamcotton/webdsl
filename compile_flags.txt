@@ -16,4 +16,4 @@
 -Wno-covered-switch-default
 -I/opt/homebrew/include
 -L/opt/homebrew/lib
--lmicrohttpd
+-I/opt/homebrew/include/postgresql@14
