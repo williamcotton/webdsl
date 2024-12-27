@@ -23,6 +23,7 @@ typedef enum {
     TOKEN_QUERY,
     TOKEN_SQL,
     TOKEN_DATABASE,
+    TOKEN_HTML,
     TOKEN_NUMBER,
 
     TOKEN_STRING,

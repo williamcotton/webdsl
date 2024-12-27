@@ -15,11 +15,19 @@ website {
             }
         }
         "blog" {
-            content {
-                h1 "Blog Layout"
-                "content"
-                p "Blog footer"
-            }
+            html """
+            <header>
+                <h1>Blog Layout</h1>
+                <nav>
+                    <a href="/">Home</a> |
+                    <a href="/blog">Blog</a>
+                </nav>
+            </header>
+            <!-- content -->
+            <footer>
+                <p>Blog footer - Copyright 2024</p>
+            </footer>
+            """
         }
     }
 
@@ -38,10 +46,16 @@ website {
         page "blog" {
             route "/blog"
             layout "blog"
-            content {
-                h1 "Latest Posts"
-                p "Check out our latest blog posts!"
-            }
+            html """
+            <article>
+                <h1>Latest Posts</h1>
+                <p>Check out our latest blog posts!</p>
+                <div class="post">
+                    <h2>First Post</h2>
+                    <p>This is our first blog post using raw HTML.</p>
+                </div>
+            </article>
+            """
         }
     }
 

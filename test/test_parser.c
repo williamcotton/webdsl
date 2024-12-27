@@ -391,6 +391,53 @@ static void test_parse_website_with_query(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_html_content(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  layouts {\n"
+        "    \"main\" {\n"
+        "      html \"\"\"\n"
+        "      <header>Hello</header>\n"
+        "      <!-- content -->\n"
+        "      <footer>Footer</footer>\n"
+        "      \"\"\"\n"
+        "    }\n"
+        "  }\n"
+        "  pages {\n"
+        "    page \"home\" {\n"
+        "      route \"/\"\n"
+        "      layout \"main\"\n"
+        "      html \"\"\"\n"
+        "      <h1>Welcome</h1>\n"
+        "      <p>This is the home page.</p>\n"
+        "      \"\"\"\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check layout HTML
+    TEST_ASSERT_NOT_NULL(website->layoutHead);
+    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyContent);
+    TEST_ASSERT_EQUAL_STRING("raw_html", website->layoutHead->bodyContent->type);
+    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyContent->arg1, "<header>") != NULL);
+    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyContent->arg1, "<!-- content -->") != NULL);
+    
+    // Check page HTML
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
+    TEST_ASSERT_EQUAL_STRING("raw_html", website->pageHead->contentHead->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->contentHead->arg1, "<h1>Welcome</h1>") != NULL);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -407,5 +454,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_website_with_api);
     RUN_TEST(test_parse_invalid_api);
     RUN_TEST(test_parse_website_with_query);
+    RUN_TEST(test_parse_html_content);
     return UNITY_END();
 }

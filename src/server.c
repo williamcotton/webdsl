@@ -55,6 +55,30 @@ char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
         memset(indentStr, ' ', (size_t)(indent * 2));
         indentStr[indent * 2] = '\0';
         
+        // Handle raw HTML content
+        if (strcmp(cn->type, "raw_html") == 0) {
+            const char *html = stripQuotes(cn->arg1);
+            const char *content_marker = "<!-- content -->";
+            const char *marker_pos = strstr(html, content_marker);
+            
+            if (marker_pos) {
+                // Write everything before the marker
+                size_t prefix_len = (size_t)(marker_pos - html);
+                StringBuilder_append(sb, "%s%.*s", indentStr, (int)prefix_len, html);
+                
+                // Insert the content placeholder
+                StringBuilder_append(sb, "{CONTENT_PLACEHOLDER}");
+                
+                // Write everything after the marker
+                const char *suffix = marker_pos + strlen(content_marker);
+                StringBuilder_append(sb, "%s", suffix);
+            } else {
+                StringBuilder_append(sb, "%s%s\n", indentStr, html);
+            }
+            cn = cn->next;
+            continue;
+        }
+
         if (cn->children) {
             // Generic tag with children
             StringBuilder_append(sb, "%s<%s>\n", indentStr, cn->type);

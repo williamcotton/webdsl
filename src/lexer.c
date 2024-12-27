@@ -85,6 +85,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
         return ttype;
 
     KW_MATCH("website", TOKEN_WEBSITE)
+    KW_MATCH("html", TOKEN_HTML)
     KW_MATCH("pages", TOKEN_PAGES)
     KW_MATCH("database", TOKEN_DATABASE)
     KW_MATCH("page", TOKEN_PAGE)
@@ -209,6 +210,7 @@ static Token number(Lexer *lexer) {
 const char* getTokenTypeName(TokenType type) {
     switch (type) {
         case TOKEN_WEBSITE: return "WEBSITE";
+        case TOKEN_HTML: return "HTML";
         case TOKEN_PAGES: return "PAGES";
         case TOKEN_DATABASE: return "DATABASE";
         case TOKEN_PAGE: return "PAGE";

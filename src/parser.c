@@ -58,10 +58,38 @@ static LayoutNode *parseLayout(Parser *parser) {
 
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after layout identifier.");
 
-    // Parse content
-    consume(parser, TOKEN_CONTENT, "Expected 'content' in layout.");
-    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
-    layout->bodyContent = parseContent(parser);
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_HTML: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
+                layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                memset(layout->bodyContent, 0, sizeof(ContentNode));
+                layout->bodyContent->type = "raw_html";
+                layout->bodyContent->arg1 = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_CONTENT: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
+                layout->bodyContent = parseContent(parser);
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Parse error at line %d: Unexpected token in layout.\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after layout block.");
     return layout;
@@ -113,6 +141,15 @@ static PageNode *parsePage(Parser *parser) {
                 page->layout = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_HTML: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
+                page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
+                memset(page->contentHead, 0, sizeof(ContentNode));
+                page->contentHead->type = "raw_html";
+                page->contentHead->arg1 = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
@@ -161,6 +198,27 @@ static ContentNode *parseContent(Parser *parser) {
 
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
+        
+        // Handle raw HTML blocks
+        if (parser->current.type == TOKEN_HTML) {
+            advanceParser(parser);
+            consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
+            
+            ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
+            memset(node, 0, sizeof(ContentNode));
+            node->type = "raw_html";
+            node->arg1 = copyString(parser, parser->previous.lexeme);
+            
+            if (!head) {
+                head = node;
+                tail = node;
+            } else {
+                tail->next = node;
+                tail = node;
+            }
+            continue;
+        }
+
         ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
         memset(node, 0, sizeof(ContentNode));
 
