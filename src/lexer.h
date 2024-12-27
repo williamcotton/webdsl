@@ -32,7 +32,8 @@ typedef enum {
     TOKEN_OPEN_PAREN,
     TOKEN_CLOSE_PAREN,
     TOKEN_EOF,
-    TOKEN_UNKNOWN
+    TOKEN_UNKNOWN,
+    TOKEN_RAW_BLOCK
 } TokenType;
 
 typedef struct {

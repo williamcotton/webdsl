@@ -3,6 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
+static Token errorToken(Parser *parser, const char *message, int line);
+static Token rawBlock(Lexer *lexer);
+
 static int isAlpha(char c) {
     return ((c >= 'a' && c <= 'z') || 
             (c >= 'A' && c <= 'Z') || 
@@ -60,6 +63,20 @@ static void skipWhitespace(Lexer *lexer) {
     }
 }
 
+static void skipToNonWhitespace(Lexer *lexer) {
+    while (!isAtEnd(lexer)) {
+        char c = peek(lexer);
+        if (c == ' ' || c == '\r' || c == '\t') {
+            advance(lexer);
+        } else if (c == '\n') {
+            lexer->line++;
+            advance(lexer);
+        } else {
+            break;
+        }
+    }
+}
+
 static Token makeToken(Lexer *lexer, TokenType type) {
     Token token;
     token.type = type;
@@ -76,6 +93,43 @@ static Token errorToken(Parser *parser, const char *message, int line) {
     token.type = TOKEN_UNKNOWN;
     token.lexeme = arenaDupString(parser->arena, message);
     token.line = line;
+    return token;
+}
+
+static Token rawBlock(Lexer *lexer) {
+    // Skip past the opening brace
+    advance(lexer);
+    
+    // Mark the start of content after the brace
+    lexer->start = lexer->current;
+    
+    int braceCount = 1;
+    int startLine = lexer->line;
+    
+    while (!isAtEnd(lexer) && braceCount > 0) {
+        if (peek(lexer) == '{') {
+            braceCount++;
+        } else if (peek(lexer) == '}') {
+            braceCount--;
+        } else if (peek(lexer) == '\n') {
+            lexer->line++;
+        }
+        
+        if (braceCount > 0) {
+            advance(lexer);
+        }
+    }
+    
+    if (braceCount > 0) {
+        return errorToken(lexer->parser, "Unterminated raw block.", startLine);
+    }
+    
+    // Create token before consuming closing brace
+    Token token = makeToken(lexer, TOKEN_RAW_BLOCK);
+    
+    // Consume the closing brace
+    advance(lexer);
+    
     return token;
 }
 
@@ -117,6 +171,17 @@ static Token identifierOrKeyword(Lexer *lexer) {
 
     size_t length = (size_t)(lexer->current - lexer->start);
     TokenType type = checkKeyword(lexer->start, length);
+    
+    // Check for raw block keywords
+    if (type == TOKEN_HTML || type == TOKEN_SQL) {
+        skipToNonWhitespace(lexer);
+        if (peek(lexer) == '{') {
+            // Reset start to include the keyword
+            lexer->start = lexer->current;
+            return rawBlock(lexer);
+        }
+    }
+    
     if (type == TOKEN_UNKNOWN) {
         type = TOKEN_STRING;
     }
@@ -237,6 +302,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_UNKNOWN: return "UNKNOWN";
         case TOKEN_QUERY: return "QUERY";
         case TOKEN_SQL: return "SQL";
+        case TOKEN_RAW_BLOCK: return "RAW_BLOCK";
     }
     return "INVALID";
 }

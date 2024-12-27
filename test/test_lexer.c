@@ -306,6 +306,79 @@ static void test_lexer_query_features(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_raw_blocks(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test HTML raw block
+    const char *html_input = 
+        "html {\n"
+        "    <div class=\"test\">\n"
+        "        <h1>Hello World</h1>\n"
+        "    </div>\n"
+        "}";
+    
+    initLexer(&lexer, html_input, &parser);
+    
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "<div"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "Hello World"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test SQL raw block
+    const char *sql_input = 
+        "sql {\n"
+        "    SELECT * FROM users\n"
+        "    WHERE id = 1\n"
+        "}";
+    
+    initLexer(&lexer, sql_input, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "SELECT"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "FROM users"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test nested braces
+    const char *nested_input = 
+        "html {\n"
+        "    <style>{\n"
+        "        color: blue;\n"
+        "    }</style>\n"
+        "}";
+    
+    initLexer(&lexer, nested_input, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "<style>{"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "color: blue;"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test error handling
+    const char *unterminated_input = 
+        "html {\n"
+        "    <div>\n"
+        "    Unterminated block\n";
+    
+    initLexer(&lexer, unterminated_input, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
+    TEST_ASSERT_EQUAL_STRING("Unterminated raw block.", token.lexeme);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -319,5 +392,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_number_formats);
     RUN_TEST(test_lexer_api_features);
     RUN_TEST(test_lexer_query_features);
+    RUN_TEST(test_lexer_raw_blocks);
     return UNITY_END();
 }
