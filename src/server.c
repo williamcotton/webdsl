@@ -33,10 +33,17 @@ typedef struct ApiHashEntry {
     struct ApiHashEntry *next;
 } ApiHashEntry;
 
+typedef struct QueryHashEntry {
+    const char *name;
+    QueryNode *query;
+    struct QueryHashEntry *next;
+} QueryHashEntry;
+
 // Add this to WebsiteNode struct in ast.h if you can, otherwise we'll work with the routeMap
 static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
 static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
 static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
+static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
 
 char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
     StringBuilder *sb = StringBuilder_new(arena);
@@ -191,11 +198,21 @@ static void insertApi(const char *route, ApiEndpoint *endpoint, Arena *arena) {
     apiTable[hash] = entry;
 }
 
+static void insertQuery(const char *name, QueryNode *query, Arena *arena) {
+    uint32_t hash = hashString(name) & HASH_MASK;
+    QueryHashEntry *entry = arenaAlloc(arena, sizeof(QueryHashEntry));
+    entry->name = name;
+    entry->query = query;
+    entry->next = queryTable[hash];
+    queryTable[hash] = entry;
+}
+
 static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     // Initialize hash tables
     memset(routeTable, 0, sizeof(routeTable));
     memset(layoutTable, 0, sizeof(layoutTable));
     memset(apiTable, 0, sizeof(apiTable));
+    memset(queryTable, 0, sizeof(queryTable));
     
     // Build route hash table
     PageNode *page = website->pageHead;
@@ -219,6 +236,14 @@ static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
         const char *route = arenaDupString(arena, stripQuotes(api->route));
         insertApi(route, api, arena);
         api = api->next;
+    }
+
+    // Build query hash table
+    QueryNode *query = website->queryHead;
+    while (query) {
+        const char *name = arenaDupString(arena, stripQuotes(query->name));
+        insertQuery(name, query, arena);
+        query = query->next;
     }
 }
 
@@ -255,6 +280,19 @@ static ApiEndpoint* findApi(const char *url) {
     while (entry) {
         if (strcmp(entry->route, url) == 0) {
             return entry->endpoint;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+static QueryNode* findQuery(const char *name) {
+    uint32_t hash = hashString(name) & HASH_MASK;
+    QueryHashEntry *entry = queryTable[hash];
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry->query;
         }
         entry = entry->next;
     }
