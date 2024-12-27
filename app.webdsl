@@ -3,6 +3,7 @@ website {
     author "John Smith"
     version "1.0"
     port 3123
+    database "postgresql://localhost/express-test"
 
     layouts {
         "main" {
@@ -55,15 +56,15 @@ website {
     }
 
     api {
-        route "/api/v1/users"
+        route "/api/v1/employees"
         method "GET"
-        response "users"
+        response "employees"
     }
 
     query {
-      name "users"
-      sql """
-        SELECT * FROM users
-      """
+        name "employees"
+        sql """
+            SELECT * FROM employees
+        """
     }
 }

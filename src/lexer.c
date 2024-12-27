@@ -86,6 +86,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
 
     KW_MATCH("website", TOKEN_WEBSITE)
     KW_MATCH("pages", TOKEN_PAGES)
+    KW_MATCH("database", TOKEN_DATABASE)
     KW_MATCH("page", TOKEN_PAGE)
     KW_MATCH("styles", TOKEN_STYLES)
     KW_MATCH("route", TOKEN_ROUTE)
@@ -209,6 +210,7 @@ const char* getTokenTypeName(TokenType type) {
     switch (type) {
         case TOKEN_WEBSITE: return "WEBSITE";
         case TOKEN_PAGES: return "PAGES";
+        case TOKEN_DATABASE: return "DATABASE";
         case TOKEN_PAGE: return "PAGE";
         case TOKEN_STYLES: return "STYLES";
         case TOKEN_ROUTE: return "ROUTE";

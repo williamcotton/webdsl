@@ -69,6 +69,7 @@ typedef struct WebsiteNode {
     char *author;
     char *version;
     char *base_url;
+    char *databaseUrl;
     int port;
     int _padding;
     PageNode *pageHead;

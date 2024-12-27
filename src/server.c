@@ -1,6 +1,7 @@
 #include "server.h"
 #include "stringbuilder.h"
 #include "arena.h"
+#include "db.h"
 #include <microhttpd.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,6 +12,7 @@
 static WebsiteNode *currentWebsite = NULL;
 static struct MHD_Daemon *httpd = NULL;
 static Arena *serverArena = NULL;
+static Database *db = NULL;
 
 #define HASH_TABLE_SIZE 64  // Should be power of 2
 #define HASH_MASK (HASH_TABLE_SIZE - 1)
@@ -303,16 +305,42 @@ static QueryNode* findQuery(const char *name) {
 #pragma clang diagnostic pop
 
 static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint) {
-    StringBuilder *sb = StringBuilder_new(arena);
+    // Look up the query by name (strip quotes from response name)
+    const char *queryName = stripQuotes(endpoint->response);
+    QueryNode *query = findQuery(queryName);
     
-    // For now, just return a simple JSON response
-    // You can expand this to handle more complex responses later
-    StringBuilder_append(sb, "{\n");
-    StringBuilder_append(sb, "  \"type\": %s,\n", endpoint->response);
-    StringBuilder_append(sb, "  \"status\": \"success\"\n");
-    StringBuilder_append(sb, "}");
-    
-    return arenaDupString(arena, StringBuilder_get(sb));
+    if (!query) {
+        StringBuilder *sb = StringBuilder_new(arena);
+        StringBuilder_append(sb, "{\n");
+        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", queryName);
+        StringBuilder_append(sb, "}");
+        return arenaDupString(arena, StringBuilder_get(sb));
+    }
+
+    // Execute the query
+    PGresult *result = executeQuery(db, stripQuotes(query->sql));
+    if (!result) {
+        StringBuilder *sb = StringBuilder_new(arena);
+        StringBuilder_append(sb, "{\n");
+        StringBuilder_append(sb, "  \"error\": \"Query execution failed: %s\"\n", 
+                           getDatabaseError(db));
+        StringBuilder_append(sb, "}");
+        return arenaDupString(arena, StringBuilder_get(sb));
+    }
+
+    // Convert result to JSON
+    char *json = resultToJson(arena, result);
+    freeResult(result);
+
+    if (!json) {
+        StringBuilder *sb = StringBuilder_new(arena);
+        StringBuilder_append(sb, "{\n");
+        StringBuilder_append(sb, "  \"error\": \"Failed to convert result to JSON\"\n");
+        StringBuilder_append(sb, "}");
+        return arenaDupString(arena, StringBuilder_get(sb));
+    }
+
+    return json;
 }
 
 static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct MHD_Connection *connection,
@@ -399,8 +427,18 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
 
 void startServer(WebsiteNode *website, Arena *arena) {
     currentWebsite = website;
-    serverArena = arena;  // 1MB arena for maps
-    buildRouteMaps(website, serverArena);  // Build lookup maps
+    serverArena = arena;
+    buildRouteMaps(website, serverArena);
+
+    // Initialize database connection
+    if (website->databaseUrl) {
+        db = initDatabase(serverArena, stripQuotes(website->databaseUrl));
+    }
+    if (!db) {
+        fprintf(stderr, "Failed to connect to database: %s\n", 
+               website->databaseUrl ? stripQuotes(website->databaseUrl) : "no database URL configured");
+        exit(1);
+    }
 
     // Get port number from website definition, default to 8080 if not specified
     uint16_t port = website->port > 0 ? (uint16_t)website->port : 8080;
@@ -420,6 +458,10 @@ void stopServer(void) {
     if (httpd) {
         MHD_stop_daemon(httpd);
         httpd = NULL;
+    }
+    if (db) {
+        closeDatabase(db);
+        db = NULL;
     }
     if (currentWebsite) {
         currentWebsite = NULL;

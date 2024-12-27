@@ -516,6 +516,12 @@ WebsiteNode *parseProgram(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_DATABASE: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'database'.");
+                website->databaseUrl = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer), 
