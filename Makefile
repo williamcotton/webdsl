@@ -14,6 +14,10 @@ SRC_DIR = src
 
 CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ')
 CFLAGS += -DBUILD_ENV=$(BUILD_ENV)
+
+# Add linker flags separately
+LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq
+
 PG_CFLAGS = -I$(shell pg_config --includedir)
 PG_LDFLAGS = -L$(shell pg_config --libdir) -lpq
 LIBS = -lmicrohttpd $(PG_LDFLAGS)
@@ -48,7 +52,7 @@ start: $(BUILD_DIR)/webdsl
 
 $(BUILD_DIR)/webdsl:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LDFLAGS)
 
 .PHONY: test
 test:
