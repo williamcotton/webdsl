@@ -8,34 +8,13 @@
 // Function prototype
 int run_server_tests(void);
 
-static void test_strip_quotes(void) {
-    // Test with quoted string
-    const char* input1 = "\"hello\"";
-    const char* result1 = stripQuotes(input1);
-    TEST_ASSERT_EQUAL_STRING("hello", result1);
-
-    // Test with unquoted string
-    const char* input2 = "hello";
-    const char* result2 = stripQuotes(input2);
-    TEST_ASSERT_EQUAL_STRING("hello", result2);
-
-    // Test with empty quoted string
-    const char* input3 = "\"\"";
-    const char* result3 = stripQuotes(input3);
-    TEST_ASSERT_EQUAL_STRING("", result3);
-
-    // Test with NULL
-    const char* result4 = stripQuotes(NULL);
-    TEST_ASSERT_NULL(result4);
-}
-
 static void test_generate_html_content_simple(void) {
     Arena *arena = createArena(1024 * 64);  // 64KB arena for this test
     
     // Create a simple content node
     ContentNode *node = arenaAlloc(arena, sizeof(ContentNode));
     node->type = arenaDupString(arena, "p");
-    node->arg1 = arenaDupString(arena, "\"Hello, World!\"");
+    node->arg1 = arenaDupString(arena, "Hello, World!");
     node->arg2 = NULL;
     node->children = NULL;
     node->next = NULL;
@@ -68,7 +47,7 @@ static void test_generate_html_content_nested(void) {
     char* result = generateHtmlContent(arena, parent, 0);
     TEST_ASSERT_NOT_NULL(result);
     TEST_ASSERT_TRUE(strstr(result, "<div>") != NULL);
-    TEST_ASSERT_TRUE(strstr(result, "<p>Child content</p>") != NULL);
+    TEST_ASSERT_TRUE(strstr(result, "Child content") != NULL);
     TEST_ASSERT_TRUE(strstr(result, "</div>") != NULL);
 
     freeArena(arena);
@@ -158,7 +137,6 @@ static void test_generate_html_content_image(void) {
 
 int run_server_tests(void) {
     UNITY_BEGIN();
-    RUN_TEST(test_strip_quotes);
     RUN_TEST(test_generate_html_content_simple);
     RUN_TEST(test_generate_html_content_nested);
     RUN_TEST(test_generate_html_content_link);

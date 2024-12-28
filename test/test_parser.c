@@ -33,9 +33,9 @@ static void test_parse_minimal_website(void) {
     
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_EQUAL_STRING("\"Test Site\"", website->name);
-    TEST_ASSERT_EQUAL_STRING("\"Test Author\"", website->author);
-    TEST_ASSERT_EQUAL_STRING("\"1.0\"", website->version);
+    TEST_ASSERT_EQUAL_STRING("Test Site", website->name);
+    TEST_ASSERT_EQUAL_STRING("Test Author", website->author);
+    TEST_ASSERT_EQUAL_STRING("1.0", website->version);
     TEST_ASSERT_NULL(website->pageHead);
     TEST_ASSERT_NULL(website->styleHead);
     TEST_ASSERT_NULL(website->layoutHead);
@@ -66,9 +66,9 @@ static void test_parse_website_with_page(void) {
     TEST_ASSERT_NOT_NULL(website->pageHead);
     
     PageNode *page = website->pageHead;
-    TEST_ASSERT_EQUAL_STRING("\"home\"", page->identifier);
-    TEST_ASSERT_EQUAL_STRING("\"/\"", page->route);
-    TEST_ASSERT_EQUAL_STRING("\"main\"", page->layout);
+    TEST_ASSERT_EQUAL_STRING("home", page->identifier);
+    TEST_ASSERT_EQUAL_STRING("/", page->route);
+    TEST_ASSERT_EQUAL_STRING("main", page->layout);
     TEST_ASSERT_NOT_NULL(page->contentHead);
     TEST_ASSERT_EQUAL_STRING("content", page->contentHead->type);
     
@@ -95,12 +95,12 @@ static void test_parse_website_with_styles(void) {
     TEST_ASSERT_NOT_NULL(website->styleHead);
     
     StyleBlockNode *style = website->styleHead;
-    TEST_ASSERT_EQUAL_STRING("\"body\"", style->selector);
+    TEST_ASSERT_EQUAL_STRING("body", style->selector);
     TEST_ASSERT_NOT_NULL(style->propHead);
-    TEST_ASSERT_EQUAL_STRING("\"background-color\"", style->propHead->property);
-    TEST_ASSERT_EQUAL_STRING("\"#fff\"", style->propHead->value);
-    TEST_ASSERT_EQUAL_STRING("\"color\"", style->propHead->next->property);
-    TEST_ASSERT_EQUAL_STRING("\"#000\"", style->propHead->next->value);
+    TEST_ASSERT_EQUAL_STRING("background-color", style->propHead->property);
+    TEST_ASSERT_EQUAL_STRING("#fff", style->propHead->value);
+    TEST_ASSERT_EQUAL_STRING("color", style->propHead->next->property);
+    TEST_ASSERT_EQUAL_STRING("#000", style->propHead->next->value);
     
     freeArena(parser.arena);
 }
@@ -126,7 +126,7 @@ static void test_parse_website_with_layout(void) {
     TEST_ASSERT_NOT_NULL(website->layoutHead);
     
     LayoutNode *layout = website->layoutHead;
-    TEST_ASSERT_EQUAL_STRING("\"main\"", layout->identifier);
+    TEST_ASSERT_EQUAL_STRING("main", layout->identifier);
     TEST_ASSERT_NOT_NULL(layout->bodyContent);
     TEST_ASSERT_EQUAL_STRING("content", layout->bodyContent->type);
     
@@ -259,9 +259,9 @@ static void test_parse_complex_website(void) {
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
     TEST_ASSERT_EQUAL(8080, website->port);
-    TEST_ASSERT_EQUAL_STRING("\"Test Site\"", website->name);
-    TEST_ASSERT_EQUAL_STRING("\"Test Author\"", website->author);
-    TEST_ASSERT_EQUAL_STRING("\"1.0\"", website->version);
+    TEST_ASSERT_EQUAL_STRING("Test Site", website->name);
+    TEST_ASSERT_EQUAL_STRING("Test Author", website->author);
+    TEST_ASSERT_EQUAL_STRING("1.0", website->version);
     
     TEST_ASSERT_NOT_NULL(website->layoutHead);
     
@@ -332,15 +332,15 @@ static void test_parse_website_with_api(void) {
     TEST_ASSERT_NOT_NULL(website->apiHead);
     
     ApiEndpoint *first = website->apiHead;
-    TEST_ASSERT_EQUAL_STRING("\"/api/v1/users\"", first->route);
-    TEST_ASSERT_EQUAL_STRING("\"GET\"", first->method);
-    TEST_ASSERT_EQUAL_STRING("\"users\"", first->response);
+    TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
+    TEST_ASSERT_EQUAL_STRING("GET", first->method);
+    TEST_ASSERT_EQUAL_STRING("users", first->response);
     
     ApiEndpoint *second = first->next;
     TEST_ASSERT_NOT_NULL(second);
-    TEST_ASSERT_EQUAL_STRING("\"/api/v1/posts\"", second->route);
-    TEST_ASSERT_EQUAL_STRING("\"POST\"", second->method);
-    TEST_ASSERT_EQUAL_STRING("\"post\"", second->response);
+    TEST_ASSERT_EQUAL_STRING("/api/v1/posts", second->route);
+    TEST_ASSERT_EQUAL_STRING("POST", second->method);
+    TEST_ASSERT_EQUAL_STRING("post", second->response);
     
     freeArena(parser.arena);
 }
@@ -384,7 +384,7 @@ static void test_parse_website_with_query(void) {
     TEST_ASSERT_NOT_NULL(website->queryHead);
     
     QueryNode *query = website->queryHead;
-    TEST_ASSERT_EQUAL_STRING("\"users\"", query->name);
+    TEST_ASSERT_EQUAL_STRING("users", query->name);
     TEST_ASSERT_NOT_NULL(query->sql);
     TEST_ASSERT_NOT_NULL(strstr(query->sql, "SELECT * FROM users"));
     

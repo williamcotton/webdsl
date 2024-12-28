@@ -242,22 +242,10 @@ static ContentNode *parseContent(Parser *parser) {
             node->type = copyString(parser, value);
             advanceParser(parser);
 
-            // Check if this is a string literal (starts with quote)
-            if (value[0] == '"') {
-                // This is the special "content" placeholder
-                if (strcmp(node->type, "\"content\"") == 0) {
-                    node->type = "content";
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Unexpected quoted string '%s' in content block\n", value);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                    break;
-                }
-            }
-            // Otherwise it's a tag type that needs arguments
-            else if (parser->current.type == TOKEN_OPEN_BRACE) {
+            // Check if this is the special "content" placeholder
+            if (strcmp(node->type, "content") == 0) {
+                // Already the right type
+            } else if (parser->current.type == TOKEN_OPEN_BRACE) {
                 advanceParser(parser);
                 node->children = parseContent(parser);
             } else {

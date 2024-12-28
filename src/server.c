@@ -57,7 +57,7 @@ char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
         
         // Handle raw HTML content
         if (strcmp(cn->type, "raw_html") == 0) {
-            const char *html = stripQuotes(cn->arg1);
+            const char *html = cn->arg1;
             const char *content_marker = "<!-- content -->";
             const char *marker_pos = strstr(html, content_marker);
             
@@ -97,9 +97,9 @@ char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
                 StringBuilder_append(sb, "%s<img src=\"%s\" alt=\"%s\"/>\n", 
                     indentStr, cn->arg1, cn->arg2 ? cn->arg2 : "");
             } else {
-                // Generic tag with content
+                // No need to strip quotes anymore
                 StringBuilder_append(sb, "%s<%s>%s</%s>\n",
-                    indentStr, cn->type, stripQuotes(cn->arg1), cn->type);
+                    indentStr, cn->type, cn->arg1, cn->type);
             }
         }
         cn = cn->next;
@@ -107,17 +107,6 @@ char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
     
     char* result = arenaDupString(arena, StringBuilder_get(sb));
     return result;
-}
-
-const char* stripQuotes(const char* str) {
-    if (str && str[0] == '"' && str[strlen(str)-1] == '"') {
-        static char buffer[1024];  // Static buffer for the stripped string
-        size_t len = strlen(str) - 2;  // -2 for quotes
-        memcpy(buffer, str + 1, len);
-        buffer[len] = '\0';
-        return buffer;
-    }
-    return str;
 }
 
 static char* generateFullHtml(Arena *arena, PageNode *page, LayoutNode *layout) {
@@ -176,9 +165,8 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
         StringBuilder_append(sb, "%s {\n", styleHead->selector);
         StylePropNode *prop = styleHead->propHead;
         while (prop) {
-            // Strip quotes from the property value
-            const char* cleanValue = stripQuotes(prop->value);
-            StringBuilder_append(sb, "  %s: %s;\n", prop->property, cleanValue);
+            // No need to strip quotes anymore
+            StringBuilder_append(sb, "  %s: %s;\n", prop->property, prop->value);
             prop = prop->next;
         }
         StringBuilder_append(sb, "}\n\n");
@@ -245,7 +233,7 @@ static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     // Build route hash table
     PageNode *page = website->pageHead;
     while (page) {
-        const char *route = arenaDupString(arena, stripQuotes(page->route));
+        const char *route = arenaDupString(arena, page->route);
         insertRoute(route, page, arena);
         page = page->next;
     }
@@ -261,7 +249,7 @@ static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     // Build API hash table
     ApiEndpoint *api = website->apiHead;
     while (api) {
-        const char *route = arenaDupString(arena, stripQuotes(api->route));
+        const char *route = arenaDupString(arena, api->route);
         insertApi(route, api, arena);
         api = api->next;
     }
@@ -269,7 +257,7 @@ static void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     // Build query hash table
     QueryNode *query = website->queryHead;
     while (query) {
-        const char *name = arenaDupString(arena, stripQuotes(query->name));
+        const char *name = arenaDupString(arena, query->name);
         insertQuery(name, query, arena);
         query = query->next;
     }
@@ -331,20 +319,19 @@ static QueryNode* findQuery(const char *name) {
 #pragma clang diagnostic pop
 
 static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint) {
-    // Look up the query by name (strip quotes from response name)
-    const char *queryName = stripQuotes(endpoint->response);
-    QueryNode *query = findQuery(queryName);
+    // Look up the query by name (quotes already stripped)
+    QueryNode *query = findQuery(endpoint->response);
     
     if (!query) {
         StringBuilder *sb = StringBuilder_new(arena);
         StringBuilder_append(sb, "{\n");
-        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", queryName);
+        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->response);
         StringBuilder_append(sb, "}");
         return arenaDupString(arena, StringBuilder_get(sb));
     }
 
-    // Execute the query
-    PGresult *result = executeQuery(db, stripQuotes(query->sql));
+    // Execute the query (no need to strip quotes)
+    PGresult *result = executeQuery(db, query->sql);
     if (!result) {
         StringBuilder *sb = StringBuilder_new(arena);
         StringBuilder_append(sb, "{\n");
@@ -383,7 +370,7 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
     ApiEndpoint *api = findApi(url);
     if (api) {
         // Verify HTTP method matches
-        if (strcmp(method, stripQuotes(api->method)) != 0) {
+        if (strcmp(method, api->method) != 0) {
             const char *method_not_allowed = "{ \"error\": \"Method not allowed\" }";
             char *error = strdup(method_not_allowed);
             response = MHD_create_response_from_buffer(strlen(error), error,
@@ -458,11 +445,11 @@ void startServer(WebsiteNode *website, Arena *arena) {
 
     // Initialize database connection
     if (website->databaseUrl) {
-        db = initDatabase(serverArena, stripQuotes(website->databaseUrl));
+        db = initDatabase(serverArena, website->databaseUrl);
     }
     if (!db) {
         fprintf(stderr, "Failed to connect to database: %s\n", 
-               website->databaseUrl ? stripQuotes(website->databaseUrl) : "no database URL configured");
+               website->databaseUrl ? website->databaseUrl : "no database URL configured");
         exit(1);
     }
 

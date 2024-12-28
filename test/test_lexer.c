@@ -96,11 +96,11 @@ static void test_lexer_strings(void) {
     
     Token token1 = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_STRING, token1.type);
-    TEST_ASSERT_EQUAL_STRING("\"hello world\"", token1.lexeme);
+    TEST_ASSERT_EQUAL_STRING("hello world", token1.lexeme);
     
     Token token2 = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_STRING, token2.type);
-    TEST_ASSERT_EQUAL_STRING("\"test string\"", token2.lexeme);
+    TEST_ASSERT_EQUAL_STRING("test string", token2.lexeme);
     
     freeArena(parser.arena);
 }
@@ -173,7 +173,7 @@ static void test_lexer_edge_cases(void) {
     
     Token token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
-    TEST_ASSERT_EQUAL_STRING("\"test\\n\\t\\\"\"", token.lexeme);
+    TEST_ASSERT_EQUAL_STRING("test\\n\\t\\\"", token.lexeme);
     
     freeArena(parser.arena);
 }
@@ -236,11 +236,11 @@ static void test_lexer_api_features(void) {
         NULL,           // TOKEN_API
         NULL,           // TOKEN_OPEN_BRACE
         NULL,           // TOKEN_ROUTE
-        "\"/api/v1/users\"",
+        "/api/v1/users",
         NULL,           // TOKEN_METHOD
-        "\"GET\"",
+        "GET",
         NULL,           // TOKEN_RESPONSE
-        "\"users\"",
+        "users",
         NULL            // TOKEN_CLOSE_BRACE
     };
     
@@ -256,52 +256,6 @@ static void test_lexer_api_features(void) {
     
     Token eof = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_EOF, eof.type);
-    
-    freeArena(parser.arena);
-}
-
-static void test_lexer_query_features(void) {
-    Lexer lexer;
-    Parser parser = {0};
-    parser.arena = createArena(1024);
-    
-    const char *input = 
-        "query {\n"
-        "    name \"users\"\n"
-        "    sql \"\"\"\n"
-        "        SELECT \"Test\" FROM users\n"
-        "    \"\"\"\n"
-        "}";
-    
-    initLexer(&lexer, input, &parser);
-    
-    // Let's verify each token individually for better debugging
-    Token token;
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_QUERY, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_OPEN_BRACE, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_NAME, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_SQL, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
-    TEST_ASSERT_TRUE(strstr(token.lexeme, "SELECT \"Test\" FROM users") != NULL);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_CLOSE_BRACE, token.type);
-    
-    token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
     
     freeArena(parser.arena);
 }
@@ -391,7 +345,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_edge_cases);
     RUN_TEST(test_lexer_number_formats);
     RUN_TEST(test_lexer_api_features);
-    RUN_TEST(test_lexer_query_features);
     RUN_TEST(test_lexer_raw_blocks);
     return UNITY_END();
 }

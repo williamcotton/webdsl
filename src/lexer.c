@@ -189,7 +189,7 @@ static Token identifierOrKeyword(Lexer *lexer) {
 }
 
 static Token stringLiteral(Lexer *lexer) {
-    // First quote already consumed, check for two more
+    // First quote already consumed
     if (!isAtEnd(lexer) && 
         peek(lexer) == '"' && 
         peekNext(lexer) == '"') {
@@ -197,6 +197,9 @@ static Token stringLiteral(Lexer *lexer) {
         // Consume the other two quotes
         advance(lexer);
         advance(lexer);
+        
+        // Mark start of actual content
+        lexer->start = lexer->current;
         
         // Read until we find three closing quotes
         while (!isAtEnd(lexer)) {
@@ -216,18 +219,19 @@ static Token stringLiteral(Lexer *lexer) {
             return errorToken(lexer->parser, "Unterminated triple-quoted string.", lexer->line);
         }
         
-        // For triple-quoted strings, trim the quotes
-        lexer->start += 3;  // Skip past opening quotes
+        // Create token before consuming closing quotes
         Token token = makeToken(lexer, TOKEN_STRING);
         
-        // Consume the closing triple quotes after making the token
+        // Consume the closing quotes
         advance(lexer);
         advance(lexer);
         advance(lexer);
         
         return token;
     } else {
-        // Regular string handling
+        // Regular string - mark start after opening quote
+        lexer->start = lexer->current;
+        
         while (!isAtEnd(lexer) && peek(lexer) != '"') {
             if (peek(lexer) == '\n') {
                 lexer->line++;
@@ -246,10 +250,12 @@ static Token stringLiteral(Lexer *lexer) {
             return errorToken(lexer->parser, "Unterminated string.", lexer->line);
         }
 
-        advance(lexer);  // Closing quote
-        
-        // For regular strings, include the quotes
+        // Create token before consuming closing quote
         Token token = makeToken(lexer, TOKEN_STRING);
+        
+        // Consume closing quote
+        advance(lexer);
+        
         return token;
     }
 }
@@ -270,6 +276,29 @@ static Token number(Lexer *lexer) {
     }
     
     return makeToken(lexer, TOKEN_NUMBER);
+}
+
+static Token rawStringLiteral(Lexer *lexer) {
+    // Similar to stringLiteral but preserves quotes
+    // Used for SQL queries and other raw content
+    lexer->start = lexer->current - 1;  // Include opening quote
+    
+    while (!isAtEnd(lexer) && peek(lexer) != '"') {
+        if (peek(lexer) == '\n') lexer->line++;
+        if (peek(lexer) == '\\') {
+            advance(lexer);
+            if (!isAtEnd(lexer)) advance(lexer);
+            continue;
+        }
+        advance(lexer);
+    }
+
+    if (isAtEnd(lexer)) {
+        return errorToken(lexer->parser, "Unterminated raw string.", lexer->line);
+    }
+
+    advance(lexer);  // Closing quote
+    return makeToken(lexer, TOKEN_RAW_STRING);
 }
 
 const char* getTokenTypeName(TokenType type) {
@@ -303,6 +332,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_QUERY: return "QUERY";
         case TOKEN_SQL: return "SQL";
         case TOKEN_RAW_BLOCK: return "RAW_BLOCK";
+        case TOKEN_RAW_STRING: return "RAW_STRING";
     }
     return "INVALID";
 }
@@ -342,6 +372,14 @@ Token getNextToken(Lexer *lexer) {
                 token = errorToken(lexer->parser, "Unexpected character.", lexer->line);
             }
             break;
+    }
+
+    if (token.type == TOKEN_SQL) {
+        skipWhitespace(lexer);
+        if (peek(lexer) == '"') {
+            advance(lexer);
+            return rawStringLiteral(lexer);
+        }
     }
 
     return token;
