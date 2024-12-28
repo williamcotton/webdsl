@@ -456,8 +456,10 @@ void startServer(WebsiteNode *website, Arena *arena) {
     // Get port number from website definition, default to 8080 if not specified
     uint16_t port = website->port > 0 ? (uint16_t)website->port : 8080;
 
-    httpd = MHD_start_daemon(MHD_USE_THREAD_PER_CONNECTION, port,
+    httpd = MHD_start_daemon(MHD_USE_POLL_INTERNAL_THREAD | MHD_USE_INTERNAL_POLLING_THREAD, port,
                             NULL, NULL, &requestHandler, NULL,
+                            MHD_OPTION_CONNECTION_TIMEOUT, 30,
+                            MHD_OPTION_THREAD_POOL_SIZE, 4,
                             MHD_OPTION_END);
     if (httpd == NULL) {
         fprintf(stderr, "Failed to start server on port %d\n", port);
