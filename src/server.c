@@ -176,7 +176,9 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
         StringBuilder_append(sb, "%s {\n", styleHead->selector);
         StylePropNode *prop = styleHead->propHead;
         while (prop) {
-            StringBuilder_append(sb, "  %s: %s;\n", prop->property, prop->value);
+            // Strip quotes from the property value
+            const char* cleanValue = stripQuotes(prop->value);
+            StringBuilder_append(sb, "  %s: %s;\n", prop->property, cleanValue);
             prop = prop->next;
         }
         StringBuilder_append(sb, "}\n\n");
