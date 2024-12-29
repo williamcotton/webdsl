@@ -4,6 +4,7 @@
 #include "../ast.h"
 #include "../arena.h"
 #include <stdbool.h>
+#include <regex.h>
 
 // Common format types
 #define FORMAT_EMAIL "email"

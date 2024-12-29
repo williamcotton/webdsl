@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <regex.h>
 
 static bool validateEmail(const char *email) {
     if (!email) return false;
@@ -159,6 +160,30 @@ static bool validateIpv4(const char *ip) {
     return nums == 4 && dots == 3;
 }
 
+static bool validatePattern(const char *value, const char *pattern) {
+    if (!value || !pattern) return false;
+    
+    regex_t regex;
+    int reti;
+    bool result = false;
+    
+    // Compile regex with extended regex support
+    reti = regcomp(&regex, pattern, REG_EXTENDED | REG_NOSUB);
+    if (reti) {
+        return false;  // Failed to compile regex
+    }
+    
+    // Execute regex match
+    reti = regexec(&regex, value, 0, NULL, 0);
+    if (!reti) {
+        result = true;  // Match
+    }
+    
+    // Free compiled regex - must be done even if match fails
+    regfree(&regex);
+    return result;
+}
+
 char* validateField(Arena *arena, const char *value, ApiField *field) {
     if (!value) {
         if (field->required) {
@@ -212,6 +237,15 @@ char* validateField(Arena *arena, const char *value, ApiField *field) {
             
             if (!valid) {
                 return arenaDupString(arena, error);
+            }
+        }
+        
+        if (field->validate.match.pattern) {
+            if (!validatePattern(value, field->validate.match.pattern)) {
+                StringBuilder *sb = StringBuilder_new(arena);
+                StringBuilder_append(sb, "Value must match pattern: %s", 
+                    field->validate.match.pattern);
+                return arenaDupString(arena, StringBuilder_get(sb));
             }
         }
     }
