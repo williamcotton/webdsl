@@ -12,8 +12,15 @@ TIDY = clang-tidy
 FORMAT = clang-format
 SRC_DIR = src
 
-CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ')
-CFLAGS += -DBUILD_ENV=$(BUILD_ENV)
+CFLAGS = -std=gnu2x -Ideps -Isrc -fno-common -fblocks -Weverything \
+         -Wno-declaration-after-statement -Wno-unsafe-buffer-usage \
+         -Wno-switch-default -Wno-documentation-deprecated-sync \
+         -Wno-documentation -Wno-reserved-macro-identifier \
+         -Wno-format-nonliteral -Wno-unused-command-line-argument \
+         -Wno-pre-c23-compat -Wno-covered-switch-default \
+         -I/opt/homebrew/include -L/opt/homebrew/lib \
+         -I/opt/homebrew/include/postgresql@14 \
+         -DBUILD_ENV=$(BUILD_ENV)
 
 # Add linker flags separately
 LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq
@@ -178,3 +185,13 @@ SRC_FILES = src/arena.c src/lexer.c src/parser.c src/server.c src/stringbuilder.
 
 # If you have a variable for object files, it should look like:
 OBJ_FILES = $(SRC_FILES:.c=.o)
+
+SERVER_SRCS = src/server/server.c src/server/handler.c src/server/api.c \
+              src/server/routing.c src/server/html.c
+
+SRCS = src/main.c src/arena.c src/db.c src/lexer.c src/parser.c \
+       $(SERVER_SRCS) src/stringbuilder.c
+
+TEST_SRCS = test/test_arena.c test/test_lexer.c test/test_main.c \
+             test/test_parser.c test/test_server.c test/test_stringbuilder.c \
+             test/unity/unity.c

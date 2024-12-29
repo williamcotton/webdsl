@@ -32,7 +32,7 @@ typedef struct StyleBlockNode {
 } StyleBlockNode;
 
 typedef struct LayoutNode {
-    char *identifier;
+    const char *identifier;
     char *doctype;
     ContentNode *headContent;
     ContentNode *bodyContent;

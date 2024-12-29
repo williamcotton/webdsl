@@ -1,7 +1,11 @@
-#include "../test/unity/unity.h"
-#include "../src/server.h"
+#include "../src/server/server.h"
+#include "../src/server/handler.h"
+#include "../src/server/routing.h"
+#include "../src/server/api.h"
+#include "../src/server/html.h"
 #include "../src/ast.h"
 #include "../src/arena.h"
+#include "unity/unity.h"
 #include <string.h>
 #include "test_runners.h"
 
