@@ -1,5 +1,6 @@
 #include "db.h"
 #include "stringbuilder.h"
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -125,4 +126,14 @@ char* resultToJson(Arena *arena, PGresult *result) {
     StringBuilder_append(sb, "  ]\n}");
     
     return arenaDupString(arena, StringBuilder_get(sb));
+}
+
+PGresult *executeParameterizedQuery(Database *db, const char *sql, const char **values, size_t value_count) {
+    // PQexecParams expects an int for param count, so we need to check the range
+    if (value_count > INT_MAX) {
+        fprintf(stderr, "Too many query parameters: %zu exceeds maximum of %d\n", 
+                value_count, INT_MAX);
+        return NULL;
+    }
+    return PQexecParams(db->conn, sql, (int)value_count, NULL, values, NULL, NULL, 0);
 }

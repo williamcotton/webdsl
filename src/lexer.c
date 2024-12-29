@@ -63,20 +63,6 @@ static void skipWhitespace(Lexer *lexer) {
     }
 }
 
-static void skipToNonWhitespace(Lexer *lexer) {
-    while (!isAtEnd(lexer)) {
-        char c = peek(lexer);
-        if (c == ' ' || c == '\r' || c == '\t') {
-            advance(lexer);
-        } else if (c == '\n') {
-            lexer->line++;
-            advance(lexer);
-        } else {
-            break;
-        }
-    }
-}
-
 static Token makeToken(Lexer *lexer, TokenType type) {
     Token token;
     token.type = type;
@@ -170,14 +156,18 @@ static Token identifierOrKeyword(Lexer *lexer) {
     }
 
     size_t length = (size_t)(lexer->current - lexer->start);
+    
+    // Inside brackets, treat everything as a string
+    if (lexer->inBrackets) {
+        return makeToken(lexer, TOKEN_STRING);
+    }
+    
     TokenType type = checkKeyword(lexer->start, length);
     
     // Check for raw block keywords
     if (type == TOKEN_HTML || type == TOKEN_SQL) {
-        skipToNonWhitespace(lexer);
+        skipWhitespace(lexer);
         if (peek(lexer) == '{') {
-            // Reset start to include the keyword
-            lexer->start = lexer->current;
             return rawBlock(lexer);
         }
     }
@@ -333,6 +323,9 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_SQL: return "SQL";
         case TOKEN_RAW_BLOCK: return "RAW_BLOCK";
         case TOKEN_RAW_STRING: return "RAW_STRING";
+        case TOKEN_OPEN_BRACKET: return "OPEN_BRACKET";
+        case TOKEN_CLOSE_BRACKET: return "CLOSE_BRACKET";
+        case TOKEN_COMMA: return "COMMA";
     }
     return "INVALID";
 }
@@ -342,6 +335,7 @@ void initLexer(Lexer *lexer, const char *source, struct Parser *parser) {
     lexer->current = source;
     lexer->line = 1;
     lexer->parser = parser;
+    lexer->inBrackets = 0;
 }
 
 Token getNextToken(Lexer *lexer) {
@@ -365,6 +359,15 @@ Token getNextToken(Lexer *lexer) {
         case '(': token = makeToken(lexer, TOKEN_OPEN_PAREN); break;
         case ')': token = makeToken(lexer, TOKEN_CLOSE_PAREN); break;
         case '"': token = stringLiteral(lexer); break;
+        case '[': 
+            lexer->inBrackets = 1;
+            token = makeToken(lexer, TOKEN_OPEN_BRACKET); 
+            break;
+        case ']': 
+            lexer->inBrackets = 0;
+            token = makeToken(lexer, TOKEN_CLOSE_BRACKET); 
+            break;
+        case ',': token = makeToken(lexer, TOKEN_COMMA); break;
         default:
             if (isAlpha(c)) {
                 token = identifierOrKeyword(lexer);

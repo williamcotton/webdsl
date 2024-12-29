@@ -420,6 +420,58 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'response'.");
                 endpoint->response = copyString(parser, parser->previous.lexeme);
+
+                // Check for response fields
+                if (parser->current.type == TOKEN_OPEN_BRACKET) {
+                    advanceParser(parser);  // Consume [
+
+                    ResponseField *head = NULL;
+                    ResponseField *tail = NULL;
+
+                    while (parser->current.type != TOKEN_CLOSE_BRACKET && 
+                           parser->current.type != TOKEN_EOF && 
+                           !parser->hadError) {
+
+                        if (parser->current.type == TOKEN_STRING) {
+                            ResponseField *field = arenaAlloc(parser->arena, sizeof(ResponseField));
+                            memset(field, 0, sizeof(ResponseField));
+                            field->name = copyString(parser, parser->current.lexeme);
+
+                            if (!head) {
+                                head = field;
+                                tail = field;
+                            } else {
+                                tail->next = field;
+                                tail = field;
+                            }
+
+                            advanceParser(parser);
+
+                            if (parser->current.type == TOKEN_COMMA) {
+                                advanceParser(parser);
+                            } else if (parser->current.type != TOKEN_CLOSE_BRACKET) {
+                                parser->hadError = 1;
+                                char buffer[256];
+                                snprintf(buffer, sizeof(buffer),
+                                        "Expected ',' or ']' after field name at line %d\n",
+                                        parser->current.line);
+                                fputs(buffer, stderr);
+                                break;
+                            }
+                        } else {
+                            parser->hadError = 1;
+                            char buffer[256];
+                            snprintf(buffer, sizeof(buffer),
+                                    "Expected field name at line %d\n",
+                                    parser->current.line);
+                            fputs(buffer, stderr);
+                            break;
+                        }
+                    }
+                    
+                    consume(parser, TOKEN_CLOSE_BRACKET, "Expected ']' after response fields.");
+                    endpoint->fields = head;
+                }
                 break;
             }
             default: {

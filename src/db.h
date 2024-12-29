@@ -18,7 +18,7 @@ Database* initDatabase(Arena *arena, const char *conninfo);
 
 // Execute a query and return the result
 // Returns NULL on error
-PGresult* executeQuery(Database *db, const char *query);
+PGresult* executeQuery(Database *db, const char *sql);
 
 // Convert query result to JSON string using arena allocator
 // Returns NULL on error
@@ -30,5 +30,9 @@ void closeDatabase(Database *db);
 
 // Get last error message from database
 const char* getDatabaseError(Database *db);
+
+// Execute a parameterized query and return the result
+// Returns NULL on error
+PGresult* executeParameterizedQuery(Database *db, const char *sql, const char **values, size_t value_count);
 
 #endif // DB_H

@@ -47,6 +47,47 @@ static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
 static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
 
+// This will store the parsed POST data
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+struct PostData {
+    char *values[32];  // Array of values matching the expected fields
+    struct MHD_Connection *connection;// Put bitfield first
+    size_t value_count;
+    int error;
+};
+#pragma clang diagnostic pop
+
+static enum MHD_Result post_iterator(void *cls,
+                                   enum MHD_ValueKind kind,
+                                   const char *key,
+                                   const char *filename,
+                                   const char *content_type,
+                                   const char *transfer_encoding,
+                                   const char *data,
+                                   uint64_t off,
+                                   size_t size) {
+    (void)kind; (void)filename; (void)content_type; (void)key;
+    (void)transfer_encoding; (void)off; (void)size;
+    
+    struct PostData *post_data = cls;
+    
+    // Store the value in our array
+    if (post_data->value_count < 32) {
+        post_data->values[post_data->value_count++] = strdup(data);
+    }
+    
+    return MHD_YES;
+}
+
+struct PostContext {
+    char *data;
+    size_t size;
+    size_t processed;
+    struct MHD_PostProcessor *pp;
+    struct PostData post_data;
+};
+
 char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
     StringBuilder *sb = StringBuilder_new(arena);
     char indentStr[32];
@@ -318,8 +359,77 @@ static QueryNode* findQuery(const char *name) {
 }
 #pragma clang diagnostic pop
 
-static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint) {
-    // Look up the query by name (quotes already stripped)
+static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
+    // For POST requests with form data
+    if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
+        // Skip if this is a GET request marker
+        if (con_cls == &"GET") {
+            StringBuilder *sb = StringBuilder_new(arena);
+            StringBuilder_append(sb, "{\n");
+            StringBuilder_append(sb, "  \"error\": \"Invalid request type\"\n");
+            StringBuilder_append(sb, "}");
+            return arenaDupString(arena, StringBuilder_get(sb));
+        }
+        
+        struct PostContext *post_ctx = con_cls;
+        if (!post_ctx) {
+            StringBuilder *sb = StringBuilder_new(arena);
+            StringBuilder_append(sb, "{\n");
+            StringBuilder_append(sb, "  \"error\": \"Missing POST context\"\n");
+            StringBuilder_append(sb, "}");
+            return arenaDupString(arena, StringBuilder_get(sb));
+        }
+
+        // Build array of values from form data
+        const char **values = arenaAlloc(arena, sizeof(char*) * 32);  // Max 32 fields
+        size_t value_count = 0;
+        
+        // Extract each field from form data
+        ResponseField *field = endpoint->fields;
+        size_t field_index = 0;
+        while (field) {
+            const char *value = NULL;
+            if (field_index < post_ctx->post_data.value_count) {
+                value = post_ctx->post_data.values[field_index];
+                field_index++;
+            }
+
+            if (!value) {
+                StringBuilder *sb = StringBuilder_new(arena);
+                StringBuilder_append(sb, "{\n");
+                StringBuilder_append(sb, "  \"error\": \"Missing required field: %s\"\n", field->name);
+                StringBuilder_append(sb, "}");
+                return arenaDupString(arena, StringBuilder_get(sb));
+            }
+            values[value_count++] = value;
+            field = field->next;
+        }
+
+        // Execute parameterized query
+        QueryNode *query = findQuery(endpoint->response);
+        if (!query) {
+            StringBuilder *sb = StringBuilder_new(arena);
+            StringBuilder_append(sb, "{\n");
+            StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->response);
+            StringBuilder_append(sb, "}");
+            return arenaDupString(arena, StringBuilder_get(sb));
+        }
+
+        PGresult *result = executeParameterizedQuery(db, query->sql, values, value_count);
+        if (!result) {
+            StringBuilder *sb = StringBuilder_new(arena);
+            StringBuilder_append(sb, "{\n");
+            StringBuilder_append(sb, "  \"error\": \"Query execution failed: %s\"\n", getDatabaseError(db));
+            StringBuilder_append(sb, "}");
+            return arenaDupString(arena, StringBuilder_get(sb));
+        }
+
+        char *json = resultToJson(arena, result);
+        freeResult(result);
+        return json;
+    }
+
+    // Regular GET request handling...
     QueryNode *query = findQuery(endpoint->response);
     
     if (!query) {
@@ -359,12 +469,52 @@ static char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint) {
 static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct MHD_Connection *connection,
                          const char *url, const char *method,
                          const char *version __attribute__((unused)),
-                         const char *upload_data __attribute__((unused)),
-                         size_t *upload_data_size __attribute__((unused)),
-                         void **con_cls __attribute__((unused))) {
-    Arena *request_arena = createArena(1024 * 1024);  // 1MB arena for this request
-    struct MHD_Response *response;
-    enum MHD_Result ret;
+                         const char *upload_data,
+                         size_t *upload_data_size,
+                         void **con_cls) {
+    // First call for this connection
+    if (*con_cls == NULL) {
+        if (strcmp(method, "POST") == 0) {
+            struct PostContext *post = malloc(sizeof(struct PostContext));
+            post->data = NULL;
+            post->size = 0;
+            post->processed = 0;
+            post->post_data.connection = connection;
+            post->post_data.error = 0;
+            post->post_data.value_count = 0;  // Initialize value count
+            // Create post processor with our iterator
+            post->pp = MHD_create_post_processor(connection,
+                                                32 * 1024,  // 32k buffer
+                                                post_iterator,
+                                                &post->post_data);
+            if (!post->pp) {
+                free(post);
+                return MHD_NO;
+            }
+            *con_cls = post;
+            return MHD_YES;
+        }
+        *con_cls = &"GET";  // Just a non-NULL marker for GET requests
+        return MHD_YES;
+    }
+
+    // Handle POST data
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post = *con_cls;
+        
+        if (*upload_data_size != 0) {
+            if (MHD_post_process(post->pp, upload_data, *upload_data_size) == MHD_NO) {
+                return MHD_NO;
+            }
+            *upload_data_size = 0;
+            return MHD_YES;
+        }
+        
+        // Check if we had any errors during processing
+        if (post->post_data.error) {
+            return MHD_NO;
+        }
+    }
 
     // Check for API endpoint first
     ApiEndpoint *api = findApi(url);
@@ -373,39 +523,41 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
         if (strcmp(method, api->method) != 0) {
             const char *method_not_allowed = "{ \"error\": \"Method not allowed\" }";
             char *error = strdup(method_not_allowed);
-            response = MHD_create_response_from_buffer(strlen(error), error,
+            struct MHD_Response *response = MHD_create_response_from_buffer(strlen(error), error,
                                                      MHD_RESPMEM_MUST_FREE);
             MHD_add_response_header(response, "Content-Type", "application/json");
-            ret = MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
+            enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
             MHD_destroy_response(response);
-            freeArena(request_arena);
             return ret;
         }
 
-        // Generate API response
-        char *json = generateApiResponse(request_arena, api);
+        // Generate API response with form data
+        char *json = generateApiResponse(serverArena, api, *con_cls);
         char *json_copy = strdup(json);
-        response = MHD_create_response_from_buffer(strlen(json_copy), json_copy,
+        struct MHD_Response *response = MHD_create_response_from_buffer(strlen(json_copy), json_copy,
                                                  MHD_RESPMEM_MUST_FREE);
         MHD_add_response_header(response, "Content-Type", "application/json");
-        ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-        MHD_destroy_response(response);
-        freeArena(request_arena);
-        return ret;
+        
+        // Add CORS headers for API endpoints
+        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+        MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        MHD_add_response_header(response, "Access-Control-Allow-Headers", "Content-Type");
+        
+        return MHD_queue_response(connection, MHD_HTTP_OK, response);
     }
 
     // Handle regular pages and CSS as before
     if (strcmp(method, "GET") != 0) {
-        freeArena(request_arena);
         return MHD_NO;
     }
 
     if (strcmp(url, "/styles.css") == 0) {
-        char *css = generateCss(request_arena, currentWebsite->styleHead);
+        char *css = generateCss(serverArena, currentWebsite->styleHead);
         char *css_copy = strdup(css);
-        response = MHD_create_response_from_buffer(strlen(css_copy), css_copy,
+        struct MHD_Response *response = MHD_create_response_from_buffer(strlen(css_copy), css_copy,
                                                  MHD_RESPMEM_MUST_FREE);
         MHD_add_response_header(response, "Content-Type", "text/css");
+        return MHD_queue_response(connection, MHD_HTTP_OK, response);
     } else {
         // Find matching page
         PageNode *page = findPage(url);
@@ -413,29 +565,47 @@ static enum MHD_Result requestHandler(void *cls __attribute__((unused)), struct 
         if (!page) {
             const char *not_found_text = "<html><body><h1>404 Not Found</h1></body></html>";
             char *not_found = strdup(not_found_text);
-            response = MHD_create_response_from_buffer(strlen(not_found),
+            struct MHD_Response *response = MHD_create_response_from_buffer(strlen(not_found),
                                                      not_found,
                                                      MHD_RESPMEM_MUST_FREE);
-            ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
+            enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
             MHD_destroy_response(response);
-            freeArena(request_arena);
             return ret;
         }
 
         // Find layout
         LayoutNode *layout = findLayout(page->layout);
 
-        char *html = generateFullHtml(request_arena, page, layout);
+        char *html = generateFullHtml(serverArena, page, layout);
         char *html_copy = strdup(html);
-        response = MHD_create_response_from_buffer(strlen(html_copy), html_copy,
+        struct MHD_Response *response = MHD_create_response_from_buffer(strlen(html_copy), html_copy,
                                                  MHD_RESPMEM_MUST_FREE);
         MHD_add_response_header(response, "Content-Type", "text/html");
+        return MHD_queue_response(connection, MHD_HTTP_OK, response);
     }
+}
+
+static void request_completed_callback(void *cls,
+                                     struct MHD_Connection *connection,
+                                     void **con_cls,
+                                     enum MHD_RequestTerminationCode toe) {
+    (void)cls; (void)connection; (void)toe;
     
-    ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-    MHD_destroy_response(response);
-    freeArena(request_arena);
-    return ret;
+    if (*con_cls != &"GET") {  // Check if it's not our GET marker
+        struct PostContext *post = *con_cls;
+        if (post) {
+            if (post->data)
+                free(post->data);
+            if (post->pp)
+                MHD_destroy_post_processor(post->pp);
+            // Free stored values
+            for (size_t i = 0; i < post->post_data.value_count; i++) {
+                free(post->post_data.values[i]);
+            }
+            free(post);
+        }
+        *con_cls = NULL;
+    }
 }
 
 void startServer(WebsiteNode *website, Arena *arena) {
@@ -460,6 +630,7 @@ void startServer(WebsiteNode *website, Arena *arena) {
                             NULL, NULL, &requestHandler, NULL,
                             MHD_OPTION_CONNECTION_TIMEOUT, 30,
                             MHD_OPTION_THREAD_POOL_SIZE, 4,
+                            MHD_OPTION_NOTIFY_COMPLETED, request_completed_callback, NULL,
                             MHD_OPTION_END);
     if (httpd == NULL) {
         fprintf(stderr, "Failed to start server on port %d\n", port);

@@ -34,7 +34,10 @@ typedef enum {
     TOKEN_EOF,
     TOKEN_UNKNOWN,
     TOKEN_RAW_BLOCK,
-    TOKEN_RAW_STRING
+    TOKEN_RAW_STRING,
+    TOKEN_OPEN_BRACKET,
+    TOKEN_CLOSE_BRACKET,
+    TOKEN_COMMA
 } TokenType;
 
 typedef struct {
@@ -51,7 +54,7 @@ typedef struct Lexer {
     const char *current;
     struct Parser *parser;
     int line;
-    uint32_t : 32;
+    int inBrackets;  // Track if we're inside brackets
 } Lexer;
 
 void initLexer(Lexer *lexer, const char *source, struct Parser *parser);

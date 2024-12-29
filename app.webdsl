@@ -57,6 +57,30 @@ website {
                 </article>
             }
         }
+        page "employee-form" {
+            route "/employee/new"
+            layout "main"
+            content {
+                h1 "Add New Employee"
+                html {
+                    <form action="/api/v1/employees" method="POST">
+                        <div class="form-group">
+                            <label for="name">Name:</label>
+                            <input type="text" id="name" name="name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email:</label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="team_id">Team ID:</label>
+                            <input type="number" id="team_id" name="team_id">
+                        </div>
+                        <button type="submit">Add Employee</button>
+                    </form>
+                }
+            }
+        }
     }
 
     styles {
@@ -75,10 +99,25 @@ website {
         response "employees"
     }
 
+    api {
+        route "/api/v1/employees"
+        method "POST"
+        response "insert_employee" [name, email, team_id]
+    }
+
     query {
         name "employees"
         sql {
-            SELECT * FROM employees
+            SELECT id, team_id, name, email FROM employees ORDER BY id
+        }
+    }
+
+    query {
+        name "insert_employee"
+        sql {
+            INSERT INTO employees (name, email, team_id) 
+            VALUES ($1, $2, $3)
+            RETURNING id, team_id, name, email
         }
     }
 }

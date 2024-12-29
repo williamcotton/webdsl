@@ -318,9 +318,9 @@ static void test_parse_website_with_api(void) {
         "    response \"users\"\n"
         "  }\n"
         "  api {\n"
-        "    route \"/api/v1/posts\"\n"
+        "    route \"/api/v1/employees\"\n"
         "    method \"POST\"\n"
-        "    response \"post\"\n"
+        "    response \"insert_employee\" [name, age, position]\n"
         "  }\n"
         "}";
     
@@ -335,12 +335,25 @@ static void test_parse_website_with_api(void) {
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
     TEST_ASSERT_EQUAL_STRING("GET", first->method);
     TEST_ASSERT_EQUAL_STRING("users", first->response);
+    TEST_ASSERT_NULL(first->fields);
     
     ApiEndpoint *second = first->next;
     TEST_ASSERT_NOT_NULL(second);
-    TEST_ASSERT_EQUAL_STRING("/api/v1/posts", second->route);
+    TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
     TEST_ASSERT_EQUAL_STRING("POST", second->method);
-    TEST_ASSERT_EQUAL_STRING("post", second->response);
+    TEST_ASSERT_EQUAL_STRING("insert_employee", second->response);
+    
+    // Test response fields
+    TEST_ASSERT_NOT_NULL(second->fields);
+    ResponseField *field = second->fields;
+    TEST_ASSERT_EQUAL_STRING("name", field->name);
+    field = field->next;
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_EQUAL_STRING("age", field->name);
+    field = field->next;
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_EQUAL_STRING("position", field->name);
+    TEST_ASSERT_NULL(field->next);
     
     freeArena(parser.arena);
 }

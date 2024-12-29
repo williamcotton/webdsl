@@ -248,7 +248,6 @@ static void test_lexer_api_features(void) {
         Token token = getNextToken(&lexer);
         TEST_ASSERT_EQUAL(expected[i], token.type);
         
-        // If we expect a string value, verify it
         if (expectedStrings[i] != NULL) {
             TEST_ASSERT_EQUAL_STRING(expectedStrings[i], token.lexeme);
         }
@@ -333,6 +332,50 @@ static void test_lexer_raw_blocks(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_api_response_fields(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = "response \"users\" [name, age, email]";
+    initLexer(&lexer, input, &parser);
+    
+    TokenType expected[] = {
+        TOKEN_RESPONSE,
+        TOKEN_STRING,
+        TOKEN_OPEN_BRACKET,
+        TOKEN_STRING,
+        TOKEN_COMMA,
+        TOKEN_STRING,
+        TOKEN_COMMA,
+        TOKEN_STRING,
+        TOKEN_CLOSE_BRACKET
+    };
+    
+    const char *expectedStrings[] = {
+        NULL,       // TOKEN_RESPONSE
+        "users",    // TOKEN_STRING
+        NULL,       // TOKEN_OPEN_BRACKET
+        "name",     // TOKEN_STRING
+        NULL,       // TOKEN_COMMA
+        "age",      // TOKEN_STRING
+        NULL,       // TOKEN_COMMA
+        "email",    // TOKEN_STRING
+        NULL        // TOKEN_CLOSE_BRACKET
+    };
+    
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        Token token = getNextToken(&lexer);
+        TEST_ASSERT_EQUAL(expected[i], token.type);
+        
+        if (expectedStrings[i] != NULL) {
+            TEST_ASSERT_EQUAL_STRING(expectedStrings[i], token.lexeme);
+        }
+    }
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -346,5 +389,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_number_formats);
     RUN_TEST(test_lexer_api_features);
     RUN_TEST(test_lexer_raw_blocks);
+    RUN_TEST(test_lexer_api_response_fields);
     return UNITY_END();
 }

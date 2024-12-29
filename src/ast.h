@@ -39,10 +39,16 @@ typedef struct LayoutNode {
     struct LayoutNode *next;
 } LayoutNode;
 
+typedef struct ResponseField {
+    char *name;
+    struct ResponseField *next;
+} ResponseField;
+
 typedef struct ApiEndpoint {
     char *route;
     char *method;
     char *response;
+    ResponseField *fields;
     struct ApiEndpoint *next;
 } ApiEndpoint;
 
