@@ -57,7 +57,7 @@ website {
                 </article>
             }
         }
-        page "employee-form" {
+        page "employeeForm" {
             route "/employee/new"
             layout "main"
             content {
@@ -102,7 +102,7 @@ website {
     api {
         route "/api/v1/employees"
         method "POST"
-        response "insert_employee" [name, email, team_id]
+        response "insertEmployee" [name, email, team_id]
     }
 
     query {
@@ -113,7 +113,7 @@ website {
     }
 
     query {
-        name "insert_employee"
+        name "insertEmployee"
         sql {
             INSERT INTO employees (name, email, team_id) 
             VALUES ($1, $2, $3)
