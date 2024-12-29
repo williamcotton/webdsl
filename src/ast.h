@@ -50,11 +50,20 @@ typedef struct ApiField {
     char *name;
     char *type;
     char *format;
+    union {
+        struct {
+            int min;
+            int max;
+        } range;
+        struct {
+            char *pattern;
+        } match;
+    } validate;
     int minLength;
     int maxLength;
-    struct ApiField *next;
     bool required;
     uint64_t : 56;
+    struct ApiField *next;
 } ApiField;
 
 typedef struct ApiEndpoint {
