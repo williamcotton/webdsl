@@ -146,3 +146,74 @@ website {
 }
 ```
 
+## Field Validation
+
+The WebDSL language supports rich field validation for API endpoints:
+
+```webdsl
+api {
+    route "/api/v1/users"
+    method "POST"
+    fields {
+        "username" {
+            type "string"
+            required true
+            length 3..50
+            validate {
+                match "^[a-zA-Z][a-zA-Z0-9_]{2,}$"  // Must start with letter, then alphanumeric
+            }
+        }
+        "email" {
+            type "string"
+            required true
+            format "email"
+        }
+        "age" {
+            type "number"
+            validate {
+                range 13..120
+            }
+        }
+        "phone" {
+            type "string"
+            format "phone"
+            required false
+        }
+    }
+    response "createUser" [username, email]
+}
+```
+
+### Available Validations
+
+#### String Fields
+- `required` - Field must be present and non-empty
+- `length min..max` - String length must be between min and max characters
+- `format` - Predefined format validation:
+  - `email` - Valid email address
+  - `url` - Valid HTTP/HTTPS URL
+  - `date` - Date in YYYY-MM-DD format
+  - `time` - Time in HH:MM or HH:MM:SS format
+  - `phone` - Phone number with optional +, (), -, and spaces
+  - `uuid` - UUID in standard format
+  - `ipv4` - IPv4 address
+- `validate.match` - Custom regex pattern validation
+
+#### Number Fields
+- `required` - Field must be present
+- `validate.range min..max` - Number must be between min and max values
+
+### Validation Response
+
+When validation fails, the API returns a JSON response with validation errors:
+
+```json
+{
+  "errors": {
+    "username": "Must start with letter, then alphanumeric",
+    "email": "Invalid email format",
+    "age": "Number must be between 13 and 120"
+  }
+}
+```
+
