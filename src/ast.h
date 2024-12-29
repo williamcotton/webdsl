@@ -1,5 +1,7 @@
 #ifndef AST_H
 #define AST_H
+#include <stdint.h>
+#include <stdbool.h>
 
 typedef struct ContentNode {
     char *type;
@@ -47,11 +49,12 @@ typedef struct ResponseField {
 typedef struct ApiField {
     char *name;
     char *type;
-    bool required;
-    char *format;     // For validation formats like "email"
-    int minLength;    // For length validation
-    int maxLength;    // For length validation
+    char *format;
+    int minLength;
+    int maxLength;
     struct ApiField *next;
+    bool required;
+    uint64_t : 56;
 } ApiField;
 
 typedef struct ApiEndpoint {

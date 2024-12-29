@@ -106,7 +106,7 @@ website {
             "name" {
                 type "string"
                 required true
-                length 1..100
+                length 10..100
             }
             "email" {
                 type "string"
