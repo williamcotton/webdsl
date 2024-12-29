@@ -4,6 +4,7 @@
 #include "../db.h"
 #include "../stringbuilder.h"
 #include <string.h>
+#include <stdio.h>
 
 extern Arena *serverArena;
 extern Database *db;
@@ -89,8 +90,20 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                ApiEndpoint *api,
                                const char *method,
                                void *con_cls) {
-    // Verify HTTP method matches
-    if (strcmp(method, api->method) != 0) {
+    // Handle OPTIONS requests for CORS
+    if (strcmp(method, "OPTIONS") == 0) {
+        struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+        MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+        MHD_add_response_header(response, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        MHD_add_response_header(response, "Access-Control-Allow-Headers", "Content-Type");
+        enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+        MHD_destroy_response(response);
+        return ret;
+    }
+
+    // Verify HTTP method matches (but allow GET for GET endpoints)
+    if (strcmp(method, api->method) != 0 && 
+        !(strcmp(method, "GET") == 0 && strcmp(api->method, "GET") == 0)) {
         const char *method_not_allowed = "{ \"error\": \"Method not allowed\" }";
         char *error = strdup(method_not_allowed);
         struct MHD_Response *response = MHD_create_response_from_buffer(strlen(error), error,

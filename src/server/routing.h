@@ -21,6 +21,7 @@ typedef struct LayoutHashEntry {
 
 typedef struct ApiHashEntry {
     const char *route;
+    const char *method;
     ApiEndpoint *endpoint;
     struct ApiHashEntry *next;
 } ApiHashEntry;
@@ -34,7 +35,7 @@ typedef struct QueryHashEntry {
 void buildRouteMaps(WebsiteNode *website, Arena *arena);
 PageNode* findPage(const char *url);
 LayoutNode* findLayout(const char *identifier);
-ApiEndpoint* findApi(const char *url);
+ApiEndpoint* findApi(const char *url, const char *method);
 QueryNode* findQuery(const char *name);
 
 #endif // SERVER_ROUTING_H

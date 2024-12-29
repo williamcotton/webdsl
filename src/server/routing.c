@@ -1,6 +1,7 @@
 #include "routing.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
 
 static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
 static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
@@ -44,9 +45,13 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
 
     // Build API routes
     for (ApiEndpoint *api = website->apiHead; api; api = api->next) {
-        uint32_t hash = hashString(api->route) & HASH_MASK;
+        uint32_t hash = hashString(api->route);
+        hash ^= hashString(api->method);
+        hash &= HASH_MASK;
+        
         ApiHashEntry *entry = arenaAlloc(arena, sizeof(ApiHashEntry));
         entry->route = api->route;
+        entry->method = api->method;
         entry->endpoint = api;
         entry->next = apiTable[hash];
         apiTable[hash] = entry;
@@ -89,12 +94,14 @@ LayoutNode* findLayout(const char *identifier) {
     return NULL;
 }
 
-ApiEndpoint* findApi(const char *url) {
-    uint32_t hash = hashString(url) & HASH_MASK;
+ApiEndpoint* findApi(const char *url, const char *method) {
+    uint32_t hash = hashString(url);
+    hash ^= hashString(method);
+    hash &= HASH_MASK;
     ApiHashEntry *entry = apiTable[hash];
     
     while (entry) {
-        if (strcmp(entry->route, url) == 0) {
+        if (strcmp(entry->route, url) == 0 && strcmp(entry->method, method) == 0) {
             return entry->endpoint;
         }
         entry = entry->next;

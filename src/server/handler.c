@@ -81,7 +81,7 @@ enum MHD_Result handleRequest(void *cls,
     }
 
     // Check for API endpoint first
-    ApiEndpoint *api = findApi(url);
+    ApiEndpoint *api = findApi(url, method);
     if (api) {
         return handleApiRequest(connection, api, method, *con_cls);
     }

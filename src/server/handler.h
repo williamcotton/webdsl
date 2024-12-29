@@ -9,6 +9,7 @@ struct PostData {
     struct MHD_Connection *connection;
     size_t value_count;
     int error;
+    uint32_t : 32;
 };
 
 struct PostContext {
