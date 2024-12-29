@@ -451,6 +451,55 @@ static void test_parse_html_content(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_api_with_field_definitions(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/employees\"\n"
+        "    method \"POST\"\n"
+        "    fields {\n"
+        "      \"name\" {\n"
+        "        type \"string\"\n"
+        "        required true\n"
+        "        length 1..100\n"
+        "      }\n"
+        "      \"email\" {\n"
+        "        type \"string\"\n"
+        "        required true\n"
+        "        format \"email\"\n"
+        "      }\n"
+        "    }\n"
+        "    response \"insertEmployee\" [name, email]\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    
+    ApiEndpoint *api = website->apiHead;
+    TEST_ASSERT_NOT_NULL(api->apiFields);
+    
+    ApiField *nameField = api->apiFields;
+    TEST_ASSERT_EQUAL_STRING("name", nameField->name);
+    TEST_ASSERT_EQUAL_STRING("string", nameField->type);
+    TEST_ASSERT_TRUE(nameField->required);
+    TEST_ASSERT_EQUAL(1, nameField->minLength);
+    TEST_ASSERT_EQUAL(100, nameField->maxLength);
+    
+    ApiField *emailField = nameField->next;
+    TEST_ASSERT_EQUAL_STRING("email", emailField->name);
+    TEST_ASSERT_EQUAL_STRING("string", emailField->type);
+    TEST_ASSERT_TRUE(emailField->required);
+    TEST_ASSERT_EQUAL_STRING("email", emailField->format);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -468,5 +517,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_invalid_api);
     RUN_TEST(test_parse_website_with_query);
     RUN_TEST(test_parse_html_content);
+    RUN_TEST(test_parse_api_with_field_definitions);
     return UNITY_END();
 }

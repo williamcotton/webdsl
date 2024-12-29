@@ -19,6 +19,7 @@ static char *copyString(Parser *parser, const char *source);
 static bool parsePort(const char* str, int* result);
 static ApiEndpoint *parseApi(Parser *parser);
 static QueryNode *parseQuery(Parser *parser);
+static ApiField *parseApiFields(Parser *parser);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -416,6 +417,12 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 endpoint->method = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_FIELDS: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");
+                endpoint->apiFields = parseApiFields(parser);
+                break;
+            }
             case TOKEN_RESPONSE: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'response'.");
@@ -489,6 +496,78 @@ static ApiEndpoint *parseApi(Parser *parser) {
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after API block.");
     return endpoint;
+}
+
+static ApiField *parseApiFields(Parser *parser) {
+    ApiField *head = NULL;
+    ApiField *tail = NULL;
+
+    while (parser->current.type == TOKEN_STRING && !parser->hadError) {
+        ApiField *field = arenaAlloc(parser->arena, sizeof(ApiField));
+        memset(field, 0, sizeof(ApiField));
+
+        // Parse field name
+        field->name = copyString(parser, parser->current.lexeme);
+        advanceParser(parser);
+
+        consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after field name.");
+
+        // Parse field properties
+        while (parser->current.type != TOKEN_CLOSE_BRACE && 
+               parser->current.type != TOKEN_EOF && 
+               !parser->hadError) {
+            
+            if (parser->current.type == TOKEN_STRING) {
+                const char *prop = parser->current.lexeme;
+                advanceParser(parser);
+
+                if (strcmp(prop, "type") == 0) {
+                    consume(parser, TOKEN_STRING, "Expected string after 'type'.");
+                    field->type = copyString(parser, parser->previous.lexeme);
+                }
+                else if (strcmp(prop, "required") == 0) {
+                    consume(parser, TOKEN_STRING, "Expected boolean after 'required'.");
+                    field->required = strcmp(parser->previous.lexeme, "true") == 0;
+                }
+                else if (strcmp(prop, "format") == 0) {
+                    consume(parser, TOKEN_STRING, "Expected string after 'format'.");
+                    field->format = copyString(parser, parser->previous.lexeme);
+                }
+                else if (strcmp(prop, "length") == 0) {
+                    consume(parser, TOKEN_RANGE, "Expected range after 'length'.");
+                    const char *range = parser->previous.lexeme;
+                    char *dotdot = strstr(range, "..");
+                    if (dotdot) {
+                        *dotdot = '\0';
+                        field->minLength = atoi(range);
+                        field->maxLength = atoi(dotdot + 2);
+                    }
+                }
+            } else {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in field definition at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+
+        consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after field properties.");
+
+        // Add to linked list
+        if (!head) {
+            head = field;
+            tail = field;
+        } else {
+            tail->next = field;
+            tail = field;
+        }
+    }
+
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after fields block.");
+    return head;
 }
 
 static QueryNode *parseQuery(Parser *parser) {

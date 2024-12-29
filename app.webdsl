@@ -102,6 +102,22 @@ website {
     api {
         route "/api/v1/employees"
         method "POST"
+        fields {
+            "name" {
+                type "string"
+                required true
+                length 1..100
+            }
+            "email" {
+                type "string"
+                required true
+                format "email"
+            }
+            "team_id" {
+                type "number"
+                required false
+            }
+        }
         response "insertEmployee" [name, email, team_id]
     }
 

@@ -144,6 +144,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("response", TOKEN_RESPONSE)
     KW_MATCH("query", TOKEN_QUERY)
     KW_MATCH("sql", TOKEN_SQL)
+    KW_MATCH("fields", TOKEN_FIELDS)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -253,7 +254,23 @@ static Token stringLiteral(Lexer *lexer) {
 static Token number(Lexer *lexer) {
     while (isDigit(peek(lexer))) advance(lexer);
     
-    // Look for decimal point
+    // Special case for range notation (e.g., "1..100")
+    if (peek(lexer) == '.' && peekNext(lexer) == '.') {
+        // Include the first number and the ".." in the token
+        advance(lexer);  // First dot
+        advance(lexer);  // Second dot
+        
+        // Parse the second number
+        if (!isDigit(peek(lexer))) {
+            return errorToken(lexer->parser, "Expected number after '..' in range.", lexer->line);
+        }
+        
+        while (isDigit(peek(lexer))) advance(lexer);
+        
+        return makeToken(lexer, TOKEN_RANGE);
+    }
+    
+    // Regular decimal number handling
     if (peek(lexer) == '.') {
         advance(lexer);  // Consume the '.'
         
@@ -326,6 +343,8 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_OPEN_BRACKET: return "OPEN_BRACKET";
         case TOKEN_CLOSE_BRACKET: return "CLOSE_BRACKET";
         case TOKEN_COMMA: return "COMMA";
+        case TOKEN_FIELDS: return "FIELDS";
+        case TOKEN_RANGE: return "RANGE";
     }
     return "INVALID";
 }

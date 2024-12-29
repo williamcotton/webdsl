@@ -44,11 +44,22 @@ typedef struct ResponseField {
     struct ResponseField *next;
 } ResponseField;
 
+typedef struct ApiField {
+    char *name;
+    char *type;
+    bool required;
+    char *format;     // For validation formats like "email"
+    int minLength;    // For length validation
+    int maxLength;    // For length validation
+    struct ApiField *next;
+} ApiField;
+
 typedef struct ApiEndpoint {
     char *route;
     char *method;
     char *response;
     ResponseField *fields;
+    ApiField *apiFields;
     struct ApiEndpoint *next;
 } ApiEndpoint;
 
