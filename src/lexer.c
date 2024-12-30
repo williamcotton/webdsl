@@ -146,6 +146,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("query", TOKEN_QUERY)
     KW_MATCH("sql", TOKEN_SQL)
     KW_MATCH("fields", TOKEN_FIELDS)
+    KW_MATCH("jq", TOKEN_JQ)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -167,7 +168,7 @@ static Token identifierOrKeyword(Lexer *lexer) {
     TokenType type = checkKeyword(lexer->start, length);
     
     // Check for raw block keywords
-    if (type == TOKEN_HTML || type == TOKEN_SQL || type == TOKEN_CSS) {
+    if (type == TOKEN_HTML || type == TOKEN_SQL || type == TOKEN_CSS || type == TOKEN_JQ) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
             return rawBlock(lexer);
@@ -347,6 +348,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_COMMA: return "COMMA";
         case TOKEN_FIELDS: return "FIELDS";
         case TOKEN_RANGE: return "RANGE";
+        case TOKEN_JQ: return "JQ";
     }
     return "INVALID";
 }

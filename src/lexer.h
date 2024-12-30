@@ -40,7 +40,8 @@ typedef enum {
     TOKEN_CLOSE_BRACKET,
     TOKEN_COMMA,
     TOKEN_FIELDS,
-    TOKEN_RANGE
+    TOKEN_RANGE,
+    TOKEN_JQ
 } TokenType;
 
 typedef struct {

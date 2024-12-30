@@ -430,6 +430,38 @@ static void test_lexer_nested_css_blocks(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_jq_block(void) {
+    Parser parser;
+    parser.arena = createArena(1024);
+    
+    const char *input = 
+        "jq {\n"
+        "    .rows | map({\n"
+        "        name: .name,\n"
+        "        email: .email\n"
+        "    })\n"
+        "}";
+    
+    Lexer lexer;
+    initLexer(&lexer, input, &parser);
+    
+    // Should get raw block containing all the JQ content
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(token.lexeme);
+    
+    // Verify the raw block contains the JQ filter
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "email: .email"));
+    
+    // Should get EOF
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -445,5 +477,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_raw_blocks);
     RUN_TEST(test_lexer_api_response_fields);
     RUN_TEST(test_lexer_nested_css_blocks);
+    RUN_TEST(test_lexer_jq_block);
     return UNITY_END();
 }

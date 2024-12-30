@@ -590,6 +590,55 @@ static void test_parse_nested_css_block(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_api_with_jq_filter(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    method \"GET\"\n"
+        "    jsonResponse \"users\"\n"
+        "    jq {\n"
+        "      .rows | map({\n"
+        "        name: .name,\n"
+        "        email: .email\n"
+        "      })\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    // Debug output
+    printf("\nTesting API with JQ filter:\n");
+    printf("Parser had error: %d\n", parser.hadError);
+    if (website && website->apiHead) {
+        printf("API endpoint found:\n");
+        printf("  Route: %s\n", website->apiHead->route);
+        printf("  Method: %s\n", website->apiHead->method);
+        printf("  Response: %s\n", website->apiHead->jsonResponse);
+        printf("  JQ Filter: %s\n", website->apiHead->jqFilter ? website->apiHead->jqFilter : "NULL");
+    } else {
+        printf("No API endpoint found or website is NULL\n");
+    }
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    
+    ApiEndpoint *api = website->apiHead;
+    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
+    TEST_ASSERT_EQUAL_STRING("GET", api->method);
+    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    TEST_ASSERT_NOT_NULL(api->jqFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -610,5 +659,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_api_with_field_definitions);
     RUN_TEST(test_parse_raw_css_block);
     RUN_TEST(test_parse_nested_css_block);
+    RUN_TEST(test_parse_api_with_jq_filter);
     return UNITY_END();
 }

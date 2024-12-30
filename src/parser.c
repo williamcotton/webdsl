@@ -456,8 +456,16 @@ static ApiEndpoint *parseApi(Parser *parser) {
 
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'api'.");
 
+    // Debug output
+    printf("\nParsing API endpoint:\n");
+
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
+        
+        printf("  Current token: %s (%s)\n", 
+               getTokenTypeName(parser->current.type),
+               parser->current.lexeme);
+
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
@@ -465,25 +473,22 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'route'.");
                 endpoint->route = copyString(parser, parser->previous.lexeme);
+                printf("    Parsed route: %s\n", endpoint->route);
                 break;
             }
             case TOKEN_METHOD: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'method'.");
                 endpoint->method = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_FIELDS: {
-                advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");
-                endpoint->apiFields = parseApiFields(parser);
+                printf("    Parsed method: %s\n", endpoint->method);
                 break;
             }
             case TOKEN_JSON_RESPONSE: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'jsonResponse'.");
                 endpoint->jsonResponse = copyString(parser, parser->previous.lexeme);
-
+                printf("    Parsed jsonResponse: %s\n", endpoint->jsonResponse);
+                
                 // Check for response fields
                 if (parser->current.type == TOKEN_OPEN_BRACKET) {
                     advanceParser(parser);  // Consume [
@@ -537,6 +542,18 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_RAW_BLOCK: {
+                endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+                printf("    Parsed JQ filter: %s\n", endpoint->jqFilter);
+                break;
+            }
+            case TOKEN_FIELDS: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");
+                endpoint->apiFields = parseApiFields(parser);
+                break;
+            }
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
@@ -551,6 +568,14 @@ static ApiEndpoint *parseApi(Parser *parser) {
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after API block.");
+    
+    // Debug validation
+    printf("Finished parsing API endpoint:\n");
+    printf("  Route: %s\n", endpoint->route ? endpoint->route : "NULL");
+    printf("  Method: %s\n", endpoint->method ? endpoint->method : "NULL");
+    printf("  JQ Filter: %s\n", endpoint->jqFilter ? endpoint->jqFilter : "NULL");
+    printf("  Had Error: %d\n", parser->hadError);
+
     return endpoint;
 }
 

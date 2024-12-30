@@ -99,6 +99,9 @@ website {
         route "/api/v1/employees"
         method "GET"
         jsonResponse "employees"
+        jq {
+            .rows | map({name: .name, email: .email})
+        }
     }
 
     api {
