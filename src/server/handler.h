@@ -2,6 +2,12 @@
 #define SERVER_HANDLER_H
 
 #include <microhttpd.h>
+#include "../arena.h"
+
+enum RequestType {
+    REQUEST_TYPE_GET,
+    REQUEST_TYPE_POST
+};
 
 // Forward declarations
 struct PostData {
@@ -18,6 +24,13 @@ struct PostContext {
     size_t processed;
     struct MHD_PostProcessor *pp;
     struct PostData post_data;
+    Arena *arena;
+    enum RequestType type;
+};
+
+struct RequestContext {
+    Arena *arena;
+    enum RequestType type;
 };
 
 // Request handling

@@ -115,7 +115,8 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                ApiEndpoint *api,
                                const char *method,
-                               void *con_cls) {
+                               void *con_cls,
+                               Arena *arena) {
     // Handle OPTIONS requests for CORS
     if (strcmp(method, "OPTIONS") == 0) {
         struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
@@ -141,7 +142,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     }
 
     // Generate API response with form data
-    char *json = generateApiResponse(serverArena, api, con_cls);
+    char *json = generateApiResponse(arena, api, con_cls);
     char *json_copy = strdup(json);
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(json_copy), json_copy,
                                                MHD_RESPMEM_MUST_FREE);

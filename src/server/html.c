@@ -124,7 +124,7 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
     return arenaDupString(arena, StringBuilder_get(sb));
 }
 
-enum MHD_Result handlePageRequest(struct MHD_Connection *connection, const char *url) {
+enum MHD_Result handlePageRequest(struct MHD_Connection *connection, const char *url, Arena *arena) {
     // Find matching page
     PageNode *page = findPage(url);
 
@@ -142,7 +142,7 @@ enum MHD_Result handlePageRequest(struct MHD_Connection *connection, const char 
     // Find layout
     LayoutNode *layout = findLayout(page->layout);
 
-    char *html = generateFullHtml(serverArena, page, layout);
+    char *html = generateFullHtml(arena, page, layout);
     char *html_copy = strdup(html);
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(html_copy), html_copy,
                                                MHD_RESPMEM_MUST_FREE);
@@ -150,8 +150,8 @@ enum MHD_Result handlePageRequest(struct MHD_Connection *connection, const char 
     return MHD_queue_response(connection, MHD_HTTP_OK, response);
 }
 
-enum MHD_Result handleCssRequest(struct MHD_Connection *connection) {
-    char *css = generateCss(serverArena, currentWebsite->styleHead);
+enum MHD_Result handleCssRequest(struct MHD_Connection *connection, Arena *arena) {
+    char *css = generateCss(arena, currentWebsite->styleHead);
     char *css_copy = strdup(css);
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(css_copy), css_copy,
                                                MHD_RESPMEM_MUST_FREE);

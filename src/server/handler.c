@@ -2,6 +2,7 @@
 #include "routing.h"
 #include "api.h"
 #include "html.h"
+#include "../arena.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -47,20 +48,37 @@ enum MHD_Result handleRequest(void *cls,
             post->post_data.connection = connection;
             post->post_data.error = 0;
             post->post_data.value_count = 0;
+            post->arena = createArena(1024 * 1024); // 1MB initial size
             
             post->pp = MHD_create_post_processor(connection,
                                                32 * 1024,  // 32k buffer
                                                post_iterator,
                                                &post->post_data);
             if (!post->pp) {
+                freeArena(post->arena);
                 free(post);
                 return MHD_NO;
             }
+            post->type = REQUEST_TYPE_POST;
             *con_cls = post;
             return MHD_YES;
         }
-        *con_cls = &"GET";
+        // For GET requests, create a simple context with an arena
+        struct RequestContext *ctx = malloc(sizeof(struct RequestContext));
+        ctx->arena = createArena(1024 * 1024); // 1MB initial size
+        ctx->type = REQUEST_TYPE_GET;
+        *con_cls = ctx;
         return MHD_YES;
+    }
+
+    // Get the arena from the context
+    Arena *requestArena;
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post = *con_cls;
+        requestArena = post->arena;
+    } else {
+        struct RequestContext *ctx = *con_cls;
+        requestArena = ctx->arena;
     }
 
     // Handle POST data
@@ -83,7 +101,7 @@ enum MHD_Result handleRequest(void *cls,
     // Check for API endpoint first
     ApiEndpoint *api = findApi(url, method);
     if (api) {
-        return handleApiRequest(connection, api, method, *con_cls);
+        return handleApiRequest(connection, api, method, *con_cls, requestArena);
     }
 
     // Handle regular pages and CSS
@@ -92,10 +110,10 @@ enum MHD_Result handleRequest(void *cls,
     }
 
     if (strcmp(url, "/styles.css") == 0) {
-        return handleCssRequest(connection);
+        return handleCssRequest(connection, requestArena);
     } 
     
-    return handlePageRequest(connection, url);
+    return handlePageRequest(connection, url, requestArena);
 }
 
 void handleRequestCompleted(void *cls,
@@ -104,17 +122,24 @@ void handleRequestCompleted(void *cls,
                           enum MHD_RequestTerminationCode toe) {
     (void)cls; (void)connection; (void)toe;
     
-    if (*con_cls != &"GET") {
-        struct PostContext *post = *con_cls;
-        if (post) {
-            if (post->data)
-                free(post->data);
-            if (post->pp)
-                MHD_destroy_post_processor(post->pp);
-            for (size_t i = 0; i < post->post_data.value_count; i++) {
-                free(post->post_data.values[i]);
+    if (*con_cls != NULL) {
+        if (((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_POST) {
+            struct PostContext *post = *con_cls;
+            if (post) {
+                if (post->data)
+                    free(post->data);
+                if (post->pp)
+                    MHD_destroy_post_processor(post->pp);
+                for (size_t i = 0; i < post->post_data.value_count; i++) {
+                    free(post->post_data.values[i]);
+                }
+                freeArena(post->arena);
+                free(post);
             }
-            free(post);
+        } else {
+            struct RequestContext *ctx = *con_cls;
+            freeArena(ctx->arena);
+            free(ctx);
         }
         *con_cls = NULL;
     }
