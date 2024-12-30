@@ -164,12 +164,16 @@ void handleRequestCompleted(void *cls,
                 for (size_t i = 0; i < post->post_data.value_count; i++) {
                     free(post->post_data.values[i]);
                 }
-                freeArena(post->arena);
+                if (post->arena) {
+                    freeArena(post->arena);
+                }
                 free(post);
             }
         } else {
             struct RequestContext *ctx = *con_cls;
-            freeArena(ctx->arena);
+            if (ctx->arena) {
+                freeArena(ctx->arena);
+            }
             free(ctx);
         }
         *con_cls = NULL;
