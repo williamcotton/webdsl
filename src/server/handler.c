@@ -5,6 +5,32 @@
 #include "../arena.h"
 #include <string.h>
 #include <stdlib.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+#include <jansson.h>
+#pragma clang diagnostic pop
+// Add thread-local storage definition
+_Thread_local Arena* currentJsonArena = NULL;
+
+// Add JSON memory management functions
+static void* jsonArenaMalloc(size_t size) {
+    if (!currentJsonArena) return NULL;
+    return arenaAlloc(currentJsonArena, size);
+}
+
+static void jsonArenaFree(void *ptr) {
+    // No-op since we're using arena allocation
+    (void)ptr;
+}
+
+void initRequestJsonArena(Arena *arena) {
+    currentJsonArena = arena;
+    json_set_alloc_funcs(jsonArenaMalloc, jsonArenaFree);
+}
+
+void cleanupRequestJsonArena(void) {
+    currentJsonArena = NULL;
+}
 
 static enum MHD_Result post_iterator(void *cls,
                                    enum MHD_ValueKind kind,
@@ -81,6 +107,9 @@ enum MHD_Result handleRequest(void *cls,
         requestArena = ctx->arena;
     }
 
+    // Initialize JSON arena for this request
+    initRequestJsonArena(requestArena);
+
     // Handle POST data
     if (strcmp(method, "POST") == 0) {
         struct PostContext *post = *con_cls;
@@ -120,6 +149,8 @@ void handleRequestCompleted(void *cls,
                           struct MHD_Connection *connection,
                           void **con_cls,
                           enum MHD_RequestTerminationCode toe) {
+    cleanupRequestJsonArena();
+    
     (void)cls; (void)connection; (void)toe;
     
     if (*con_cls != NULL) {

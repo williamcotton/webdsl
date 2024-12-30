@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
+#include <jansson.h>
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {
@@ -78,64 +79,38 @@ const char* getDatabaseError(Database *db) {
     return error;
 }
 
-static void appendJsonString(StringBuilder *sb, const char *str) {
-    StringBuilder_append(sb, "\"");
-    
-    // Escape special characters
-    while (*str) {
-        switch (*str) {
-            case '"':  StringBuilder_append(sb, "\\\""); break;
-            case '\\': StringBuilder_append(sb, "\\\\"); break;
-            case '\b': StringBuilder_append(sb, "\\b");  break;
-            case '\f': StringBuilder_append(sb, "\\f");  break;
-            case '\n': StringBuilder_append(sb, "\\n");  break;
-            case '\r': StringBuilder_append(sb, "\\r");  break;
-            case '\t': StringBuilder_append(sb, "\\t");  break;
-            default:   StringBuilder_append(sb, "%c", *str);
-        }
-        str++;
-    }
-    
-    StringBuilder_append(sb, "\"");
-}
-
 char* resultToJson(Arena *arena, PGresult *result) {
     if (!arena || !result) return NULL;
     
-    StringBuilder *sb = StringBuilder_new(arena);
-    StringBuilder_append(sb, "{\n  \"rows\": [\n");
+    json_t *root = json_object();
+    json_t *rows = json_array();
+    json_object_set_new(root, "rows", rows);
     
-    int rows = PQntuples(result);
-    int cols = PQnfields(result);
+    int rowCount = PQntuples(result);
+    int colCount = PQnfields(result);
     
     // For each row
-    for (int i = 0; i < rows; i++) {
-        StringBuilder_append(sb, "    {");
+    for (int i = 0; i < rowCount; i++) {
+        json_t *row = json_object();
         
         // For each column
-        for (int j = 0; j < cols; j++) {
-            // Add column name
-            appendJsonString(sb, PQfname(result, j));
-            StringBuilder_append(sb, ": ");
+        for (int j = 0; j < colCount; j++) {
+            const char *colName = PQfname(result, j);
             
-            // Add value
             if (PQgetisnull(result, i, j)) {
-                StringBuilder_append(sb, "null");
+                json_object_set_new(row, colName, json_null());
             } else {
-                appendJsonString(sb, PQgetvalue(result, i, j));
-            }
-            
-            if (j < cols - 1) {
-                StringBuilder_append(sb, ", ");
+                const char *value = PQgetvalue(result, i, j);
+                json_object_set_new(row, colName, json_string(value));
             }
         }
         
-        StringBuilder_append(sb, "}%s\n", i < rows - 1 ? "," : "");
+        json_array_append_new(rows, row);
     }
     
-    StringBuilder_append(sb, "  ]\n}");
-    
-    return arenaDupString(arena, StringBuilder_get(sb));
+    // Convert to string
+    char *jsonStr = json_dumps(root, JSON_INDENT(2));
+    return jsonStr;
 }
 
 PGresult* executeParameterizedQuery(Database *db, const char *sql, 

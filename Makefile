@@ -15,7 +15,7 @@ SRC_DIR = src
 CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ') -DBUILD_ENV=$(BUILD_ENV)
 
 # Add linker flags separately
-LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq
+LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq -ljansson
 
 PG_CFLAGS = -I$(shell pg_config --includedir)
 PG_LDFLAGS = -L$(shell pg_config --libdir) -lpq

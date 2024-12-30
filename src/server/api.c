@@ -6,9 +6,12 @@
 #include "../stringbuilder.h"
 #include <string.h>
 #include <stdio.h>
+#include <jansson.h>
 
 extern Arena *serverArena;
 extern Database *db;
+
+static char* generateErrorJson(Arena *arena, const char *errorMessage);
 
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // For POST requests with form data
@@ -67,20 +70,12 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         // Execute parameterized query
         QueryNode *query = findQuery(endpoint->jsonResponse);
         if (!query) {
-            StringBuilder *sb = StringBuilder_new(arena);
-            StringBuilder_append(sb, "{\n");
-            StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->jsonResponse);
-            StringBuilder_append(sb, "}");
-            return arenaDupString(arena, StringBuilder_get(sb));
+            return generateErrorJson(arena, "Query not found");
         }
 
         PGresult *result = executeParameterizedQuery(db, query->sql, values, value_count);
         if (!result) {
-            StringBuilder *sb = StringBuilder_new(arena);
-            StringBuilder_append(sb, "{\n");
-            StringBuilder_append(sb, "  \"error\": \"Query execution failed: %s\"\n", getDatabaseError(db));
-            StringBuilder_append(sb, "}");
-            return arenaDupString(arena, StringBuilder_get(sb));
+            return generateErrorJson(arena, getDatabaseError(db));
         }
 
         char *json = resultToJson(arena, result);
@@ -91,20 +86,12 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // Regular GET request handling
     QueryNode *query = findQuery(endpoint->jsonResponse);
     if (!query) {
-        StringBuilder *sb = StringBuilder_new(arena);
-        StringBuilder_append(sb, "{\n");
-        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->jsonResponse);
-        StringBuilder_append(sb, "}");
-        return arenaDupString(arena, StringBuilder_get(sb));
+        return generateErrorJson(arena, "Query not found");
     }
 
     PGresult *result = executeQuery(db, query->sql);
     if (!result) {
-        StringBuilder *sb = StringBuilder_new(arena);
-        StringBuilder_append(sb, "{\n");
-        StringBuilder_append(sb, "  \"error\": \"Query execution failed: %s\"\n", getDatabaseError(db));
-        StringBuilder_append(sb, "}");
-        return arenaDupString(arena, StringBuilder_get(sb));
+        return generateErrorJson(arena, getDatabaseError(db));
     }
 
     char *json = resultToJson(arena, result);
@@ -154,4 +141,18 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     MHD_add_response_header(response, "Access-Control-Allow-Headers", "Content-Type");
     
     return MHD_queue_response(connection, MHD_HTTP_OK, response);
+}
+
+// Add helper function for error responses
+static char* generateErrorJson(Arena *arena, const char *errorMessage) {
+    json_t *root = json_object();
+    json_object_set_new(root, "error", json_string(errorMessage));
+    
+    char *jsonStr = json_dumps(root, JSON_COMPACT);
+    char *resultStr = arenaDupString(arena, jsonStr);
+    
+    free(jsonStr);
+    json_decref(root);
+    
+    return resultStr;
 }

@@ -4,6 +4,9 @@
 #include <microhttpd.h>
 #include "../arena.h"
 
+// Add thread-local storage for JSON arena
+extern _Thread_local Arena* currentJsonArena;
+
 enum RequestType {
     REQUEST_TYPE_GET,
     REQUEST_TYPE_POST
@@ -50,5 +53,9 @@ void handleRequestCompleted(void *cls,
                           struct MHD_Connection *connection,
                           void **con_cls,
                           enum MHD_RequestTerminationCode toe);
+
+// Add JSON memory management functions
+void initRequestJsonArena(Arena *arena);
+void cleanupRequestJsonArena(void);
 
 #endif // SERVER_HANDLER_H
