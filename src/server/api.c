@@ -4,7 +4,7 @@
 #include "validation.h"
 #include "../db.h"
 #include "../stringbuilder.h"
-#include "../jq_wrapper.h"
+#include <jq.h>
 #include <string.h>
 #include <stdio.h>
 #include <jansson.h>
@@ -12,7 +12,7 @@
 extern Arena *serverArena;
 extern Database *db;
 
-static char* generateErrorJson(Arena *arena, const char *errorMessage);
+static char* generateErrorJson(const char *errorMessage);
 static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq);
 
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
@@ -49,8 +49,6 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
             json_decref(errors_obj);
             return json_str;
         }
-        json_decref(errors_obj);
-        json_decref(error_fields);
 
         // If validation passed, proceed with database operation
         const char **values = arenaAlloc(arena, sizeof(char*) * 32);
@@ -72,12 +70,16 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         // Execute parameterized query
         QueryNode *query = findQuery(endpoint->jsonResponse);
         if (!query) {
-            return generateErrorJson(arena, "Query not found");
+            return generateErrorJson("Query not found");
         }
 
         PGresult *result = executeParameterizedQuery(db, query->sql, values, value_count);
         if (!result) {
-            return generateErrorJson(arena, getDatabaseError(db));
+            const char *dbError = getDatabaseError(db);
+            json_t *error = json_object();
+            json_object_set_new(error, "error", json_string_nocheck(dbError));
+            char *jsonStr = json_dumps(error, JSON_COMPACT);
+            return jsonStr;
         }
 
         char *json = resultToJson(arena, result);
@@ -122,12 +124,12 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // Regular GET request handling
     QueryNode *query = findQuery(endpoint->jsonResponse);
     if (!query) {
-        return generateErrorJson(arena, "Query not found");
+        return generateErrorJson("Query not found");
     }
 
     PGresult *result = executeQuery(db, query->sql);
     if (!result) {
-        return generateErrorJson(arena, getDatabaseError(db));
+        return generateErrorJson(getDatabaseError(db));
     }
 
     char *json = resultToJson(arena, result);
@@ -200,9 +202,17 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
 
     // Generate API response with form data
     char *json = generateApiResponse(arena, api, con_cls);
-    char *json_copy = strdup(json);
-    struct MHD_Response *response = MHD_create_response_from_buffer(strlen(json_copy), json_copy,
-                                               MHD_RESPMEM_MUST_FREE);
+    
+    // Use arena to allocate the response copy
+    size_t json_len = strlen(json);
+    char *json_copy = arenaAlloc(arena, json_len + 1);
+    memcpy(json_copy, json, json_len + 1);
+    
+    struct MHD_Response *response = MHD_create_response_from_buffer(
+        json_len,
+        json_copy,
+        MHD_RESPMEM_PERSISTENT  // Changed from MHD_RESPMEM_MUST_FREE
+    );
     MHD_add_response_header(response, "Content-Type", "application/json");
     
     // Add CORS headers for API endpoints
@@ -214,38 +224,49 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
 }
 
 // Add helper function for error responses
-static char* generateErrorJson(Arena *arena, const char *errorMessage) {
+static char* generateErrorJson(const char *errorMessage) {
     json_t *root = json_object();
     json_object_set_new(root, "error", json_string(errorMessage));
     
     char *jsonStr = json_dumps(root, JSON_COMPACT);
-    char *resultStr = arenaDupString(arena, jsonStr);
-    
-    free(jsonStr);
-    json_decref(root);
-    
-    return resultStr;
+    return jsonStr;
 }
 
 static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq) {
     // Parse input JSON
     jv input = jv_parse(json);
-    if (jv_is_valid(input)) {
-        // Process the filter
-        jq_start(jq, input, 0);
-        jv jq_result = jq_next(jq);
-        
-        if (jv_is_valid(jq_result)) {
-            // Dump the result to a string
-            jv dumped = jv_dump_string(jq_result, 0);
-            const char *str = jv_string_value(dumped);
-            char *filtered = arenaDupString(arena, str);
-            jv_free(dumped);
-            jv_free(jq_result);
-            return filtered;
+    if (!jv_is_valid(input)) {
+        jv error = jv_invalid_get_msg(input);
+        if (jv_is_valid(error)) {
+            fprintf(stderr, "JQ parse error: %s\n", jv_string_value(error));
+            jv_free(error);
+        }
+        jv_free(input);
+        return NULL;
+    }
+
+    // Process the filter
+    jq_start(jq, input, 0);
+    jv jq_result = jq_next(jq);
+    
+    if (!jv_is_valid(jq_result)) {
+        // Get error message from invalid result
+        jv error = jv_invalid_get_msg(jq_result);
+        if (jv_is_valid(error)) {
+            fprintf(stderr, "JQ execution error: %s\n", jv_string_value(error));
+            jv_free(error);
         }
         jv_free(jq_result);
+        jv_free(input);
+        return NULL;
     }
+
+    // Dump the result to a string
+    jv dumped = jv_dump_string(jq_result, 0);
+    const char *str = jv_string_value(dumped);
+    char *filtered = arenaDupString(arena, str);
+    jv_free(dumped);
+    jv_free(jq_result);
     jv_free(input);
-    return NULL;
+    return filtered;
 }
