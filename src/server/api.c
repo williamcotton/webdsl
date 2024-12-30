@@ -13,6 +13,7 @@ extern Arena *serverArena;
 extern Database *db;
 
 static char* generateErrorJson(Arena *arena, const char *errorMessage);
+static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq);
 
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // For POST requests with form data
@@ -84,9 +85,21 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
         // Apply JQ filter if specified in endpoint
         if (endpoint->jqFilter) {
-            char *filtered = applyJqFilter(arena, json, endpoint->jqFilter);
-            if (filtered) {
-                return filtered;
+            // Initialize JQ once per endpoint
+            static __thread jq_state *jq = NULL;
+            if (!jq) {
+                jq = jq_init();
+                if (jq && endpoint->jqFilter) {
+                    // Compile filter once
+                    jq_compile(jq, endpoint->jqFilter);
+                }
+            }
+
+            if (jq) {
+                char *filtered = applyJqFilterToJson(arena, json, jq);
+                if (filtered) {
+                    return filtered;
+                }
             }
             // Fall back to unfiltered JSON on error
         }
@@ -121,25 +134,10 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         }
 
         if (jq) {
-            // Parse input JSON
-            jv input = jv_parse(json);
-            if (jv_is_valid(input)) {
-                // Process the filter
-                jq_start(jq, input, 0);
-                jv jq_result = jq_next(jq);
-                
-                if (jv_is_valid(jq_result)) {
-                    // Dump the result to a string
-                    jv dumped = jv_dump_string(jq_result, 0);
-                    const char *str = jv_string_value(dumped);
-                    char *filtered = arenaDupString(arena, str);
-                    jv_free(dumped);
-                    jv_free(jq_result);
-                    return filtered;
-                }
-                jv_free(jq_result);
+            char *filtered = applyJqFilterToJson(arena, json, jq);
+            if (filtered) {
+                return filtered;
             }
-            jv_free(input);
         }
         // Fall back to unfiltered JSON on error
     }
@@ -203,4 +201,27 @@ static char* generateErrorJson(Arena *arena, const char *errorMessage) {
     json_decref(root);
     
     return resultStr;
+}
+
+static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq) {
+    // Parse input JSON
+    jv input = jv_parse(json);
+    if (jv_is_valid(input)) {
+        // Process the filter
+        jq_start(jq, input, 0);
+        jv jq_result = jq_next(jq);
+        
+        if (jv_is_valid(jq_result)) {
+            // Dump the result to a string
+            jv dumped = jv_dump_string(jq_result, 0);
+            const char *str = jv_string_value(dumped);
+            char *filtered = arenaDupString(arena, str);
+            jv_free(dumped);
+            jv_free(jq_result);
+            return filtered;
+        }
+        jv_free(jq_result);
+    }
+    jv_free(input);
+    return NULL;
 }
