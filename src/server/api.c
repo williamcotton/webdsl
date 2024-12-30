@@ -65,11 +65,11 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         }
 
         // Execute parameterized query
-        QueryNode *query = findQuery(endpoint->response);
+        QueryNode *query = findQuery(endpoint->jsonResponse);
         if (!query) {
             StringBuilder *sb = StringBuilder_new(arena);
             StringBuilder_append(sb, "{\n");
-            StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->response);
+            StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->jsonResponse);
             StringBuilder_append(sb, "}");
             return arenaDupString(arena, StringBuilder_get(sb));
         }
@@ -89,11 +89,11 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     }
 
     // Regular GET request handling
-    QueryNode *query = findQuery(endpoint->response);
+    QueryNode *query = findQuery(endpoint->jsonResponse);
     if (!query) {
         StringBuilder *sb = StringBuilder_new(arena);
         StringBuilder_append(sb, "{\n");
-        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->response);
+        StringBuilder_append(sb, "  \"error\": \"Query not found: %s\"\n", endpoint->jsonResponse);
         StringBuilder_append(sb, "}");
         return arenaDupString(arena, StringBuilder_get(sb));
     }

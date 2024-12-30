@@ -315,12 +315,12 @@ static void test_parse_website_with_api(void) {
         "  api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    response \"users\"\n"
+        "    jsonResponse \"users\"\n"
         "  }\n"
         "  api {\n"
         "    route \"/api/v1/employees\"\n"
         "    method \"POST\"\n"
-        "    response \"insert_employee\" [name, age, position]\n"
+        "    jsonResponse \"insert_employee\" [name, age, position]\n"
         "  }\n"
         "}";
     
@@ -334,14 +334,14 @@ static void test_parse_website_with_api(void) {
     ApiEndpoint *first = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
     TEST_ASSERT_EQUAL_STRING("GET", first->method);
-    TEST_ASSERT_EQUAL_STRING("users", first->response);
+    TEST_ASSERT_EQUAL_STRING("users", first->jsonResponse);
     TEST_ASSERT_NULL(first->fields);
     
     ApiEndpoint *second = first->next;
     TEST_ASSERT_NOT_NULL(second);
     TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
     TEST_ASSERT_EQUAL_STRING("POST", second->method);
-    TEST_ASSERT_EQUAL_STRING("insert_employee", second->response);
+    TEST_ASSERT_EQUAL_STRING("insert_employee", second->jsonResponse);
     
     // Test response fields
     TEST_ASSERT_NOT_NULL(second->fields);
@@ -470,7 +470,7 @@ static void test_parse_api_with_field_definitions(void) {
         "        format \"email\"\n"
         "      }\n"
         "    }\n"
-        "    response \"insertEmployee\" [name, email]\n"
+        "    jsonResponse \"insertEmployee\" [name, email]\n"
         "  }\n"
         "}";
     

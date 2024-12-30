@@ -69,7 +69,7 @@ typedef struct ApiField {
 typedef struct ApiEndpoint {
     char *route;
     char *method;
-    char *response;
+    char *jsonResponse;
     ResponseField *fields;
     ApiField *apiFields;
     struct ApiEndpoint *next;

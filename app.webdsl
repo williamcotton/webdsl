@@ -98,7 +98,7 @@ website {
     api {
         route "/api/v1/employees"
         method "GET"
-        response "employees"
+        jsonResponse "employees"
     }
 
     api {
@@ -120,7 +120,7 @@ website {
                 required false
             }
         }
-        response "insertEmployee" [name, email, team_id]
+        jsonResponse "insertEmployee" [name, email, team_id]
     }
 
     query {

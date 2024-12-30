@@ -142,7 +142,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("port", TOKEN_PORT)
     KW_MATCH("api", TOKEN_API)
     KW_MATCH("method", TOKEN_METHOD)
-    KW_MATCH("response", TOKEN_RESPONSE)
+    KW_MATCH("jsonResponse", TOKEN_JSON_RESPONSE)
     KW_MATCH("query", TOKEN_QUERY)
     KW_MATCH("sql", TOKEN_SQL)
     KW_MATCH("fields", TOKEN_FIELDS)
@@ -329,7 +329,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_PORT: return "PORT";
         case TOKEN_API: return "API";
         case TOKEN_METHOD: return "METHOD";
-        case TOKEN_RESPONSE: return "RESPONSE";
+        case TOKEN_JSON_RESPONSE: return "JSON_RESPONSE";
         case TOKEN_NUMBER: return "NUMBER";
         case TOKEN_STRING: return "STRING";
         case TOKEN_OPEN_BRACE: return "OPEN_BRACE";
