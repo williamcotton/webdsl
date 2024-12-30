@@ -6,9 +6,10 @@
 #include <libpq-fe.h>
 #pragma clang diagnostic pop
 #include "arena.h"
+#include "db_pool.h"
 
 typedef struct Database {
-    PGconn *conn;
+    ConnectionPool *pool;
     const char *conninfo;
 } Database;
 
@@ -34,5 +35,11 @@ const char* getDatabaseError(Database *db);
 // Execute a parameterized query and return the result
 // Returns NULL on error
 PGresult* executeParameterizedQuery(Database *db, const char *sql, const char **values, size_t value_count);
+
+// Get a connection from the pool
+PGconn* getDbConnection(Database *db);
+
+// Return a connection to the pool
+void releaseDbConnection(Database *db, PGconn *conn);
 
 #endif // DB_H

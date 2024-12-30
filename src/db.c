@@ -1,4 +1,5 @@
 #include "db.h"
+#include "db_pool.h"
 #include "stringbuilder.h"
 #include <limits.h>
 #include <stdio.h>
@@ -12,17 +13,15 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
 
     Database *db = arenaAlloc(arena, sizeof(Database));
     if (!db) {
-        fputs("Failed to allocate database connection\n", stderr);
+        fputs("Failed to allocate database structure\n", stderr);
         return NULL;
     }
     
     db->conninfo = arenaDupString(arena, conninfo);
-    db->conn = PQconnectdb(conninfo);
+    db->pool = initConnectionPool(arena, conninfo, 5, MAX_POOL_SIZE);
     
-    if (PQstatus(db->conn) != CONNECTION_OK) {
-        fprintf(stderr, "Database connection failed: %s", 
-                PQerrorMessage(db->conn));
-        PQfinish(db->conn);
+    if (!db->pool) {
+        fputs("Failed to initialize connection pool\n", stderr);
         return NULL;
     }
     
@@ -30,24 +29,27 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
 }
 
 PGresult* executeQuery(Database *db, const char *query) {
-    if (!db || !db->conn) {
-        fputs("Invalid database connection\n", stderr);
+    if (!db || !query) {
+        fputs("Invalid database or query\n", stderr);
         return NULL;
     }
 
-    if (!query) {
-        fputs("Query cannot be NULL\n", stderr);
+    PGconn *conn = getDbConnection(db);
+    if (!conn) {
+        fputs("Could not get database connection from pool\n", stderr);
         return NULL;
     }
-    
-    PGresult *result = PQexec(db->conn, query);
+
+    PGresult *result = PQexec(conn, query);
     if (PQresultStatus(result) != PGRES_TUPLES_OK && 
         PQresultStatus(result) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Query failed: %s", PQerrorMessage(db->conn));
+        fprintf(stderr, "Query failed: %s", PQerrorMessage(conn));
         PQclear(result);
+        releaseDbConnection(db, conn);
         return NULL;
     }
     
+    releaseDbConnection(db, conn);
     return result;
 }
 
@@ -58,14 +60,22 @@ void freeResult(PGresult *result) {
 }
 
 void closeDatabase(Database *db) {
-    if (db && db->conn) {
-        PQfinish(db->conn);
-        db->conn = NULL;
+    if (db && db->pool) {
+        closeConnectionPool(db->pool);
     }
 }
 
 const char* getDatabaseError(Database *db) {
-    return db && db->conn ? PQerrorMessage(db->conn) : "No database connection";
+    if (!db || !db->pool) return "No database connection";
+    
+    // Get a connection from the pool to check its error message
+    PGconn *conn = getDbConnection(db);
+    if (!conn) return "No available database connections";
+    
+    const char *error = PQerrorMessage(conn);
+    releaseDbConnection(db, conn);
+    
+    return error;
 }
 
 static void appendJsonString(StringBuilder *sb, const char *str) {
@@ -128,12 +138,48 @@ char* resultToJson(Arena *arena, PGresult *result) {
     return arenaDupString(arena, StringBuilder_get(sb));
 }
 
-PGresult *executeParameterizedQuery(Database *db, const char *sql, const char **values, size_t value_count) {
-    // PQexecParams expects an int for param count, so we need to check the range
-    if (value_count > INT_MAX) {
-        fprintf(stderr, "Too many query parameters: %zu exceeds maximum of %d\n", 
-                value_count, INT_MAX);
+PGresult* executeParameterizedQuery(Database *db, const char *sql, 
+                                  const char **values, size_t value_count) {
+    if (!db || !sql) return NULL;
+    
+    PGconn *conn = getDbConnection(db);
+    if (!conn) {
+        fputs("Could not get database connection from pool\n", stderr);
         return NULL;
     }
-    return PQexecParams(db->conn, sql, (int)value_count, NULL, values, NULL, NULL, 0);
+
+    PGresult *result = PQexecParams(conn, sql, (int)value_count, 
+                                   NULL, values, NULL, NULL, 0);
+    
+    if (PQresultStatus(result) != PGRES_TUPLES_OK && 
+        PQresultStatus(result) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Query failed: %s", PQerrorMessage(conn));
+        PQclear(result);
+        releaseDbConnection(db, conn);
+        return NULL;
+    }
+    
+    releaseDbConnection(db, conn);
+    return result;
+}
+
+PGconn* getDbConnection(Database *db) {
+    if (!db || !db->pool) return NULL;
+    
+    PooledConnection *conn = getConnection(db->pool);
+    return conn ? conn->conn : NULL;
+}
+
+void releaseDbConnection(Database *db, PGconn *conn) {
+    if (!db || !db->pool || !conn) return;
+    
+    // Find the PooledConnection that contains this PGconn
+    PooledConnection *pooled = db->pool->connections;
+    while (pooled) {
+        if (pooled->conn == conn) {
+            returnConnection(db->pool, pooled);
+            break;
+        }
+        pooled = pooled->next;
+    }
 }

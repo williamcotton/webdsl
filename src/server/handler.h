@@ -26,11 +26,13 @@ struct PostContext {
     struct PostData post_data;
     Arena *arena;
     enum RequestType type;
+    uint32_t : 32;
 };
 
 struct RequestContext {
     Arena *arena;
     enum RequestType type;
+    uint32_t : 32;
 };
 
 // Request handling
