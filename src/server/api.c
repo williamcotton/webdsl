@@ -19,8 +19,8 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // For POST requests with form data
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
         struct PostContext *post_ctx = con_cls;
-        StringBuilder *errors = StringBuilder_new(arena);
-        StringBuilder_append(errors, "{\n  \"errors\": {\n");
+        json_t *errors_obj = json_object();
+        json_t *error_fields = json_object();
         bool has_errors = false;
 
         // Validate each field
@@ -35,10 +35,7 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
             char *error = validateField(arena, value, field);
             if (error) {
-                if (has_errors) {
-                    StringBuilder_append(errors, ",\n");
-                }
-                StringBuilder_append(errors, "    \"%s\": \"%s\"", field->name, error);
+                json_object_set_new(error_fields, field->name, json_string(error));
                 has_errors = true;
             }
             
@@ -46,11 +43,14 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
             field = field->next;
         }
         
-        StringBuilder_append(errors, "\n  }\n}");
-        
         if (has_errors) {
-            return arenaDupString(arena, StringBuilder_get(errors));
+            json_object_set_new(errors_obj, "errors", error_fields);
+            char *json_str = json_dumps(errors_obj, JSON_INDENT(2));
+            json_decref(errors_obj);
+            return json_str;
         }
+        json_decref(errors_obj);
+        json_decref(error_fields);
 
         // If validation passed, proceed with database operation
         const char **values = arenaAlloc(arena, sizeof(char*) * 32);
@@ -90,8 +90,20 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
             if (!jq) {
                 jq = jq_init();
                 if (jq && endpoint->jqFilter) {
-                    // Compile filter once
-                    jq_compile(jq, endpoint->jqFilter);
+                    // Compile filter once and check for errors
+                    int compiled = jq_compile(jq, endpoint->jqFilter);
+                    if (!compiled) {
+                        // Get the error message if available
+                        jv error = jq_get_error_message(jq);
+                        if (jv_is_valid(error)) {
+                            const char *error_msg = jv_string_value(error);
+                            fprintf(stderr, "JQ compilation error: %s\n", error_msg);
+                            jv_free(error);
+                        }
+                        // Clean up and fall back to unfiltered JSON
+                        jq_teardown(&jq);
+                        jq = NULL;
+                    }
                 }
             }
 
@@ -128,8 +140,20 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         if (!jq) {
             jq = jq_init();
             if (jq && endpoint->jqFilter) {
-                // Compile filter once
-                jq_compile(jq, endpoint->jqFilter);
+                // Compile filter once and check for errors
+                int compiled = jq_compile(jq, endpoint->jqFilter);
+                if (!compiled) {
+                    // Get the error message if available
+                    jv error = jq_get_error_message(jq);
+                    if (jv_is_valid(error)) {
+                        const char *error_msg = jv_string_value(error);
+                        fprintf(stderr, "JQ compilation error: %s\n", error_msg);
+                        jv_free(error);
+                    }
+                    // Clean up and fall back to unfiltered JSON
+                    jq_teardown(&jq);
+                    jq = NULL;
+                }
             }
         }
 
