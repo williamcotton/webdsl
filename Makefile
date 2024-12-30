@@ -6,21 +6,13 @@ endif
 PLATFORM := $(shell sh -c 'uname -s 2>/dev/null | tr 'a-z' 'A-Z'')
 
 CC = clang
-PROFDATA = llvm-profdata
-COV = llvm-cov
-TIDY = clang-tidy
-FORMAT = clang-format
+PROFDATA = $(shell brew --prefix llvm)/bin/llvm-profdata
+COV = $(shell brew --prefix llvm)/bin/llvm-cov
+TIDY = $(shell brew --prefix llvm)/bin/clang-tidy
+FORMAT = $(shell brew --prefix llvm)/bin/clang-format
 SRC_DIR = src
 
-CFLAGS = -std=gnu2x -Ideps -Isrc -fno-common -fblocks -Weverything \
-         -Wno-declaration-after-statement -Wno-unsafe-buffer-usage \
-         -Wno-switch-default -Wno-documentation-deprecated-sync \
-         -Wno-documentation -Wno-reserved-macro-identifier \
-         -Wno-format-nonliteral -Wno-unused-command-line-argument \
-         -Wno-pre-c23-compat -Wno-covered-switch-default \
-         -I/opt/homebrew/include -L/opt/homebrew/lib \
-         -I/opt/homebrew/include/postgresql@14 \
-         -DBUILD_ENV=$(BUILD_ENV)
+CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ') -DBUILD_ENV=$(BUILD_ENV)
 
 # Add linker flags separately
 LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq
