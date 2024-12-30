@@ -4,6 +4,7 @@
 #include <microhttpd.h>
 #include "../ast.h"
 #include "../arena.h"
+#include <pthread.h>  // For thread-local storage
 
 // API request handling
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,

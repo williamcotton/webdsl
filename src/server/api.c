@@ -108,11 +108,38 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     char *json = resultToJson(arena, result);
     freeResult(result);
 
-    // Apply JQ filter if specified in endpoint
+    // Only compile and apply JQ filter if one is specified
     if (endpoint->jqFilter) {
-        char *filtered = applyJqFilter(arena, json, endpoint->jqFilter);
-        if (filtered) {
-            return filtered;
+        // Initialize JQ once per endpoint
+        static __thread jq_state *jq = NULL;
+        if (!jq) {
+            jq = jq_init();
+            if (jq && endpoint->jqFilter) {
+                // Compile filter once
+                jq_compile(jq, endpoint->jqFilter);
+            }
+        }
+
+        if (jq) {
+            // Parse input JSON
+            jv input = jv_parse(json);
+            if (jv_is_valid(input)) {
+                // Process the filter
+                jq_start(jq, input, 0);
+                jv jq_result = jq_next(jq);
+                
+                if (jv_is_valid(jq_result)) {
+                    // Dump the result to a string
+                    jv dumped = jv_dump_string(jq_result, 0);
+                    const char *str = jv_string_value(dumped);
+                    char *filtered = arenaDupString(arena, str);
+                    jv_free(dumped);
+                    jv_free(jq_result);
+                    return filtered;
+                }
+                jv_free(jq_result);
+            }
+            jv_free(input);
         }
         // Fall back to unfiltered JSON on error
     }
