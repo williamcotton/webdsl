@@ -70,6 +70,7 @@ typedef struct ApiEndpoint {
     char *route;
     char *method;
     char *jsonResponse;
+    char *jqFilter;
     ResponseField *fields;
     ApiField *apiFields;
     struct ApiEndpoint *next;

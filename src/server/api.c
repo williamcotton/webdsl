@@ -4,6 +4,7 @@
 #include "validation.h"
 #include "../db.h"
 #include "../stringbuilder.h"
+#include "../jq_wrapper.h"
 #include <string.h>
 #include <stdio.h>
 #include <jansson.h>
@@ -80,6 +81,16 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
         char *json = resultToJson(arena, result);
         freeResult(result);
+
+        // Apply JQ filter if specified in endpoint
+        if (endpoint->jqFilter) {
+            char *filtered = applyJqFilter(arena, json, endpoint->jqFilter);
+            if (filtered) {
+                return filtered;
+            }
+            // Fall back to unfiltered JSON on error
+        }
+
         return json;
     }
 
@@ -96,6 +107,16 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
     char *json = resultToJson(arena, result);
     freeResult(result);
+
+    // Apply JQ filter if specified in endpoint
+    if (endpoint->jqFilter) {
+        char *filtered = applyJqFilter(arena, json, endpoint->jqFilter);
+        if (filtered) {
+            return filtered;
+        }
+        // Fall back to unfiltered JSON on error
+    }
+
     return json;
 }
 
