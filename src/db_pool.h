@@ -2,7 +2,10 @@
 #define DB_POOL_H
 
 #include <pthread.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreserved-identifier"
 #include <libpq-fe.h>
+#pragma clang diagnostic pop
 #include <stdint.h>
 #include "arena.h"
 
