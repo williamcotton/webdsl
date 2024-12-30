@@ -107,11 +107,18 @@ char* generateCss(Arena *arena, StyleBlockNode *styleHead) {
     StringBuilder *sb = StringBuilder_new(arena);
     
     for (StyleBlockNode *block = styleHead; block; block = block->next) {
-        StringBuilder_append(sb, "%s {\n", block->selector);
-        for (StylePropNode *prop = block->propHead; prop; prop = prop->next) {
-            StringBuilder_append(sb, "  %s: %s;\n", prop->property, prop->value);
+        // Handle raw CSS blocks
+        if (block->propHead && strcmp(block->propHead->property, "raw_css") == 0) {
+            // Raw CSS blocks should be output directly without wrapping
+            StringBuilder_append(sb, "%s\n", block->propHead->value);
+        } else {
+            // Regular property-value pairs
+            StringBuilder_append(sb, "%s {\n", block->selector);
+            for (StylePropNode *prop = block->propHead; prop; prop = prop->next) {
+                StringBuilder_append(sb, "  %s: %s;\n", prop->property, prop->value);
+            }
+            StringBuilder_append(sb, "}\n\n");
         }
-        StringBuilder_append(sb, "}\n\n");
     }
     
     return arenaDupString(arena, StringBuilder_get(sb));
