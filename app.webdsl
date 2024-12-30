@@ -100,7 +100,10 @@ website {
         method "GET"
         jsonResponse "employees"
         jq {
-            .rows | map({name: .name, email: .email})
+            {
+                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email})),
+                metadata : { total: (.rows | map(select(.type == "metadata")) | .[0].total_count) }
+            }
         }
     }
 
@@ -129,7 +132,14 @@ website {
     query {
         name "employees"
         sql {
-            SELECT id, team_id, name, email FROM employees ORDER BY id
+            SELECT * FROM (
+                SELECT 'metadata' as type, COUNT(*) as total_count, NULL as id, NULL as team_id, NULL as name, NULL as email 
+                FROM employees
+                UNION ALL
+                SELECT 'data' as type, NULL as total_count, id, team_id, name, email 
+                FROM employees ORDER BY id LIMIT 20
+            ) results
+            ORDER BY type DESC, id ASC;
         }
     }
 
