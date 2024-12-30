@@ -28,7 +28,7 @@ static void test_lexer_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "website pages page styles route layout content name author version alt layouts port api method response query sql";
+    const char *input = "website pages page styles route layout content name author version alt layouts port api method response query sql css";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
@@ -49,7 +49,8 @@ static void test_lexer_keywords(void) {
         TOKEN_METHOD,
         TOKEN_RESPONSE,
         TOKEN_QUERY,
-        TOKEN_SQL
+        TOKEN_SQL,
+        TOKEN_CSS
     };
     
     for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
@@ -328,6 +329,22 @@ static void test_lexer_raw_blocks(void) {
     token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
     TEST_ASSERT_EQUAL_STRING("Unterminated raw block.", token.lexeme);
+
+    // Test CSS raw block
+    const char *css_input = 
+        "css {\n"
+        "    .test { color: blue; }\n"
+        "}";
+    
+    initLexer(&lexer, css_input, &parser);  
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, ".test"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "color: blue;"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
     
     freeArena(parser.arena);
 }

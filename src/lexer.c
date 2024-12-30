@@ -126,6 +126,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
 
     KW_MATCH("website", TOKEN_WEBSITE)
     KW_MATCH("html", TOKEN_HTML)
+    KW_MATCH("css", TOKEN_CSS)
     KW_MATCH("pages", TOKEN_PAGES)
     KW_MATCH("database", TOKEN_DATABASE)
     KW_MATCH("page", TOKEN_PAGE)
@@ -166,7 +167,7 @@ static Token identifierOrKeyword(Lexer *lexer) {
     TokenType type = checkKeyword(lexer->start, length);
     
     // Check for raw block keywords
-    if (type == TOKEN_HTML || type == TOKEN_SQL) {
+    if (type == TOKEN_HTML || type == TOKEN_SQL || type == TOKEN_CSS) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
             return rawBlock(lexer);
@@ -312,6 +313,7 @@ const char* getTokenTypeName(TokenType type) {
     switch (type) {
         case TOKEN_WEBSITE: return "WEBSITE";
         case TOKEN_HTML: return "HTML";
+        case TOKEN_CSS: return "CSS";
         case TOKEN_PAGES: return "PAGES";
         case TOKEN_DATABASE: return "DATABASE";
         case TOKEN_PAGE: return "PAGE";

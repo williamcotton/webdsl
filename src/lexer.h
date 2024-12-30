@@ -24,6 +24,7 @@ typedef enum {
     TOKEN_SQL,
     TOKEN_DATABASE,
     TOKEN_HTML,
+    TOKEN_CSS,
     TOKEN_NUMBER,
 
     TOKEN_STRING,
