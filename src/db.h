@@ -5,6 +5,10 @@
 #pragma clang diagnostic ignored "-Wreserved-identifier"
 #include <libpq-fe.h>
 #pragma clang diagnostic pop
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+#include <jansson.h>
+#pragma clang diagnostic pop
 #include "arena.h"
 #include "db_pool.h"
 

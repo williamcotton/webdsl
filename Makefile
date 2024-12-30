@@ -19,7 +19,7 @@ LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq
 
 PG_CFLAGS = -I$(shell pg_config --includedir)
 PG_LDFLAGS = -L$(shell pg_config --libdir) -lpq
-LIBS = -lmicrohttpd $(PG_LDFLAGS)
+LIBS = -lmicrohttpd $(PG_LDFLAGS) -ljansson
 DEV_CFLAGS = -g -O0
 # TEST_CFLAGS = -Werror
 PROJECT_SRC = $(wildcard src/*/*.c) $(wildcard src/*.c)
