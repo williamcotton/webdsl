@@ -500,6 +500,96 @@ static void test_parse_api_with_field_definitions(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_raw_css_block(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  styles {\n"
+        "    \"body\" {\n"
+        "      css {\n"
+        "        margin: 0;\n"
+        "        padding: 20px;\n"
+        "        font-family: Arial, sans-serif;\n"
+        "      }\n"
+        "    }\n"
+        "    \".container\" {\n"
+        "      \"width\" \"960px\"\n"
+        "      \"margin\" \"0 auto\"\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->styleHead);
+    
+    // Check raw CSS block
+    StyleBlockNode *bodyStyle = website->styleHead;
+    TEST_ASSERT_EQUAL_STRING("body", bodyStyle->selector);
+    TEST_ASSERT_NOT_NULL(bodyStyle->propHead);
+    TEST_ASSERT_EQUAL_STRING("raw_css", bodyStyle->propHead->property);
+    TEST_ASSERT_NOT_NULL(strstr(bodyStyle->propHead->value, "margin: 0;"));
+    TEST_ASSERT_NOT_NULL(strstr(bodyStyle->propHead->value, "padding: 20px;"));
+    TEST_ASSERT_NOT_NULL(strstr(bodyStyle->propHead->value, "font-family: Arial, sans-serif;"));
+    
+    // Check regular style block
+    StyleBlockNode *containerStyle = bodyStyle->next;
+    TEST_ASSERT_NOT_NULL(containerStyle);
+    TEST_ASSERT_EQUAL_STRING(".container", containerStyle->selector);
+    TEST_ASSERT_NOT_NULL(containerStyle->propHead);
+    TEST_ASSERT_EQUAL_STRING("width", containerStyle->propHead->property);
+    TEST_ASSERT_EQUAL_STRING("960px", containerStyle->propHead->value);
+    TEST_ASSERT_EQUAL_STRING("margin", containerStyle->propHead->next->property);
+    TEST_ASSERT_EQUAL_STRING("0 auto", containerStyle->propHead->next->value);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_nested_css_block(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  styles {\n"
+        "    css {\n"
+        "      body {\n"
+        "        background: #ffffff;\n"
+        "        color: #333;\n"
+        "      }\n"
+        "      h1 {\n"
+        "        color: #ff6600;\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->styleHead);
+    
+    // Check raw CSS block
+    StyleBlockNode *style = website->styleHead;
+    TEST_ASSERT_NOT_NULL(style);
+    TEST_ASSERT_NOT_NULL(style->propHead);
+    TEST_ASSERT_EQUAL_STRING("raw_css", style->propHead->property);
+    
+    // Check that the CSS content includes the nested blocks
+    const char *cssValue = style->propHead->value;
+    TEST_ASSERT_NOT_NULL(cssValue);
+    TEST_ASSERT_NOT_NULL(strstr(cssValue, "body {"));
+    TEST_ASSERT_NOT_NULL(strstr(cssValue, "background: #ffffff;"));
+    TEST_ASSERT_NOT_NULL(strstr(cssValue, "color: #333;"));
+    TEST_ASSERT_NOT_NULL(strstr(cssValue, "h1 {"));
+    TEST_ASSERT_NOT_NULL(strstr(cssValue, "color: #ff6600;"));
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -518,5 +608,7 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_website_with_query);
     RUN_TEST(test_parse_html_content);
     RUN_TEST(test_parse_api_with_field_definitions);
+    RUN_TEST(test_parse_raw_css_block);
+    RUN_TEST(test_parse_nested_css_block);
     return UNITY_END();
 }

@@ -299,7 +299,29 @@ static StyleBlockNode *parseStyleBlock(Parser *parser) {
     advanceParser(parser);
     
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after style selector.");
+
+    // Check if this is a raw CSS block
+    if (parser->current.type == TOKEN_CSS || parser->current.type == TOKEN_RAW_BLOCK) {
+        advanceParser(parser);
+        
+        // Create a single property node to hold the raw CSS
+        StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
+        memset(prop, 0, sizeof(StylePropNode));
+        prop->property = "raw_css";
+        prop->value = copyString(parser, parser->previous.lexeme);
+        block->propHead = prop;
+        
+        // If it was a RAW_BLOCK, we don't need to consume a closing brace
+        if (parser->current.type == TOKEN_OPEN_BRACE) {
+            consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'css'.");
+            consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after CSS block.");
+        }
+        
+        consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after style block.");
+        return block;
+    }
     
+    // Regular property parsing
     StylePropNode *propHead = parseStyleProps(parser);
     block->propHead = propHead;
     
@@ -350,7 +372,34 @@ static StyleBlockNode *parseStyles(Parser *parser) {
 
     while (!parser->hadError) {
         if (parser->current.type == TOKEN_CLOSE_BRACE) {
+            advanceParser(parser);  // Consume the closing brace
             break;
+        } else if (parser->current.type == TOKEN_CSS || parser->current.type == TOKEN_RAW_BLOCK) {
+            StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
+            memset(block, 0, sizeof(StyleBlockNode));
+            
+            // Create a single property node to hold the raw CSS
+            StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
+            memset(prop, 0, sizeof(StylePropNode));
+            prop->property = "raw_css";
+            
+            if (parser->current.type == TOKEN_CSS) {
+                advanceParser(parser);  // consume 'css'
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'css'");
+            }
+            
+            prop->value = copyString(parser, parser->current.lexeme);
+            block->propHead = prop;
+            
+            advanceParser(parser);  // consume the CSS content
+            
+            if (!head) {
+                head = block;
+                tail = block;
+            } else {
+                tail->next = block;
+                tail = block;
+            }
         } else if (parser->current.type == TOKEN_STRING) {
             StyleBlockNode *block = parseStyleBlock(parser);
             if (block) {
@@ -362,6 +411,14 @@ static StyleBlockNode *parseStyles(Parser *parser) {
                     tail = block;
                 }
             }
+        } else if (parser->current.type == TOKEN_EOF) {
+            char buffer[256];
+            snprintf(buffer, sizeof(buffer), 
+                    "Unexpected end of file in styles block at line %d\n",
+                    parser->current.line);
+            fputs(buffer, stderr);
+            parser->hadError = 1;
+            break;
         } else {
             char buffer[256];
             snprintf(buffer, sizeof(buffer), 
@@ -373,7 +430,6 @@ static StyleBlockNode *parseStyles(Parser *parser) {
         }
     }
 
-    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of styles block.");
     return head;
 }
 

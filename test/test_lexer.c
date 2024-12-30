@@ -393,6 +393,43 @@ static void test_lexer_api_response_fields(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_nested_css_blocks(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = 
+        "css {\n"
+        "    body {\n"
+        "        background: #ffffff;\n"
+        "        color: #333;\n"
+        "    }\n"
+        "    h1 {\n"
+        "        color: #ff6600;\n"
+        "    }\n"
+        "}";
+    
+    initLexer(&lexer, input, &parser);
+    
+    // Should get raw block containing all the CSS content
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(token.lexeme);
+    
+    // Verify the raw block contains all the nested CSS
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "body {"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "background: #ffffff;"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "color: #333;"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "h1 {"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "color: #ff6600;"));
+    
+    // Should get EOF
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -407,5 +444,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_api_features);
     RUN_TEST(test_lexer_raw_blocks);
     RUN_TEST(test_lexer_api_response_fields);
+    RUN_TEST(test_lexer_nested_css_blocks);
     return UNITY_END();
 }

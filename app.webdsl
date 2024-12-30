@@ -84,12 +84,14 @@ website {
     }
 
     styles {
-        body {
-            background "#ffffff"
-            color "#333"
-        }
-        h1 {
-            color "#ff6600"
+        css {
+            body {
+                background: #ffffff;
+                color: #333;
+            }
+            h1 {
+                color: #ff6600;
+            }
         }
     }
 
