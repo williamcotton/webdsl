@@ -6,31 +6,35 @@ WebDSL is an experimental domain-specific language and server implementation for
 
 - Declarative website configuration
 - Layout system with content placeholders
-- Page routing and templating
-- CSS styling support
-- REST API endpoints
+- Page routing and templating 
+- CSS styling with raw CSS blocks
+- REST API endpoints with validation
 - PostgreSQL database integration
+- JQ filtering of JSON responses
+- Form handling and validation
 - Hot reloading of configuration changes
 - CORS support
-- Form handling
+- Memory-safe arena allocation
 
 ## Prerequisites
 
 - C compiler (clang recommended)
 - libmicrohttpd
 - PostgreSQL development libraries
+- libjq (JQ JSON processor)
+- libjansson (JSON parser)
 - Make
 
 ### macOS
 
 ```bash
-brew install libmicrohttpd postgresql@14
+brew install libmicrohttpd postgresql@14 jq jansson
 ```
 
 ### Linux
 
 ```bash
-sudo apt-get install libmicrohttpd libpq-dev
+sudo apt-get install libmicrohttpd-dev libpq-dev libjq-dev libjansson-dev
 ```
 
 ## Building
@@ -50,170 +54,303 @@ make build/webdsl
 
 The server will automatically reload when changes are made to the configuration file.
 
-## Configuration Example
+## Language Features
+
+### Website Configuration
+
+The root `website` block defines the overall configuration:
 
 ```webdsl
 website {
     name "My Website"
+    author "John Smith" 
+    version "1.0"
     port 3123
+    database "postgresql://localhost/mydb"
+    
+    // Website contents...
+}
+```
 
-    layouts {
-        "blog" {
-            html {
-                <header>
-                    <h1>Blog Layout</h1>
+### Layouts
+
+Layouts provide reusable page templates with content placeholders:
+
+```webdsl
+layouts {
+    "main" {
+        html {
+            <html>
+                <head>
+                    <title>My Site</title>
+                </head>
+                <body>
                     <nav>
-                        <a href="/">Home</a> |
-                        <a href="/blog">Blog</a>
+                        <a href="/">Home</a>
+                        <a href="/about">About</a>
                     </nav>
-                </header>
-                <!-- content -->
-                <footer>
-                    <p>Blog footer - Copyright 2024</p>
-                </footer>
+                    
+                    <!-- content -->
+                    
+                    <footer>Copyright 2024</footer>
+                </body>
+            </html>
+        }
+    }
+}
+```
+
+The `<!-- content -->` marker indicates where page content will be inserted.
+
+### Pages
+
+Pages define routes and content:
+
+```webdsl
+pages {
+    page "home" {
+        route "/"
+        layout "main"
+        content {
+            h1 "Welcome!"
+            p "This is my homepage"
+            
+            div {
+                h2 "Features"
+                ul {
+                    li "Easy to use"
+                    li "Fast and reliable"
+                }
             }
         }
     }
-
-    pages {
-        page "blog" {
-            route "/blog"
-            layout "blog"
-            html {
-                <article>
-                    <h1>Latest Posts</h1>
-                    <p>Check out our latest blog posts!</p>
-                    <div class="post">
-                        <h2>First Post</h2>
-                        <p>This is our first blog post using raw HTML.</p>
-                    </div>
-                </article>
-            }
+    
+    page "about" {
+        route "/about"
+        layout "main"
+        html {
+            <div class="about">
+                <h1>About Us</h1>
+                <p>We build awesome websites!</p>
+            </div>
         }
     }
 }
 ```
 
-## API Example
+Pages can use either the structured `content` syntax or raw HTML with the `html` block.
 
-This example demonstrates how to define an API endpoint that returns a list of employees from a PostgreSQL database.
+### Styles
 
-### GET /api/v1/employees
+CSS styles can be defined in multiple ways:
 
 ```webdsl
-website {
-    name "Employee API"
-    port 3123
-    database "postgresql://localhost/demo"
-
-    api {
-        route "/api/v1/employees"
-        method "GET"
-        response "employees"
-    }
-
-    query {
-        name "employees"
-        sql {
-            SELECT id, name, email FROM employees ORDER BY id
+styles {
+    // Raw CSS block
+    css {
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: sans-serif;
         }
+        
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+        }
+    }
+    
+    // Structured style blocks
+    "h1" {
+        "color" "#333"
+        "font-size" "32px"
+    }
+    
+    ".button" {
+        "background" "#007bff"
+        "color" "white"
+        "padding" "10px 20px"
     }
 }
 ```
 
-### POST /api/v1/employees
+### API Endpoints
 
-This example demonstrates how to define an API endpoint that inserts a new employee into the database.
-
-```webdsl
-website {
-    name "Employee API"
-    port 3123
-    database "postgresql://localhost/demo"
-
-    api {
-        route "/api/v1/employees"
-        method "POST"
-        response "insertEmployee" [name, email, team_id]
-    }
-
-    query {
-        name "insertEmployee"
-        sql {
-            INSERT INTO employees (name, email, team_id) VALUES ($1, $2, $3)
-        }
-    }
-}
-```
-
-## Field Validation
-
-The WebDSL language supports rich field validation for API endpoints:
+API endpoints connect routes to database queries with optional validation:
 
 ```webdsl
 api {
-    route "/api/v1/users"
+    route "/api/v1/employees"
+    method "GET"
+    jsonResponse "employees"
+    jq {
+        // Transform response to include metadata
+        {
+            data: (.rows | map(select(.type == "data"))),
+            metadata: {
+                total: (.rows | map(select(.type == "metadata")) | .[0].total_count)
+            }
+        }
+    }
+}
+
+api {
+    route "/api/v1/employees" 
     method "POST"
     fields {
-        "username" {
+        "name" {
             type "string"
             required true
-            length 3..50
-            validate {
-                match "^[a-zA-Z][a-zA-Z0-9_]{2,}$"  // Must start with letter, then alphanumeric
-            }
+            length 2..100
         }
         "email" {
             type "string"
             required true
             format "email"
         }
-        "age" {
+        "team_id" {
             type "number"
-            validate {
-                range 13..120
-            }
-        }
-        "phone" {
-            type "string"
-            format "phone"
             required false
         }
     }
-    response "createUser" [username, email]
+    jsonResponse "insertEmployee" [name, email, team_id]
 }
 ```
 
-### Available Validations
+### Database Queries
 
-#### String Fields
-- `required` - Field must be present and non-empty
-- `length min..max` - String length must be between min and max characters
-- `format` - Predefined format validation:
-  - `email` - Valid email address
-  - `url` - Valid HTTP/HTTPS URL
-  - `date` - Date in YYYY-MM-DD format
-  - `time` - Time in HH:MM or HH:MM:SS format
-  - `phone` - Phone number with optional +, (), -, and spaces
-  - `uuid` - UUID in standard format
-  - `ipv4` - IPv4 address
-- `validate.match` - Custom regex pattern validation
+Named SQL queries that can be referenced by API endpoints:
 
-#### Number Fields
-- `required` - Field must be present
-- `validate.range min..max` - Number must be between min and max values
+```webdsl
+query {
+    name "employees"
+    sql {
+        SELECT * FROM (
+            -- Metadata row with total count
+            SELECT 'metadata' as type, COUNT(*) as total_count, 
+                   NULL as id, NULL as name, NULL as email
+            FROM employees
+            
+            UNION ALL
+            
+            -- Data rows with pagination
+            SELECT 'data' as type, NULL as total_count,
+                   id, name, email
+            FROM employees 
+            ORDER BY id 
+            LIMIT 20
+        ) results
+        ORDER BY type DESC;
+    }
+}
 
-### Validation Response
-
-When validation fails, the API returns a JSON response with validation errors:
-
-```json
-{
-  "errors": {
-    "username": "Must start with letter, then alphanumeric",
-    "email": "Invalid email format",
-    "age": "Number must be between 13 and 120"
-  }
+query {
+    name "insertEmployee"
+    sql {
+        INSERT INTO employees (name, email, team_id)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, email
+    }
 }
 ```
+
+### Field Validation
+
+The validation system supports multiple validation types:
+
+```webdsl
+fields {
+    "username" {
+        type "string"
+        required true
+        length 3..50
+    }
+    
+    "email" {
+        type "string" 
+        required true
+        format "email"
+    }
+    
+    "phone" {
+        type "string"
+        format "phone"
+        required false
+    }
+    
+    "age" {
+        type "number"
+        required true
+        validate {
+            range 13..120
+        }
+    }
+    
+    "website" {
+        type "string"
+        format "url"
+    }
+    
+    "uuid" {
+        type "string"
+        format "uuid"
+    }
+}
+```
+
+Supported format validations:
+- `email` - Valid email address
+- `url` - Valid HTTP/HTTPS URL  
+- `date` - Date in YYYY-MM-DD format
+- `time` - Time in HH:MM or HH:MM:SS format
+- `phone` - Phone number with optional +, (), -, and spaces
+- `uuid` - UUID in standard format
+- `ipv4` - IPv4 address
+
+### JQ Filtering
+
+API responses can be transformed using JQ filters:
+
+```webdsl
+api {
+    route "/api/v1/data"
+    method "GET" 
+    jsonResponse "getData"
+    jq {
+        {
+            items: (.rows | map({
+                id: .id,
+                name: .name,
+                // Computed fields
+                fullName: "\(.first_name) \(.last_name)",
+                age: (now - (.dob | fromdateiso8601) | . / (365.25 * 86400) | floor)
+            })),
+            metadata: {
+                count: (.rows | length),
+                generated: (now | todateiso8601)
+            }
+        }
+    }
+}
+```
+
+## Runtime Features
+
+- Hot reloading of configuration changes
+- Memory-safe arena allocation
+- Connection pooling for PostgreSQL
+- CORS support
+- Structured error responses
+- Request validation
+- JSON response transformation
+- Static file serving
+- Form data handling
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
 
