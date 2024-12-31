@@ -3,7 +3,6 @@
 #include "routing.h"
 #include "validation.h"
 #include "../db.h"
-#include "../stringbuilder.h"
 #include <jq.h>
 #include <string.h>
 #include <stdio.h>

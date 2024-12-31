@@ -1,6 +1,5 @@
 #include "db.h"
 #include "db_pool.h"
-#include "stringbuilder.h"
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
