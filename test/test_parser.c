@@ -610,19 +610,6 @@ static void test_parse_api_with_jq_filter(void) {
     initParser(&parser, input);
     WebsiteNode *website = parseProgram(&parser);
     
-    // Debug output
-    printf("\nTesting API with JQ filter:\n");
-    printf("Parser had error: %d\n", parser.hadError);
-    if (website && website->apiHead) {
-        printf("API endpoint found:\n");
-        printf("  Route: %s\n", website->apiHead->route);
-        printf("  Method: %s\n", website->apiHead->method);
-        printf("  Response: %s\n", website->apiHead->jsonResponse);
-        printf("  JQ Filter: %s\n", website->apiHead->jqFilter ? website->apiHead->jqFilter : "NULL");
-    } else {
-        printf("No API endpoint found or website is NULL\n");
-    }
-    
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
     TEST_ASSERT_NOT_NULL(website->apiHead);
