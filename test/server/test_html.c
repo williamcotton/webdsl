@@ -1,16 +1,12 @@
-#include "../src/server/server.h"
-#include "../src/server/handler.h"
-#include "../src/server/routing.h"
-#include "../src/server/api.h"
-#include "../src/server/html.h"
-#include "../src/ast.h"
-#include "../src/arena.h"
-#include "unity/unity.h"
+#include "../../src/server/html.h"
+#include "../../src/ast.h"
+#include "../../src/arena.h"
+#include "../unity/unity.h"
+#include "../test_runners.h"
 #include <string.h>
-#include "test_runners.h"
 
 // Function prototype
-int run_server_tests(void);
+int run_server_html_tests(void);
 
 static void test_generate_html_content_simple(void) {
     Arena *arena = createArena(1024 * 64);  // 64KB arena for this test
@@ -74,54 +70,6 @@ static void test_generate_html_content_link(void) {
     freeArena(arena);
 }
 
-static void test_generate_css_simple(void) {
-    Arena *arena = createArena(1024 * 64);
-    
-    StylePropNode *prop = arenaAlloc(arena, sizeof(StylePropNode));
-    prop->property = arenaDupString(arena, "color");
-    prop->value = arenaDupString(arena, "#000");
-    prop->next = NULL;
-
-    StyleBlockNode *block = arenaAlloc(arena, sizeof(StyleBlockNode));
-    block->selector = arenaDupString(arena, "body");
-    block->propHead = prop;
-    block->next = NULL;
-
-    char* result = generateCss(arena, block);
-    TEST_ASSERT_NOT_NULL(result);
-    TEST_ASSERT_TRUE(strstr(result, "body {") != NULL);
-    TEST_ASSERT_TRUE(strstr(result, "color: #000;") != NULL);
-    TEST_ASSERT_TRUE(strstr(result, "}") != NULL);
-
-    freeArena(arena);
-}
-
-static void test_generate_css_multiple_properties(void) {
-    Arena *arena = createArena(1024 * 64);
-    
-    StylePropNode *prop2 = arenaAlloc(arena, sizeof(StylePropNode));
-    prop2->property = arenaDupString(arena, "margin");
-    prop2->value = arenaDupString(arena, "0");
-    prop2->next = NULL;
-
-    StylePropNode *prop1 = arenaAlloc(arena, sizeof(StylePropNode));
-    prop1->property = arenaDupString(arena, "color");
-    prop1->value = arenaDupString(arena, "#000");
-    prop1->next = prop2;
-
-    StyleBlockNode *block = arenaAlloc(arena, sizeof(StyleBlockNode));
-    block->selector = arenaDupString(arena, "body");
-    block->propHead = prop1;
-    block->next = NULL;
-
-    char* result = generateCss(arena, block);
-    TEST_ASSERT_NOT_NULL(result);
-    TEST_ASSERT_TRUE(strstr(result, "color: #000;") != NULL);
-    TEST_ASSERT_TRUE(strstr(result, "margin: 0;") != NULL);
-
-    freeArena(arena);
-}
-
 static void test_generate_html_content_image(void) {
     Arena *arena = createArena(1024 * 64);
     
@@ -139,13 +87,50 @@ static void test_generate_html_content_image(void) {
     freeArena(arena);
 }
 
-int run_server_tests(void) {
+static void test_generate_nested_html_content(void) {
+    Arena *arena = createArena(1024 * 64);
+    
+    // Create a more complex nested structure
+    ContentNode *grandchild = arenaAlloc(arena, sizeof(ContentNode));
+    grandchild->type = arenaDupString(arena, "span");
+    grandchild->arg1 = arenaDupString(arena, "Nested text");
+    grandchild->arg2 = NULL;
+    grandchild->children = NULL;
+    grandchild->next = NULL;
+
+    ContentNode *child = arenaAlloc(arena, sizeof(ContentNode));
+    child->type = arenaDupString(arena, "p");
+    child->arg1 = NULL;
+    child->arg2 = NULL;
+    child->children = grandchild;
+    child->next = NULL;
+
+    ContentNode *parent = arenaAlloc(arena, sizeof(ContentNode));
+    parent->type = arenaDupString(arena, "div");
+    parent->arg1 = NULL;
+    parent->arg2 = NULL;
+    parent->children = child;
+    parent->next = NULL;
+
+    char* result = generateHtmlContent(arena, parent, 0);
+    TEST_ASSERT_NOT_NULL(result);
+    
+    // Verify structure
+    TEST_ASSERT_TRUE(strstr(result, "<div>") != NULL);
+    TEST_ASSERT_TRUE(strstr(result, "<p>") != NULL);
+    TEST_ASSERT_TRUE(strstr(result, "<span>Nested text</span>") != NULL);
+    TEST_ASSERT_TRUE(strstr(result, "</p>") != NULL);
+    TEST_ASSERT_TRUE(strstr(result, "</div>") != NULL);
+
+    freeArena(arena);
+}
+
+int run_server_html_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_generate_html_content_simple);
     RUN_TEST(test_generate_html_content_nested);
     RUN_TEST(test_generate_html_content_link);
     RUN_TEST(test_generate_html_content_image);
-    RUN_TEST(test_generate_css_simple);
-    RUN_TEST(test_generate_css_multiple_properties);
+    RUN_TEST(test_generate_nested_html_content);
     return UNITY_END();
 }
