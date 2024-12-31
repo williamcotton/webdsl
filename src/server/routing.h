@@ -32,10 +32,18 @@ typedef struct QueryHashEntry {
     struct QueryHashEntry *next;
 } QueryHashEntry;
 
+typedef struct JQHashEntry {
+    const char *filter;
+    jq_state *jq;
+    struct JQHashEntry *next;
+} JQHashEntry;
+
 void buildRouteMaps(WebsiteNode *website, Arena *arena);
 PageNode* findPage(const char *url);
 LayoutNode* findLayout(const char *identifier);
 ApiEndpoint* findApi(const char *url, const char *method);
 QueryNode* findQuery(const char *name);
+jq_state* findOrCreateJQ(const char *filter);
+void cleanupJQCache(void);
 
 #endif // SERVER_ROUTING_H

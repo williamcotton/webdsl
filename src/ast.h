@@ -2,6 +2,10 @@
 #define AST_H
 #include <stdint.h>
 #include <stdbool.h>
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
+#include <jq.h>
+#pragma clang diagnostic pop
 
 typedef struct ContentNode {
     char *type;

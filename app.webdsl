@@ -108,6 +108,17 @@ website {
     }
 
     api {
+        route "/api/v1/teams"
+        method "GET"
+        jsonResponse "teams"
+        jq {
+            {
+                data: (.rows | map({id: .id, name: .name})),
+            }
+        }
+    }
+
+    api {
         route "/api/v1/employees"
         method "POST"
         fields {
@@ -140,6 +151,13 @@ website {
                 FROM employees ORDER BY id LIMIT 20
             ) results
             ORDER BY type DESC, id ASC;
+        }
+    }
+
+    query {
+        name "teams"
+        sql {
+            SELECT * FROM teams
         }
     }
 

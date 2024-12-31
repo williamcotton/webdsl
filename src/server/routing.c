@@ -2,11 +2,15 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <jq.h>
 
 static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
 static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
 static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
+static JQHashEntry *jqTable[HASH_TABLE_SIZE];
+static __thread JQHashEntry **threadJQTable = NULL;
 
 static uint32_t hashString(const char *str) __attribute__((no_sanitize("unsigned-integer-overflow"))) {
     uint32_t hash = 2166136261u;
@@ -17,11 +21,19 @@ static uint32_t hashString(const char *str) __attribute__((no_sanitize("unsigned
     return hash;
 }
 
+static JQHashEntry** getThreadJQTable(void) {
+    if (!threadJQTable) {
+        threadJQTable = calloc(HASH_TABLE_SIZE, sizeof(JQHashEntry*));
+    }
+    return threadJQTable;
+}
+
 void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     memset(routeTable, 0, sizeof(routeTable));
     memset(layoutTable, 0, sizeof(layoutTable));
     memset(apiTable, 0, sizeof(apiTable));
     memset(queryTable, 0, sizeof(queryTable));
+    memset(jqTable, 0, sizeof(jqTable));
 
     // Build page routes
     for (PageNode *page = website->pageHead; page; page = page->next) {
@@ -120,4 +132,69 @@ QueryNode* findQuery(const char *name) {
         entry = entry->next;
     }
     return NULL;
+}
+
+jq_state* findOrCreateJQ(const char *filter) {
+    JQHashEntry **table = getThreadJQTable();
+    uint32_t hash = hashString(filter) & HASH_MASK;
+    JQHashEntry *entry = table[hash];
+    
+    // Look for existing entry
+    while (entry) {
+        if (strcmp(entry->filter, filter) == 0) {
+            return entry->jq;
+        }
+        entry = entry->next;
+    }
+    
+    // Create new entry
+    entry = malloc(sizeof(JQHashEntry));
+    entry->filter = filter;
+    entry->jq = jq_init();
+    
+    if (!entry->jq) {
+        free(entry);
+        return NULL;
+    }
+
+    // Compile the filter
+    int compiled = jq_compile(entry->jq, filter);
+    if (!compiled) {
+        jv error = jq_get_error_message(entry->jq);
+        if (jv_is_valid(error)) {
+            const char *error_msg = jv_string_value(error);
+            fprintf(stderr, "JQ compilation error: %s\n", error_msg);
+            jv_free(error);
+        }
+        jq_teardown(&entry->jq);
+        free(entry);
+        return NULL;
+    }
+
+    // Add to hash table
+    entry->next = table[hash];
+    table[hash] = entry;
+    
+    return entry->jq;
+}
+
+void cleanupJQCache(void) {
+    if (!threadJQTable) {
+        return;
+    }
+
+    for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+        JQHashEntry *entry = threadJQTable[i];
+        while (entry) {
+            JQHashEntry *next = entry->next;
+            if (entry->jq) {
+                jq_teardown(&entry->jq);
+            }
+            free(entry);
+            entry = next;
+        }
+    }
+    
+    free(threadJQTable);
+    threadJQTable = NULL;
 }

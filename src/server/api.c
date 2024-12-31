@@ -8,12 +8,15 @@
 #include <string.h>
 #include <stdio.h>
 #include <jansson.h>
+#include <pthread.h>
+#include <uthash.h>
+#include <stdint.h>
 
 extern Arena *serverArena;
 extern Database *db;
 
 static char* generateErrorJson(const char *errorMessage);
-static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq);
+static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter);
 
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // For POST requests with form data
@@ -87,33 +90,9 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
         // Apply JQ filter if specified in endpoint
         if (endpoint->jqFilter) {
-            // Initialize JQ once per endpoint
-            static __thread jq_state *jq = NULL;
-            if (!jq) {
-                jq = jq_init();
-                if (jq && endpoint->jqFilter) {
-                    // Compile filter once and check for errors
-                    int compiled = jq_compile(jq, endpoint->jqFilter);
-                    if (!compiled) {
-                        // Get the error message if available
-                        jv error = jq_get_error_message(jq);
-                        if (jv_is_valid(error)) {
-                            const char *error_msg = jv_string_value(error);
-                            fprintf(stderr, "JQ compilation error: %s\n", error_msg);
-                            jv_free(error);
-                        }
-                        // Clean up and fall back to unfiltered JSON
-                        jq_teardown(&jq);
-                        jq = NULL;
-                    }
-                }
-            }
-
-            if (jq) {
-                char *filtered = applyJqFilterToJson(arena, json, jq);
-                if (filtered) {
-                    return filtered;
-                }
+            char *filtered = applyJqFilterToJson(arena, json, endpoint->jqFilter);
+            if (filtered) {
+                return filtered;
             }
             // Fall back to unfiltered JSON on error
         }
@@ -137,33 +116,9 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 
     // Only compile and apply JQ filter if one is specified
     if (endpoint->jqFilter) {
-        // Initialize JQ once per endpoint
-        static __thread jq_state *jq = NULL;
-        if (!jq) {
-            jq = jq_init();
-            if (jq && endpoint->jqFilter) {
-                // Compile filter once and check for errors
-                int compiled = jq_compile(jq, endpoint->jqFilter);
-                if (!compiled) {
-                    // Get the error message if available
-                    jv error = jq_get_error_message(jq);
-                    if (jv_is_valid(error)) {
-                        const char *error_msg = jv_string_value(error);
-                        fprintf(stderr, "JQ compilation error: %s\n", error_msg);
-                        jv_free(error);
-                    }
-                    // Clean up and fall back to unfiltered JSON
-                    jq_teardown(&jq);
-                    jq = NULL;
-                }
-            }
-        }
-
-        if (jq) {
-            char *filtered = applyJqFilterToJson(arena, json, jq);
-            if (filtered) {
-                return filtered;
-            }
+        char *filtered = applyJqFilterToJson(arena, json, endpoint->jqFilter);
+        if (filtered) {
+            return filtered;
         }
         // Fall back to unfiltered JSON on error
     }
@@ -232,7 +187,12 @@ static char* generateErrorJson(const char *errorMessage) {
     return jsonStr;
 }
 
-static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq) {
+static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter) {
+    jq_state *jq = findOrCreateJQ(filter);
+    if (!jq) {
+        return NULL;
+    }
+
     // Parse input JSON
     jv input = jv_parse(json);
     if (!jv_is_valid(input)) {
@@ -248,9 +208,8 @@ static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq) {
     // Process the filter
     jq_start(jq, input, 0);
     jv jq_result = jq_next(jq);
-    
+
     if (!jv_is_valid(jq_result)) {
-        // Get error message from invalid result
         jv error = jv_invalid_get_msg(jq_result);
         if (jv_is_valid(error)) {
             fprintf(stderr, "JQ execution error: %s\n", jv_string_value(error));
@@ -268,5 +227,6 @@ static char* applyJqFilterToJson(Arena *arena, const char *json, jq_state *jq) {
     jv_free(dumped);
     jv_free(jq_result);
     jv_free(input);
+    
     return filtered;
 }

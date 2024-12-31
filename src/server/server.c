@@ -5,6 +5,8 @@
 #include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <jq.h>
+#include <pthread.h>
 
 WebsiteNode *currentWebsite = NULL;
 struct MHD_Daemon *httpd = NULL;
@@ -48,11 +50,15 @@ void stopServer(void) {
         MHD_stop_daemon(httpd);
         httpd = NULL;
     }
+
+    cleanupJQCache();
+
+    if (currentWebsite) {
+        currentWebsite = NULL;
+    }
+
     if (db) {
         closeDatabase(db);
         db = NULL;
-    }
-    if (currentWebsite) {
-        currentWebsite = NULL;
     }
 }
