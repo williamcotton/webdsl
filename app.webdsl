@@ -106,8 +106,8 @@ website {
         jsonResponse "employees"
         jq {
             {
-                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email})),
-                metadata : {
+                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
+                metadata: {
                     total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
                     team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query)
                 }
@@ -118,16 +118,38 @@ website {
     query {
         name "employees"
         sql {
-            SELECT NULLIF($1, '{}')::integer as team_id_query, * FROM (
-                SELECT 'metadata' as type, COUNT(*) as total_count, NULL as id, NULL as team_id, NULL as name, NULL as email 
-                FROM employees
-                WHERE (team_id = NULLIF($1, '{}')::integer OR NULLIF($1, '{}') IS NULL)
-                UNION ALL
-                SELECT 'data' as type, NULL as total_count, id, team_id, name, email 
-                FROM employees
-                WHERE (team_id = NULLIF($1, '{}')::integer OR NULLIF($1, '{}') IS NULL)
-                ORDER BY id LIMIT 20
-            ) results
+            WITH filtered_employees AS (
+                SELECT *
+                FROM employees 
+                WHERE filter_by_optional(team_id, $1)
+            ),
+            metadata AS (
+                SELECT
+                    'metadata'::text as type,
+                    COUNT(*)::bigint as total_count,
+                    NULL::bigint as id,
+                    NULL::integer as team_id,
+                    NULL::text as name,
+                    NULL::text as email,
+                    parse_optional($1, 0::integer) as team_id_query
+                FROM filtered_employees
+            ),
+            employee_data AS (
+                SELECT
+                    'data'::text as type,
+                    NULL::bigint as total_count,
+                    id::bigint,
+                    team_id::integer,
+                    name::text,
+                    email::text,
+                    NULL::integer as team_id_query
+                FROM filtered_employees
+                ORDER BY id
+                LIMIT 20
+            )
+            SELECT * FROM metadata
+            UNION ALL
+            SELECT * FROM employee_data
             ORDER BY type DESC, id ASC;
         }
     }
