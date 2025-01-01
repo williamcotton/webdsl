@@ -16,6 +16,9 @@ extern Database *db;
 
 static char* generateErrorJson(const char *errorMessage);
 static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter);
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena);
+static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
+                                      const char *key, const char *value);
 
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     // For POST requests with form data
@@ -154,6 +157,11 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
         return ret;
     }
 
+    // Build request context JSON for preFilter
+    char *request_context = buildRequestContextJson(connection, arena);
+
+    printf("Request context: %s\n", request_context);
+    
     // Generate API response with form data
     char *json = generateApiResponse(arena, api, con_cls);
     
@@ -228,4 +236,39 @@ static char* applyJqFilterToJson(Arena *arena, const char *json, const char *fil
     jv_free(input);
     
     return filtered;
+}
+
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena) {
+    (void)arena; // Suppress unused parameter warning
+    json_t *context = json_object();
+    
+    // Build query parameters object
+    json_t *query = json_object();
+    
+    // Get URL query parameters
+    MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND,
+        json_kv_iterator, query);
+    
+    json_object_set_new(context, "query", query);
+    
+    // Build headers object
+    json_t *headers = json_object();
+    MHD_get_connection_values(connection, MHD_HEADER_KIND,
+        json_kv_iterator, headers);
+    json_object_set_new(context, "headers", headers);
+    
+    // Convert to string
+    char *json_str = json_dumps(context, JSON_COMPACT);
+    json_decref(context);
+    
+    return json_str;
+}
+
+// Helper callback for MHD_get_connection_values
+static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
+                                      const char *key, const char *value) {
+    (void)kind; // Suppress unused parameter warning
+    json_t *obj = (json_t*)cls;
+    json_object_set_new(obj, key, json_string(value));
+    return MHD_YES;
 }

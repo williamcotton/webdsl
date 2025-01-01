@@ -17,4 +17,9 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
 // API response generation
 char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls);
 
+// Internal functions (if needed by tests)
+#ifdef TESTING
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena);
+#endif
+
 #endif // SERVER_API_H
