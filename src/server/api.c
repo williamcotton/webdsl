@@ -16,7 +16,9 @@ extern Database *db;
 
 static char* generateErrorJson(const char *errorMessage);
 static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter);
-static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, void *con_cls, const char *method);
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
+                                   void *con_cls, const char *method, 
+                                   const char *url, const char *version);
 static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value);
 
@@ -131,6 +133,8 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                ApiEndpoint *api,
                                const char *method,
+                               const char *url,
+                               const char *version,
                                void *con_cls,
                                Arena *arena) {
     // Handle OPTIONS requests for CORS
@@ -157,8 +161,9 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
         return ret;
     }
 
-    // Build request context JSON for preFilter
-    char *request_context = buildRequestContextJson(connection, arena, con_cls, method);
+    // Build request context JSON for preFilter with actual URL and version
+    char *request_context = buildRequestContextJson(connection, arena, con_cls,
+                                                  method, url, version);
 
     printf("Request context: %s\n", request_context);
     
@@ -238,12 +243,16 @@ static char* applyJqFilterToJson(Arena *arena, const char *json, const char *fil
     return filtered;
 }
 
-static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, void *con_cls, const char *method) {
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
+                                   void *con_cls, const char *method, 
+                                   const char *url, const char *version) {
     (void)arena; // Suppress unused parameter warning
     json_t *context = json_object();
 
-    // Add method to context
+    // Add method, url and version to context
     json_object_set_new(context, "method", json_string(method));
+    json_object_set_new(context, "url", json_string(url));
+    json_object_set_new(context, "version", json_string(version));
     
     // Build query parameters object
     json_t *query = json_object();

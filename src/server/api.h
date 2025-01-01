@@ -11,6 +11,8 @@
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                ApiEndpoint *api,
                                const char *method,
+                               const char *url,
+                               const char *version,
                                void *con_cls,
                                Arena *arena);
 
