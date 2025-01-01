@@ -17,7 +17,10 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                Arena *arena);
 
 // API response generation
-char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls);
+char* generateApiResponse(Arena *arena, 
+                        ApiEndpoint *endpoint, 
+                        void *con_cls,
+                        const char *requestContext);
 
 // Internal functions (if needed by tests)
 #ifdef TESTING

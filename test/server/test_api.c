@@ -9,6 +9,19 @@
 // Function prototype
 int run_server_api_tests(void);
 
+// Add mock request context for testing
+static const char* getMockRequestContext(void) {
+    return "{"
+           "\"method\":\"GET\","
+           "\"url\":\"/api/test\","
+           "\"version\":\"HTTP/1.1\","
+           "\"query\":{\"param\":\"value\"},"
+           "\"headers\":{\"Content-Type\":\"application/json\"},"
+           "\"cookies\":{},"
+           "\"body\":{}"
+           "}";
+}
+
 static void test_generate_api_error_response(void) {
     Arena *arena = createArena(1024 * 64);
     
@@ -23,7 +36,7 @@ static void test_generate_api_error_response(void) {
     struct PostContext ctx = {0};
     ctx.post_data.value_count = 0;
 
-    char *response = generateApiResponse(arena, &endpoint, &ctx);
+    char *response = generateApiResponse(arena, &endpoint, &ctx, getMockRequestContext());
     TEST_ASSERT_NOT_NULL(response);
     TEST_ASSERT_TRUE(strstr(response, "error") != NULL);
 
@@ -79,7 +92,7 @@ static void test_api_validation_errors(void) {
     memcpy(ctx.post_data.values, temp_values, sizeof(char*) * 2);
     ctx.post_data.value_count = 2;
 
-    char *response = generateApiResponse(arena, &endpoint, &ctx);
+    char *response = generateApiResponse(arena, &endpoint, &ctx, getMockRequestContext());
     TEST_ASSERT_NOT_NULL(response);
     
     // Check for validation errors in the JSON response
@@ -102,7 +115,7 @@ static void test_api_get_request(void) {
         .jqFilter = ".[] | {id, name}"  // Test JQ filter
     };
 
-    char *response = generateApiResponse(arena, &endpoint, NULL);
+    char *response = generateApiResponse(arena, &endpoint, NULL, getMockRequestContext());
     TEST_ASSERT_NOT_NULL(response);
     // Note: Actual JSON validation would depend on database content
     
@@ -139,7 +152,7 @@ static void test_api_post_request_success(void) {
     memcpy(ctx.post_data.values, temp_values, sizeof(char*) * 2);
     ctx.post_data.value_count = 2;
 
-    char *response = generateApiResponse(arena, &endpoint, &ctx);
+    char *response = generateApiResponse(arena, &endpoint, &ctx, getMockRequestContext());
     TEST_ASSERT_NOT_NULL(response);
     
     freeArena(arena);

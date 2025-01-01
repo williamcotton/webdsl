@@ -98,12 +98,37 @@ website {
     api {
         route "/api/v1/employees"
         method "GET"
+        preFilter jq {
+            {
+                team_id: (.query.team_id // null)
+            }
+        }
         jsonResponse "employees"
         jq {
             {
                 data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email})),
-                metadata : { total: (.rows | map(select(.type == "metadata")) | .[0].total_count) }
+                metadata : {
+                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
+                    team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query)
+                }
             }
+        }
+    }
+
+    query {
+        name "employees"
+        sql {
+            SELECT NULLIF($1, '{}')::integer as team_id_query, * FROM (
+                SELECT 'metadata' as type, COUNT(*) as total_count, NULL as id, NULL as team_id, NULL as name, NULL as email 
+                FROM employees
+                WHERE (team_id = NULLIF($1, '{}')::integer OR NULLIF($1, '{}') IS NULL)
+                UNION ALL
+                SELECT 'data' as type, NULL as total_count, id, team_id, name, email 
+                FROM employees
+                WHERE (team_id = NULLIF($1, '{}')::integer OR NULLIF($1, '{}') IS NULL)
+                ORDER BY id LIMIT 20
+            ) results
+            ORDER BY type DESC, id ASC;
         }
     }
 
@@ -138,20 +163,6 @@ website {
             }
         }
         jsonResponse "insertEmployee" [name, email, team_id]
-    }
-
-    query {
-        name "employees"
-        sql {
-            SELECT * FROM (
-                SELECT 'metadata' as type, COUNT(*) as total_count, NULL as id, NULL as team_id, NULL as name, NULL as email 
-                FROM employees
-                UNION ALL
-                SELECT 'data' as type, NULL as total_count, id, team_id, name, email 
-                FROM employees ORDER BY id LIMIT 20
-            ) results
-            ORDER BY type DESC, id ASC;
-        }
     }
 
     query {

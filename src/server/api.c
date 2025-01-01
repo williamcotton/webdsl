@@ -22,7 +22,10 @@ static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *a
 static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value);
 
-char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
+char* generateApiResponse(Arena *arena, 
+                        ApiEndpoint *endpoint, 
+                        void *con_cls,
+                        const char *requestContext) {
     // For POST requests with form data
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
         struct PostContext *post_ctx = con_cls;
@@ -104,13 +107,63 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
         return json;
     }
 
-    // Regular GET request handling
+    // Apply preFilter if it exists to get query parameters
+    const char **values = NULL;
+    size_t value_count = 0;
+    
+    if (endpoint->preJqFilter) {
+        char *filtered = applyJqFilterToJson(arena, requestContext, endpoint->preJqFilter);
+        if (!filtered) {
+            return generateErrorJson("Failed to apply preFilter");
+        }
+        
+        // Parse the filtered JSON to extract parameters
+        json_error_t error;
+        json_t *params = json_loads(filtered, 0, &error);
+        if (!params) {
+            return generateErrorJson("Failed to parse preFilter result");
+        }
+
+        // Convert JSON object to query parameters
+        if (json_is_object(params)) {
+            value_count = json_object_size(params);
+            values = arenaAlloc(arena, sizeof(char*) * value_count);
+            
+            const char *key;
+            json_t *value;
+            size_t index = 0;
+            
+            json_object_foreach(params, key, value) {
+                if (json_is_string(value)) {
+                    values[index++] = arenaDupString(arena, json_string_value(value));
+                } else {
+                    char *str = json_dumps(value, JSON_COMPACT);
+                    if (str) {
+                        values[index++] = arenaDupString(arena, str);
+                        free(str);
+                    } else {
+                        values[index++] = arenaDupString(arena, "{}");
+                    }
+                }
+            }
+        }
+        
+        json_decref(params);
+    }
+
+    // Execute query with parameters from preFilter
     QueryNode *query = findQuery(endpoint->jsonResponse);
     if (!query) {
         return generateErrorJson("Query not found");
     }
 
-    PGresult *result = executeQuery(db, query->sql);
+    PGresult *result;
+    if (values && value_count > 0) {
+        result = executeParameterizedQuery(db, query->sql, values, value_count);
+    } else {
+        result = executeQuery(db, query->sql);
+    }
+
     if (!result) {
         return generateErrorJson(getDatabaseError(db));
     }
@@ -118,7 +171,7 @@ char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     char *json = resultToJson(arena, result);
     freeResult(result);
 
-    // Only compile and apply JQ filter if one is specified
+    // Apply postFilter (jqFilter) if specified
     if (endpoint->jqFilter) {
         char *filtered = applyJqFilterToJson(arena, json, endpoint->jqFilter);
         if (filtered) {
@@ -161,14 +214,14 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
         return ret;
     }
 
-    // Build request context JSON for preFilter with actual URL and version
+    // Build request context JSON for preFilter
     char *request_context = buildRequestContextJson(connection, arena, con_cls,
                                                   method, url, version);
 
     printf("Request context: %s\n", request_context);
     
-    // Generate API response with form data
-    char *json = generateApiResponse(arena, api, con_cls);
+    // Generate API response with request context
+    char *json = generateApiResponse(arena, api, con_cls, request_context);
     
     // Use arena to allocate the response copy
     size_t json_len = strlen(json);
