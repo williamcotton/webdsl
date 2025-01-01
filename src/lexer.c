@@ -168,10 +168,35 @@ static Token identifierOrKeyword(Lexer *lexer) {
     TokenType type = checkKeyword(lexer->start, length);
     
     // Check for raw block keywords
-    if (type == TOKEN_HTML || type == TOKEN_SQL || type == TOKEN_CSS || type == TOKEN_JQ) {
+    if (type == TOKEN_HTML) {
+        skipWhitespace(lexer);
+        if (peek(lexer) == '{') {
+            Token token = makeToken(lexer, TOKEN_HTML);
+            return token;
+        }
+    }
+    
+    if (type == TOKEN_SQL) {
+        skipWhitespace(lexer);
+        if (peek(lexer) == '{') {
+            Token token = makeToken(lexer, TOKEN_SQL);
+            return token;
+        }
+    }
+    
+    if (type == TOKEN_CSS) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
             return rawBlock(lexer);
+        }
+    }
+    
+    // Special handling for JQ blocks
+    if (type == TOKEN_JQ) {
+        skipWhitespace(lexer);
+        if (peek(lexer) == '{') {
+            Token token = makeToken(lexer, TOKEN_JQ);
+            return token;
         }
     }
     
@@ -186,6 +211,8 @@ static Token stringLiteral(Lexer *lexer) {
     if (!isAtEnd(lexer) && 
         peek(lexer) == '"' && 
         peekNext(lexer) == '"') {
+        
+        printf("Found triple quote at line %d\n", lexer->line);
         
         // Consume the other two quotes
         advance(lexer);
@@ -209,11 +236,13 @@ static Token stringLiteral(Lexer *lexer) {
         }
         
         if (isAtEnd(lexer)) {
+            printf("Hit end of file while looking for closing triple quote\n");
             return errorToken(lexer->parser, "Unterminated triple-quoted string.", lexer->line);
         }
         
         // Create token before consuming closing quotes
         Token token = makeToken(lexer, TOKEN_STRING);
+        printf("Triple quoted content: '%s'\n", token.lexeme);
         
         // Consume the closing quotes
         advance(lexer);
@@ -377,7 +406,17 @@ Token getNextToken(Lexer *lexer) {
 
     Token token;
     switch (c) {
-        case '{': token = makeToken(lexer, TOKEN_OPEN_BRACE); break;
+        case '{': 
+            // Check if we just returned a HTML, SQL or JQ token
+            if (lexer->previous.type == TOKEN_JQ || 
+                lexer->previous.type == TOKEN_HTML ||
+                lexer->previous.type == TOKEN_SQL) {
+                // Back up to include the opening brace
+                lexer->current--;
+                return rawBlock(lexer);
+            }
+            token = makeToken(lexer, TOKEN_OPEN_BRACE); 
+            break;
         case '}': token = makeToken(lexer, TOKEN_CLOSE_BRACE); break;
         case '(': token = makeToken(lexer, TOKEN_OPEN_PAREN); break;
         case ')': token = makeToken(lexer, TOKEN_CLOSE_PAREN); break;
@@ -408,5 +447,7 @@ Token getNextToken(Lexer *lexer) {
         }
     }
 
+    // Store this token for next time
+    lexer->previous = token;
     return token;
 }

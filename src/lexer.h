@@ -59,6 +59,7 @@ typedef struct Lexer {
     struct Parser *parser;
     int line;
     int inBrackets;  // Track if we're inside brackets
+    Token previous;  // Track previous token
 } Lexer;
 
 void initLexer(Lexer *lexer, const char *source, struct Parser *parser);

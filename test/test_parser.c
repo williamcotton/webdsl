@@ -430,25 +430,41 @@ static void test_parse_html_content(void) {
         "}";
     
     initParser(&parser, input);
+    printf("\n=== Starting test_parse_html_content ===\n");
+    
     WebsiteNode *website = parseProgram(&parser);
+    printf("Parser error status: %d\n", parser.hadError);
     
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
     
     // Check layout HTML
+    printf("Checking layout...\n");
     TEST_ASSERT_NOT_NULL(website->layoutHead);
     TEST_ASSERT_NOT_NULL(website->layoutHead->bodyContent);
+    printf("Layout body content type: %s\n", website->layoutHead->bodyContent->type);
     TEST_ASSERT_EQUAL_STRING("raw_html", website->layoutHead->bodyContent->type);
-    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyContent->arg1, "<header>") != NULL);
-    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyContent->arg1, "<!-- content -->") != NULL);
+    
+    const char* layoutHtml = website->layoutHead->bodyContent->arg1;
+    printf("Layout HTML content: '%s'\n", layoutHtml ? layoutHtml : "NULL");
+    TEST_ASSERT_NOT_NULL(layoutHtml);
+    TEST_ASSERT_TRUE(strstr(layoutHtml, "<header>") != NULL);
+    TEST_ASSERT_TRUE(strstr(layoutHtml, "<!-- content -->") != NULL);
     
     // Check page HTML
+    printf("\nChecking page...\n");
     TEST_ASSERT_NOT_NULL(website->pageHead);
     TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
+    printf("Page content type: %s\n", website->pageHead->contentHead->type);
     TEST_ASSERT_EQUAL_STRING("raw_html", website->pageHead->contentHead->type);
-    TEST_ASSERT_TRUE(strstr(website->pageHead->contentHead->arg1, "<h1>Welcome</h1>") != NULL);
+    
+    const char* pageHtml = website->pageHead->contentHead->arg1;
+    printf("Page HTML content: '%s'\n", pageHtml ? pageHtml : "NULL");
+    TEST_ASSERT_NOT_NULL(pageHtml);
+    TEST_ASSERT_TRUE(strstr(pageHtml, "<h1>Welcome</h1>") != NULL);
     
     freeArena(parser.arena);
+    printf("=== Finished test_parse_html_content ===\n\n");
 }
 
 static void test_parse_api_with_field_definitions(void) {

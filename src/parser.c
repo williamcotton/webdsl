@@ -65,20 +65,22 @@ static LayoutNode *parseLayout(Parser *parser) {
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
             case TOKEN_HTML: {
-                advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
-                layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                memset(layout->bodyContent, 0, sizeof(ContentNode));
-                layout->bodyContent->type = "raw_html";
-                layout->bodyContent->arg1 = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_RAW_BLOCK: {
-                advanceParser(parser);
-                layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                memset(layout->bodyContent, 0, sizeof(ContentNode));
-                layout->bodyContent->type = "raw_html";
-                layout->bodyContent->arg1 = copyString(parser, parser->previous.lexeme);
+                advanceParser(parser);  // consume HTML token
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(layout->bodyContent, 0, sizeof(ContentNode));
+                    layout->bodyContent->type = "raw_html";
+                    layout->bodyContent->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected HTML block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
                 break;
             }
             case TOKEN_CONTENT: {
@@ -151,20 +153,22 @@ static PageNode *parsePage(Parser *parser) {
                 break;
             }
             case TOKEN_HTML: {
-                advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected HTML string after 'html'.");
-                page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
-                memset(page->contentHead, 0, sizeof(ContentNode));
-                page->contentHead->type = "raw_html";
-                page->contentHead->arg1 = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_RAW_BLOCK: {
-                advanceParser(parser);
-                page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
-                memset(page->contentHead, 0, sizeof(ContentNode));
-                page->contentHead->type = "raw_html";
-                page->contentHead->arg1 = copyString(parser, parser->previous.lexeme);
+                advanceParser(parser);  // consume HTML token
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(page->contentHead, 0, sizeof(ContentNode));
+                    page->contentHead->type = "raw_html";
+                    page->contentHead->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected HTML block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
                 break;
             }
             case TOKEN_CONTENT: {
@@ -216,23 +220,33 @@ static ContentNode *parseContent(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
         
-        // Handle raw HTML blocks - both """ style and { } style
-        if (parser->current.type == TOKEN_HTML || parser->current.type == TOKEN_RAW_BLOCK) {
-            advanceParser(parser);
+        // Handle raw HTML blocks
+        if (parser->current.type == TOKEN_HTML) {
+            advanceParser(parser);  // consume HTML token
             
-            ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
-            memset(node, 0, sizeof(ContentNode));
-            node->type = "raw_html";
-            node->arg1 = copyString(parser, parser->previous.lexeme);
-            
-            if (!head) {
-                head = node;
-                tail = node;
+            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
+                memset(node, 0, sizeof(ContentNode));
+                node->type = "raw_html";
+                node->arg1 = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);  // consume raw block or string
+                
+                if (!head) {
+                    head = node;
+                    tail = node;
+                } else {
+                    tail->next = node;
+                    tail = node;
+                }
+                continue;
             } else {
-                tail->next = node;
-                tail = node;
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Expected HTML block at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
             }
-            continue;
         }
 
         ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
@@ -458,7 +472,7 @@ static ApiEndpoint *parseApi(Parser *parser) {
 
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
-        
+
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
@@ -532,9 +546,20 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 }
                 break;
             }
-            case TOKEN_RAW_BLOCK: {
-                endpoint->jqFilter = copyString(parser, parser->current.lexeme);
-                advanceParser(parser);
+            case TOKEN_JQ: {
+                advanceParser(parser);  // Consume JQ token
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK) {
+                    endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected JQ filter block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
                 break;
             }
             case TOKEN_FIELDS: {
@@ -636,9 +661,9 @@ static ApiField *parseApiFields(Parser *parser) {
 static QueryNode *parseQuery(Parser *parser) {
     QueryNode *query = arenaAlloc(parser->arena, sizeof(QueryNode));
     memset(query, 0, sizeof(QueryNode));
-
+    
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'query'.");
-
+    
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
         #pragma clang diagnostic push
@@ -650,17 +675,28 @@ static QueryNode *parseQuery(Parser *parser) {
                 query->name = copyString(parser, parser->previous.lexeme);
                 break;
             }
-            case TOKEN_SQL:
-            case TOKEN_RAW_BLOCK: {
-                advanceParser(parser);
-                query->sql = copyString(parser, parser->previous.lexeme);
+            case TOKEN_SQL: {
+                advanceParser(parser);  // consume SQL token
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK || 
+                    parser->current.type == TOKEN_STRING) {
+                    query->sql = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected SQL query at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
                 break;
             }
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
-                        "Unexpected token in query block at line %d: %s\n",
-                        parser->current.line, parser->current.lexeme);
+                        "Parse error at line %d: Unexpected token in query.\n",
+                        parser->current.line);
                 fputs(buffer, stderr);
                 parser->hadError = 1;
                 break;
