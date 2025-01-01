@@ -16,7 +16,7 @@ extern Database *db;
 
 static char* generateErrorJson(const char *errorMessage);
 static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter);
-static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena);
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, void *con_cls, const char *method);
 static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value);
 
@@ -158,7 +158,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     }
 
     // Build request context JSON for preFilter
-    char *request_context = buildRequestContextJson(connection, arena);
+    char *request_context = buildRequestContextJson(connection, arena, con_cls, method);
 
     printf("Request context: %s\n", request_context);
     
@@ -238,9 +238,12 @@ static char* applyJqFilterToJson(Arena *arena, const char *json, const char *fil
     return filtered;
 }
 
-static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena) {
+static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, void *con_cls, const char *method) {
     (void)arena; // Suppress unused parameter warning
     json_t *context = json_object();
+
+    // Add method to context
+    json_object_set_new(context, "method", json_string(method));
     
     // Build query parameters object
     json_t *query = json_object();
@@ -259,9 +262,27 @@ static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *a
     MHD_get_connection_values(connection, MHD_COOKIE_KIND,
         json_kv_iterator, cookies);
     json_object_set_new(context, "cookies", cookies);
+
+    // Build body object
+    json_t *body = json_object();
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post_ctx = con_cls;
+        if (post_ctx && post_ctx->type == REQUEST_TYPE_POST) {
+            // loop over post_ctx->post_data.values and add to body
+            for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+                const char *value = post_ctx->post_data.values[i];
+                const char *key = post_ctx->post_data.keys[i];
+                if (value) {
+                    json_object_set_new(body, key, json_string(value));
+                }
+            }
+        }
+    }
+    json_object_set_new(context, "body", body);
     
     // Convert to string
     char *json_str = json_dumps(context, JSON_COMPACT);
+    json_decref(context);
     return json_str;
 }
 

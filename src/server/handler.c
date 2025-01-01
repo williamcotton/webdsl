@@ -49,6 +49,7 @@ static enum MHD_Result post_iterator(void *cls,
     // Store the value in our array
     if (post_data->value_count < 32) {
         post_data->values[post_data->value_count++] = strdup(data);
+        post_data->keys[post_data->value_count - 1] = strdup(key);
     }
     
     return MHD_YES;

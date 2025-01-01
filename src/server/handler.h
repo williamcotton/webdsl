@@ -15,6 +15,7 @@ enum RequestType {
 // Forward declarations
 struct PostData {
     char *values[32];  // Array of values matching the expected fields
+    char *keys[32];
     struct MHD_Connection *connection;
     size_t value_count;
     int error;
