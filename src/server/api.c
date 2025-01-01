@@ -244,11 +244,8 @@ static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *a
     
     // Build query parameters object
     json_t *query = json_object();
-    
-    // Get URL query parameters
     MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND,
         json_kv_iterator, query);
-    
     json_object_set_new(context, "query", query);
     
     // Build headers object
@@ -257,10 +254,14 @@ static char* buildRequestContextJson(struct MHD_Connection *connection, Arena *a
         json_kv_iterator, headers);
     json_object_set_new(context, "headers", headers);
     
+    // Build cookies object
+    json_t *cookies = json_object();
+    MHD_get_connection_values(connection, MHD_COOKIE_KIND,
+        json_kv_iterator, cookies);
+    json_object_set_new(context, "cookies", cookies);
+    
     // Convert to string
     char *json_str = json_dumps(context, JSON_COMPACT);
-    json_decref(context);
-    
     return json_str;
 }
 
