@@ -20,6 +20,7 @@ static bool parsePort(const char* str, int* result);
 static ApiEndpoint *parseApi(Parser *parser);
 static QueryNode *parseQuery(Parser *parser);
 static ApiField *parseApiFields(Parser *parser);
+static QueryParam *parseQueryParams(Parser *parser);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -693,6 +694,57 @@ static ApiField *parseApiFields(Parser *parser) {
     return head;
 }
 
+static QueryParam *parseQueryParams(Parser *parser) {
+    QueryParam *head = NULL;
+    QueryParam *tail = NULL;
+
+    consume(parser, TOKEN_OPEN_BRACKET, "Expected '[' after 'params'");
+
+    while (parser->current.type != TOKEN_CLOSE_BRACKET && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+
+        if (parser->current.type == TOKEN_STRING) {
+            QueryParam *param = arenaAlloc(parser->arena, sizeof(QueryParam));
+            memset(param, 0, sizeof(QueryParam));
+            param->name = copyString(parser, parser->current.lexeme);
+
+            if (!head) {
+                head = param;
+                tail = param;
+            } else {
+                tail->next = param;
+                tail = param;
+            }
+
+            advanceParser(parser);
+
+            if (parser->current.type == TOKEN_COMMA) {
+                advanceParser(parser);
+            } else if (parser->current.type != TOKEN_CLOSE_BRACKET) {
+                parser->hadError = 1;
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Expected ',' or ']' after parameter name at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                break;
+            }
+        } else {
+            parser->hadError = 1;
+            char buffer[256];
+            snprintf(buffer, sizeof(buffer),
+                    "Expected parameter name at line %d\n",
+                    parser->current.line);
+            fputs(buffer, stderr);
+            break;
+        }
+    }
+
+    consume(parser, TOKEN_CLOSE_BRACKET, "Expected ']' after parameter list");
+    return head;
+}
+
 static QueryNode *parseQuery(Parser *parser) {
     QueryNode *query = arenaAlloc(parser->arena, sizeof(QueryNode));
     memset(query, 0, sizeof(QueryNode));
@@ -710,13 +762,17 @@ static QueryNode *parseQuery(Parser *parser) {
                 query->name = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_PARAMS: {
+                advanceParser(parser);
+                query->params = parseQueryParams(parser);
+                break;
+            }
             case TOKEN_SQL: {
-                advanceParser(parser);  // consume SQL token
-                
+                advanceParser(parser);
                 if (parser->current.type == TOKEN_RAW_BLOCK || 
                     parser->current.type == TOKEN_STRING) {
                     query->sql = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
+                    advanceParser(parser);
                 } else {
                     char buffer[256];
                     snprintf(buffer, sizeof(buffer),

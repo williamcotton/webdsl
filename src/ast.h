@@ -81,9 +81,15 @@ typedef struct ApiEndpoint {
     struct ApiEndpoint *next;
 } ApiEndpoint;
 
+typedef struct QueryParam {
+    char *name;
+    struct QueryParam *next;
+} QueryParam;
+
 typedef struct QueryNode {
     char *name;
     char *sql;
+    QueryParam *params;
     struct QueryNode *next;
 } QueryNode;
 

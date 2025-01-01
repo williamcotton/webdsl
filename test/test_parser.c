@@ -730,6 +730,50 @@ static void test_parse_api_with_legacy_jq(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_query_with_named_params(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  query {\n"
+        "    name \"employees\"\n"
+        "    params [department, role, limit]\n"
+        "    sql {\n"
+        "      SELECT * FROM employees\n"
+        "      WHERE department = $1\n"
+        "      AND role = $2\n"
+        "      LIMIT $3\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->queryHead);
+    
+    QueryNode *query = website->queryHead;
+    TEST_ASSERT_EQUAL_STRING("employees", query->name);
+    TEST_ASSERT_NOT_NULL(query->params);
+    
+    // Verify parameter names
+    QueryParam *param = query->params;
+    TEST_ASSERT_EQUAL_STRING("department", param->name);
+    param = param->next;
+    TEST_ASSERT_EQUAL_STRING("role", param->name);
+    param = param->next;
+    TEST_ASSERT_EQUAL_STRING("limit", param->name);
+    TEST_ASSERT_NULL(param->next);
+    
+    // Verify SQL contains parameter placeholders
+    TEST_ASSERT_NOT_NULL(strstr(query->sql, "WHERE department = $1"));
+    TEST_ASSERT_NOT_NULL(strstr(query->sql, "AND role = $2"));
+    TEST_ASSERT_NOT_NULL(strstr(query->sql, "LIMIT $3"));
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -753,5 +797,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_api_with_jq_filter);
     RUN_TEST(test_parse_api_with_pre_and_post_filters);
     RUN_TEST(test_parse_api_with_legacy_jq);
+    RUN_TEST(test_parse_query_with_named_params);
     return UNITY_END();
 }
