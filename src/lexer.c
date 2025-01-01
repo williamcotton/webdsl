@@ -147,6 +147,8 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("sql", TOKEN_SQL)
     KW_MATCH("fields", TOKEN_FIELDS)
     KW_MATCH("jq", TOKEN_JQ)
+    KW_MATCH("preFilter", TOKEN_PRE_FILTER)
+    KW_MATCH("filter", TOKEN_FILTER)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -378,6 +380,8 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_FIELDS: return "FIELDS";
         case TOKEN_RANGE: return "RANGE";
         case TOKEN_JQ: return "JQ";
+        case TOKEN_PRE_FILTER: return "PRE_FILTER";
+        case TOKEN_FILTER: return "FILTER";
     }
     return "INVALID";
 }

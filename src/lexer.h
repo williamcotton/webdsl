@@ -26,6 +26,9 @@ typedef enum {
     TOKEN_HTML,
     TOKEN_CSS,
     TOKEN_NUMBER,
+    TOKEN_PRE_FILTER,
+    TOKEN_FILTER,
+    TOKEN_JQ,
 
     TOKEN_STRING,
     TOKEN_OPEN_BRACE,
@@ -40,8 +43,7 @@ typedef enum {
     TOKEN_CLOSE_BRACKET,
     TOKEN_COMMA,
     TOKEN_FIELDS,
-    TOKEN_RANGE,
-    TOKEN_JQ
+    TOKEN_RANGE
 } TokenType;
 
 typedef struct {

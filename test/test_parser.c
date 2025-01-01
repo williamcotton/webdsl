@@ -642,6 +642,94 @@ static void test_parse_api_with_jq_filter(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_api_with_pre_and_post_filters(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    method \"GET\"\n"
+        "    jsonResponse \"users\"\n"
+        "    preFilter jq {\n"
+        "      {\n"
+        "        department: .query.dept,\n"
+        "        role: .headers[\"X-Role\"]\n"
+        "      }\n"
+        "    }\n"
+        "    filter jq {\n"
+        "      .rows | map({\n"
+        "        name: .name,\n"
+        "        email: .email\n"
+        "      })\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    
+    ApiEndpoint *api = website->apiHead;
+    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
+    TEST_ASSERT_EQUAL_STRING("GET", api->method);
+    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    
+    // Verify preFilter
+    TEST_ASSERT_NOT_NULL(api->preJqFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->preJqFilter, "department: .query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->preJqFilter, "role: .headers[\"X-Role\"]"));
+    
+    // Verify postFilter
+    TEST_ASSERT_NOT_NULL(api->jqFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_api_with_legacy_jq(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  api {\n"
+        "    route \"/api/v1/users\"\n"
+        "    method \"GET\"\n"
+        "    jsonResponse \"users\"\n"
+        "    jq {\n"
+        "      .rows | map({\n"
+        "        name: .name,\n"
+        "        email: .email\n"
+        "      })\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    
+    ApiEndpoint *api = website->apiHead;
+    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
+    TEST_ASSERT_EQUAL_STRING("GET", api->method);
+    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    
+    // Verify legacy jq filter is treated as postFilter
+    TEST_ASSERT_NOT_NULL(api->jqFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
+    TEST_ASSERT_NULL(api->preJqFilter);  // Should not have preFilter
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -663,5 +751,7 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_raw_css_block);
     RUN_TEST(test_parse_nested_css_block);
     RUN_TEST(test_parse_api_with_jq_filter);
+    RUN_TEST(test_parse_api_with_pre_and_post_filters);
+    RUN_TEST(test_parse_api_with_legacy_jq);
     return UNITY_END();
 }

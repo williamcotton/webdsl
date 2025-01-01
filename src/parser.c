@@ -546,8 +546,43 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_PRE_FILTER: {
+                advanceParser(parser);  // consume preFilter token
+                consume(parser, TOKEN_JQ, "Expected 'jq' after 'preFilter'");
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK) {
+                    endpoint->preJqFilter = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected JQ filter block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                break;
+            }
+            case TOKEN_FILTER: {
+                advanceParser(parser);  // consume filter token
+                consume(parser, TOKEN_JQ, "Expected 'jq' after 'filter'");
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK) {
+                    endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected JQ filter block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                break;
+            }
             case TOKEN_JQ: {
-                advanceParser(parser);  // Consume JQ token
+                // Maintain backward compatibility with existing jq syntax
+                advanceParser(parser);  // consume JQ token
                 
                 if (parser->current.type == TOKEN_RAW_BLOCK) {
                     endpoint->jqFilter = copyString(parser, parser->current.lexeme);
