@@ -17,7 +17,7 @@ extern Database *db;
 static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_cls);
 static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
                             const char ***values, size_t *value_count);
-static void extractFilterValues(Arena *arena, const char *filtered,
+static void extractFilterValues(Arena *arena, jv filtered_jv,
                               const char ***values, size_t *value_count);
 static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter);
 static jv processJqFilter(jq_state *jq, json_t *input_json);
@@ -138,15 +138,9 @@ char* generateApiResponse(Arena *arena,
             return generateErrorJson("Failed to apply preFilter");
         }
 
-        // Convert JQ result to string for parameter extraction
-        jv dumped = jv_dump_string(filtered_jv, 0);
-        const char *filtered = jv_string_value(dumped);
-        char *filtered_copy = arenaDupString(arena, filtered);
-        jv_free(dumped);
+        // Extract values directly from jv struct
+        extractFilterValues(arena, filtered_jv, &values, &value_count);
         jv_free(filtered_jv);
-
-        // Extract values from preFilter result
-        extractFilterValues(arena, filtered_copy, &values, &value_count);
     }
 
     // Common execution path for both POST and GET
@@ -419,34 +413,33 @@ static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls
     }
 }
 
-static void extractFilterValues(Arena *arena, const char *filtered,
+static void extractFilterValues(Arena *arena, jv filtered_jv,
                               const char ***values, size_t *value_count) {
-    json_error_t error;
-    json_t *params = json_loads(filtered, 0, &error);
-    if (!params || !json_is_object(params)) {
+    if (jv_get_kind(filtered_jv) != JV_KIND_OBJECT) {
         *values = NULL;
         *value_count = 0;
         return;
     }
 
-    *value_count = json_object_size(params);
+    // Count the number of fields in the object
+    int length = jv_object_length(jv_copy(filtered_jv));
+    *value_count = length > 0 ? (size_t)length : 0;
     *values = arenaAlloc(arena, sizeof(char*) * (*value_count));
     
-    const char *key;
-    json_t *value;
     size_t index = 0;
-    
-    json_object_foreach(params, key, value) {
-        if (json_is_string(value)) {
-            (*values)[index++] = arenaDupString(arena, json_string_value(value));
+    jv_object_foreach(filtered_jv, key, value) {
+        (void)key;  // Silence unused variable warning
+        // pragma ignore -Wconditional-uninitialized
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wconditional-uninitialized"
+        if (jv_get_kind(value) == JV_KIND_STRING) {
+            (*values)[index++] = arenaDupString(arena, jv_string_value(value));
         } else {
-            char *str = json_dumps(value, JSON_COMPACT);
-            if (str) {
-                (*values)[index++] = arenaDupString(arena, str);
-                free(str);
-            } else {
-                (*values)[index++] = arenaDupString(arena, "{}");
-            }
+            // For non-string values, dump to JSON string
+            jv dumped = jv_dump_string(value, 0);
+            (*values)[index++] = arenaDupString(arena, jv_string_value(dumped));
+            jv_free(dumped);
         }
+        #pragma clang diagnostic pop
     }
 }
