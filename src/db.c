@@ -78,15 +78,39 @@ const char* getDatabaseError(Database *db) {
     return error;
 }
 
-char* resultToJson(Arena *arena, PGresult *result) {
-    if (!arena || !result) return NULL;
+json_t* resultToJson(PGresult *result) {
+    if (!result) return NULL;
+    
+    // printf("\n=== SQL Result ===\n");
+    int rowCount = PQntuples(result);
+    int colCount = PQnfields(result);
+    
+    // // Print column names
+    // printf("Columns: ");
+    // for (int i = 0; i < colCount; i++) {
+    //     printf("%s%s", PQfname(result, i), i < colCount - 1 ? ", " : "\n");
+    // }
+    
+    // // Print first few rows
+    // printf("First 3 rows:\n");
+    // for (int i = 0; i < rowCount && i < 3; i++) {
+    //     printf("Row %d: ", i);
+    //     for (int j = 0; j < colCount; j++) {
+    //         if (PQgetisnull(result, i, j)) {
+    //             printf("NULL%s", j < colCount - 1 ? ", " : "\n");
+    //         } else {
+    //             printf("%s%s", PQgetvalue(result, i, j), j < colCount - 1 ? ", " : "\n");
+    //         }
+    //     }
+    // }
+    // if (rowCount > 3) {
+    //     printf("... and %d more rows\n", rowCount - 3);
+    // }
+    // printf("================\n");
     
     json_t *root = json_object();
     json_t *rows = json_array();
     json_object_set_new(root, "rows", rows);
-    
-    int rowCount = PQntuples(result);
-    int colCount = PQnfields(result);
     
     // For each row
     for (int i = 0; i < rowCount; i++) {
@@ -107,9 +131,7 @@ char* resultToJson(Arena *arena, PGresult *result) {
         json_array_append_new(rows, row);
     }
     
-    // Convert to string
-    char *jsonStr = json_dumps(root, JSON_INDENT(2));
-    return jsonStr;
+    return root;
 }
 
 PGresult* executeParameterizedQuery(Database *db, const char *sql, 

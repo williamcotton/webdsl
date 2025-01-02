@@ -215,8 +215,6 @@ static Token stringLiteral(Lexer *lexer) {
         peek(lexer) == '"' && 
         peekNext(lexer) == '"') {
         
-        printf("Found triple quote at line %d\n", lexer->line);
-        
         // Consume the other two quotes
         advance(lexer);
         advance(lexer);
@@ -239,13 +237,11 @@ static Token stringLiteral(Lexer *lexer) {
         }
         
         if (isAtEnd(lexer)) {
-            printf("Hit end of file while looking for closing triple quote\n");
             return errorToken(lexer->parser, "Unterminated triple-quoted string.", lexer->line);
         }
         
         // Create token before consuming closing quotes
         Token token = makeToken(lexer, TOKEN_STRING);
-        printf("Triple quoted content: '%s'\n", token.lexeme);
         
         // Consume the closing quotes
         advance(lexer);

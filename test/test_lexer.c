@@ -277,12 +277,10 @@ static void test_lexer_raw_blocks(void) {
     
     // Should get HTML token first
     Token token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_HTML, token.type);
     
     // Then get raw block containing the HTML content
     token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
     TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "<div"));
     TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "Hello World"));
@@ -301,12 +299,10 @@ static void test_lexer_raw_blocks(void) {
     
     // Should get SQL token first
     token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_SQL, token.type);
     
     // Then get raw block containing the SQL content
     token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
     TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "SELECT"));
     TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "FROM users"));
@@ -431,12 +427,10 @@ static void test_lexer_jq_block(void) {
     
     // Should get JQ token first
     Token token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_JQ, token.type);
     
     // Then get raw block containing the JQ content
     token = getNextToken(&lexer);
-    printf("Got token: %s with lexeme: '%s'\n", getTokenTypeName(token.type), token.lexeme);
     TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
     TEST_ASSERT_NOT_NULL(token.lexeme);
     
@@ -447,7 +441,6 @@ static void test_lexer_jq_block(void) {
     
     // Should get EOF
     token = getNextToken(&lexer);
-    printf("Got token: %s\n", getTokenTypeName(token.type));
     TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
     
     freeArena(parser.arena);

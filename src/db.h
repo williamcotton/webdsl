@@ -25,9 +25,9 @@ Database* initDatabase(Arena *arena, const char *conninfo);
 // Returns NULL on error
 PGresult* executeQuery(Database *db, const char *sql);
 
-// Convert query result to JSON string using arena allocator
+// Convert query result to JSON object
 // Returns NULL on error
-char* resultToJson(Arena *arena, PGresult *result);
+json_t* resultToJson(PGresult *result);
 
 // Free database resources (but not arena memory)
 void freeResult(PGresult *result);
