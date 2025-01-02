@@ -15,6 +15,15 @@ WebDSL is an experimental domain-specific language and server implementation for
 - Hot reloading of configuration changes
 - CORS support
 - Memory-safe arena allocation
+- Pre-filtering of API request context
+- Request context access (query params, headers, cookies, body)
+- Advanced JQ filtering with pre and post filters
+- Named query parameters
+- Raw HTML and SQL blocks
+- Structured and raw CSS blocks
+- Form validation with multiple validation types
+- Database connection pooling
+- Thread-safe JQ filter caching
 
 ## Prerequisites
 
@@ -334,6 +343,129 @@ api {
 }
 ```
 
+### Request Context
+
+API endpoints have access to the full request context through pre-filters:
+
+```webdsl
+api {
+    route "/api/v1/data"
+    method "GET"
+    preFilter jq {
+        {
+            // Extract values from request context
+            user_id: .headers["X-User-Id"],
+            team_id: .query.team_id,
+            role: .cookies.role,
+            filters: {
+                status: (.query.status // "active"),
+                limit: (.query.limit | tonumber // 20)
+            }
+        }
+    }
+    jsonResponse "getData"
+    filter jq {
+        // Transform the response
+        .rows | map(select(.status == "active"))
+    }
+}
+```
+
+The request context includes:
+- `query` - Query parameters
+- `headers` - Request headers
+- `cookies` - Request cookies 
+- `body` - POST request body
+- `method` - Request method
+- `url` - Request URL
+- `version` - HTTP version
+
+### Named Query Parameters
+
+Queries can define named parameters that are referenced in the SQL:
+
+```webdsl
+query {
+    name "searchUsers"
+    params [status, team_id, limit]
+    sql {
+        SELECT * FROM users
+        WHERE status = $1
+        AND team_id = $2
+        LIMIT $3
+    }
+}
+```
+
+The parameters are populated from the pre-filter output in order.
+
+### Advanced JQ Filtering
+
+APIs support both pre and post filtering of data:
+
+```webdsl
+api {
+    route "/api/v1/stats"
+    method "GET"
+    
+    // Pre-filter request context
+    preFilter jq {
+        {
+            start_date: .query.start,
+            end_date: .query.end,
+            group_by: .query.grouping
+        }
+    }
+    
+    jsonResponse "getStats"
+    
+    // Post-filter response data
+    filter jq {
+        .rows | group_by(.group_by) | map({
+            key: .[0].group_by,
+            count: length,
+            total: map(.value) | add
+        })
+    }
+}
+```
+
+### Raw Blocks
+
+The language supports raw blocks for HTML, SQL and CSS:
+
+```webdsl
+page "about" {
+    route "/about"
+    html {
+        <div class="about">
+            <h1>About Us</h1>
+            <!-- Raw HTML content -->
+        </div>
+    }
+}
+
+query {
+    name "complexQuery"
+    sql {
+        WITH RECURSIVE hierarchy AS (
+            -- Raw SQL query
+        )
+        SELECT * FROM hierarchy
+    }
+}
+
+styles {
+    css {
+        /* Raw CSS block */
+        body {
+            margin: 0;
+            padding: 20px;
+        }
+    }
+}
+```
+
 ## Runtime Features
 
 - Hot reloading of configuration changes
@@ -353,4 +485,17 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Architecture
+
+Key architectural features:
+
+- Arena-based memory management for request lifecycle
+- Thread-safe connection pooling for database access
+- Cached JQ filter compilation with thread-local storage
+- Hot reload support with clean shutdown
+- Structured error handling and validation
+- CORS and security headers
+- Request context building and filtering
+- JSON response transformation pipeline
 
