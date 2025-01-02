@@ -184,7 +184,14 @@ website {
                 required false
             }
         }
-        jsonResponse "insertEmployee" [name, email, team_id]
+        preFilter jq {
+            {
+                name: (.body.name // null),
+                email: (.body.email // null),
+                team_id: (.body.team_id // null)
+            }
+        }
+        jsonResponse "insertEmployee"
     }
 
     query {
