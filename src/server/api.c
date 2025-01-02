@@ -115,9 +115,8 @@ char* generateApiResponse(Arena *arena,
     const char **values = NULL;
     size_t value_count = 0;
 
-    // Handle parameter extraction based on request type
+    // For POST requests, validate fields if specified
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
-        // Validate fields for POST requests
         char *validation_error = validatePostFields(arena, endpoint, con_cls);
         if (validation_error) {
             return validation_error;
@@ -125,8 +124,10 @@ char* generateApiResponse(Arena *arena,
         
         // Extract values from POST data
         extractPostValues(arena, endpoint, con_cls, &values, &value_count);
-    } else if (endpoint->preJqFilter) {
-        // Process preFilter for GET requests
+    }
+    
+    // Process preFilter if it exists (for both GET and POST)
+    if (endpoint->preJqFilter) {
         jq_state *pre_jq = findOrCreateJQ(endpoint->preJqFilter);
         if (!pre_jq) {
             return generateErrorJson("Failed to create preFilter");
