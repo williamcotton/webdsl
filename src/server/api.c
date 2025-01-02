@@ -9,7 +9,6 @@
 #include <jansson.h>
 #include <pthread.h>
 #include <uthash.h>
-#include <stdint.h>
 
 extern Arena *serverArena;
 extern Database *db;
@@ -24,9 +23,9 @@ static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter
 static jv processJqFilter(jq_state *jq, json_t *input_json);
 static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query, 
                                    const char **values, size_t value_count);
-static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
+static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value);
-static jv jansson_to_jv(json_t *json);
+static jv janssonToJv(json_t *json);
 
 // Fix the const qualifier drop warning
 static struct MHD_Response* createErrorResponse(const char *error_msg, int status_code) {
@@ -46,15 +45,12 @@ static char* generateErrorJson(const char *errorMessage);
 static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version);
-static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
-                                      const char *key, const char *value);
-static jv jansson_to_jv(json_t *json);
 
 static jv processJqFilter(jq_state *jq, json_t *input_json) {
     if (!jq || !input_json) return jv_invalid();
 
     // Convert to JV format
-    jv input = jansson_to_jv(input_json);
+    jv input = janssonToJv(input_json);
     if (!jv_is_valid(input)) {
         jv jv_error = jv_invalid_get_msg(input);
         if (jv_is_valid(jv_error)) {
@@ -116,41 +112,21 @@ char* generateApiResponse(Arena *arena,
                         ApiEndpoint *endpoint, 
                         void *con_cls,
                         json_t *requestContext) {
-    // Handle POST requests
+    const char **values = NULL;
+    size_t value_count = 0;
+
+    // Handle parameter extraction based on request type
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
-        // Validate fields
+        // Validate fields for POST requests
         char *validation_error = validatePostFields(arena, endpoint, con_cls);
         if (validation_error) {
             return validation_error;
         }
-
+        
         // Extract values from POST data
-        const char **values;
-        size_t value_count;
         extractPostValues(arena, endpoint, con_cls, &values, &value_count);
-
-        // Execute query and get JSON result
-        QueryNode *query = findQuery(endpoint->jsonResponse);
-        if (!query) {
-            return NULL;
-        }
-
-        json_t *jsonData = executeAndFormatQuery(arena, query, values, value_count);
-        if (!jsonData) {
-            return NULL;
-        }
-
-        // Format and return response
-        return formatResponse(arena, jsonData, endpoint->jqFilter);
-    }
-
-    // Handle GET requests
-    
-    // Process preFilter if exists
-    const char **values = NULL;
-    size_t value_count = 0;
-    
-    if (endpoint->preJqFilter) {
+    } else if (endpoint->preJqFilter) {
+        // Process preFilter for GET requests
         jq_state *pre_jq = findOrCreateJQ(endpoint->preJqFilter);
         if (!pre_jq) {
             return generateErrorJson("Failed to create preFilter");
@@ -172,7 +148,7 @@ char* generateApiResponse(Arena *arena,
         extractFilterValues(arena, filtered_copy, &values, &value_count);
     }
 
-    // Execute main query
+    // Common execution path for both POST and GET
     QueryNode *query = findQuery(endpoint->jsonResponse);
     if (!query) {
         return NULL;
@@ -183,9 +159,7 @@ char* generateApiResponse(Arena *arena,
         return NULL;
     }
 
-    // Apply postFilter and format response
-    char *response = formatResponse(arena, jsonData, endpoint->jqFilter);
-    return response;
+    return formatResponse(arena, jsonData, endpoint->jqFilter);
 }
 
 static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter) {
@@ -194,12 +168,10 @@ static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter
     if (jqFilter) {
         jq_state *jq = findOrCreateJQ(jqFilter);
         if (!jq) {
-            json_decref(jsonData);
             return NULL;
         }
 
         jv filtered_jv = processJqFilter(jq, jsonData);
-        json_decref(jsonData);
 
         if (!jv_is_valid(filtered_jv)) {
             return NULL;
@@ -216,10 +188,7 @@ static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter
 
     // No filter - just convert to string
     char *jsonString = json_dumps(jsonData, JSON_COMPACT);
-    char *response = arenaDupString(arena, jsonString);
-    free(jsonString);
-    json_decref(jsonData);
-    return response;
+    return jsonString;
 }
 
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
@@ -296,50 +265,6 @@ static char* generateErrorJson(const char *errorMessage) {
     return jsonStr;
 }
 
-// static char* applyJqFilterToJson(Arena *arena, const char *json, const char *filter) {
-//     jq_state *jq = findOrCreateJQ(filter);
-//     if (!jq) {
-//         return NULL;
-//     }
-
-//     // Parse input JSON
-//     jv input = jv_parse(json);
-//     if (!jv_is_valid(input)) {
-//         jv error = jv_invalid_get_msg(input);
-//         if (jv_is_valid(error)) {
-//             fprintf(stderr, "JQ parse error: %s\n", jv_string_value(error));
-//             jv_free(error);
-//         }
-//         jv_free(input);
-//         return NULL;
-//     }
-
-//     // Process the filter
-//     jq_start(jq, input, 0);
-//     jv jq_result = jq_next(jq);
-
-//     if (!jv_is_valid(jq_result)) {
-//         jv error = jv_invalid_get_msg(jq_result);
-//         if (jv_is_valid(error)) {
-//             fprintf(stderr, "JQ execution error: %s\n", jv_string_value(error));
-//             jv_free(error);
-//         }
-//         jv_free(jq_result);
-//         jv_free(input);
-//         return NULL;
-//     }
-
-//     // Dump the result to a string
-//     jv dumped = jv_dump_string(jq_result, 0);
-//     const char *str = jv_string_value(dumped);
-//     char *filtered = arenaDupString(arena, str);
-//     jv_free(dumped);
-//     jv_free(jq_result);
-//     jv_free(input);
-    
-//     return filtered;
-// }
-
 static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version) {
@@ -354,19 +279,19 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     // Build query parameters object
     json_t *query = json_object();
     MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND,
-        json_kv_iterator, query);
+        jsonKvIterator, query);
     json_object_set_new(context, "query", query);
     
     // Build headers object
     json_t *headers = json_object();
     MHD_get_connection_values(connection, MHD_HEADER_KIND,
-        json_kv_iterator, headers);
+        jsonKvIterator, headers);
     json_object_set_new(context, "headers", headers);
     
     // Build cookies object
     json_t *cookies = json_object();
     MHD_get_connection_values(connection, MHD_COOKIE_KIND,
-        json_kv_iterator, cookies);
+        jsonKvIterator, cookies);
     json_object_set_new(context, "cookies", cookies);
 
     // Build body object
@@ -385,16 +310,12 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
         }
     }
     json_object_set_new(context, "body", body);
-    
-    // Convert to string
-    // char *json_str = json_dumps(context, JSON_COMPACT);
-    // json_decref(context);
-    // return json_str;
+
     return context;
 }
 
 // Helper callback for MHD_get_connection_values
-static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind, 
+static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value) {
     (void)kind; // Suppress unused parameter warning
     json_t *obj = (json_t*)cls;
@@ -402,14 +323,14 @@ static enum MHD_Result json_kv_iterator(void *cls, enum MHD_ValueKind kind,
     return MHD_YES;
 }
 
-static jv jansson_to_jv(json_t *json) {
+static jv janssonToJv(json_t *json) {
     switch (json_typeof(json)) {
         case JSON_OBJECT: {
             jv obj = jv_object();
             const char *key;
             json_t *value;
             json_object_foreach(json, key, value) {
-                obj = jv_object_set(obj, jv_string(key), jansson_to_jv(value));
+                obj = jv_object_set(obj, jv_string(key), janssonToJv(value));
             }
             return obj;
         }
@@ -418,7 +339,7 @@ static jv jansson_to_jv(json_t *json) {
             size_t index;
             json_t *value;
             json_array_foreach(json, index, value) {
-                arr = jv_array_append(arr, jansson_to_jv(value));
+                arr = jv_array_append(arr, janssonToJv(value));
             }
             return arr;
         }
@@ -471,11 +392,9 @@ static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_c
     if (has_errors) {
         json_object_set_new(errors_obj, "errors", error_fields);
         char *json_str = json_dumps(errors_obj, JSON_INDENT(2));
-        json_decref(errors_obj);
         return json_str;
     }
 
-    json_decref(errors_obj);
     return NULL;
 }
 
@@ -529,6 +448,4 @@ static void extractFilterValues(Arena *arena, const char *filtered,
             }
         }
     }
-    
-    json_decref(params);
 }
