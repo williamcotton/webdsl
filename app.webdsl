@@ -395,31 +395,17 @@ website {
         
         executeQuery dynamic
         
-        postFilter lua {
-            local result = {
-                data = {},
-                metadata = {}
+        postFilter jq {
+            {
+                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
+                metadata: {
+                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
+                    team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query),
+                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
+                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
+                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+                }
             }
-            
-            for _, row in ipairs(rows) do
-                if row.type == "data" then
-                    table.insert(result.data, {
-                        id = row.id,
-                        name = row.name,
-                        email = row.email,
-                        team_id = row.team_id
-                    })
-                elseif row.type == "metadata" then
-                    result.metadata = {
-                        total = tonumber(row.total_count),
-                        offset = tonumber(query.offset or 0),
-                        limit = tonumber(query.limit or 20),
-                        has_more = tonumber(row.total_count) > (tonumber(query.offset or 0) + tonumber(query.limit or 20))
-                    }
-                end
-            end
-            
-            return result
         }
     }
 }
