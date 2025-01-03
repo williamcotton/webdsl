@@ -24,6 +24,13 @@ WebDSL is an experimental domain-specific language and server implementation for
 - Form validation with multiple validation types
 - Database connection pooling
 - Thread-safe JQ filter caching
+- Lua scripting support for request/response filtering
+- Advanced database connection pooling
+- Thread-safe prepared statement caching
+- Support for both JQ and Lua filter pipelines
+- Request context available in Lua environment
+- Automatic statement preparation and caching
+- Arena-based memory management for Lua state
 
 ## Prerequisites
 
@@ -225,6 +232,130 @@ api {
     executeQuery "insertEmployee" [name, email, team_id]
 }
 ```
+
+### Lua Filters
+
+API endpoints can use Lua scripts for pre and post filtering:
+
+```webdsl
+api {
+    route "/api/v2/employees"
+    method "GET"
+    
+    // Pre-filter using Lua
+    preFilter lua {
+        -- Access request context
+        local team_id = query.team_id
+        local offset = query.offset
+        local limit = query.limit
+        
+        -- Handle empty/null values
+        if not team_id or team_id == "" then
+            team_id = "{}"
+        end
+        
+        -- Return array of values for SQL query
+        return {team_id, offset, limit}
+    }
+    
+    executeQuery "employeesWithPagination"
+    
+    // Post-filter using Lua
+    postFilter lua {
+        -- Transform the response
+        local result = {
+            data = {},
+            metadata = {}
+        }
+        
+        -- Process rows (provided by API handler)
+        for _, row in ipairs(rows) do
+            if row.type == "data" then
+                table.insert(result.data, {
+                    name = row.name,
+                    email = row.email,
+                    team_id = row.team_id
+                })
+            elseif row.type == "metadata" then
+                result.metadata = {
+                    total = row.total_count,
+                    team_id_query = row.team_id_query,
+                    offset = row.offset,
+                    limit = row.limit,
+                    has_more = row.has_more
+                }
+            end
+        end
+        
+        return result
+    }
+}
+```
+
+The Lua environment provides access to:
+- `query` - Query parameters table
+- `headers` - Request headers table
+- `body` - POST request body table
+- `rows` - Query result rows (in post-filter)
+
+### Database Features
+
+#### Connection Pooling
+
+The server implements advanced connection pooling:
+
+```webdsl
+website {
+    database "postgresql://localhost/mydb"
+    // Pool settings are automatically configured:
+    // - Initial pool size: 20 connections
+    // - Maximum pool size: 50 connections
+    // - Connection timeout: 30 seconds
+}
+```
+
+Features:
+- Automatic connection management
+- Connection health checking
+- Statement preparation and caching
+- Thread-safe pool access
+- Automatic reconnection
+- Connection reuse
+
+#### Prepared Statements
+
+SQL queries are automatically prepared and cached:
+
+```webdsl
+query {
+    name "insertUser"
+    params [name, email, team_id]
+    sql {
+        INSERT INTO users (name, email, team_id)
+        VALUES ($1, $2, $3)
+        RETURNING id, name, email
+    }
+}
+```
+
+The server:
+- Automatically prepares statements
+- Caches prepared statements per connection
+- Handles statement invalidation
+- Provides parameter type safety
+- Manages statement lifecycle
+
+### Request Pipeline
+
+The full request processing pipeline:
+
+1. Parse incoming request
+2. Build request context (query params, headers, cookies, body)
+3. Execute pre-filter (JQ or Lua)
+4. Validate request fields
+5. Execute database query
+6. Execute post-filter (JQ or Lua)
+7. Return JSON response
 
 ### Database Queries
 
@@ -498,4 +629,25 @@ Key architectural features:
 - CORS and security headers
 - Request context building and filtering
 - JSON response transformation pipeline
+
+Key components:
+
+- Thread-local JQ filter cache
+- Lua state management with arena allocation
+- Prepared statement caching per connection
+- Connection pool with health checking
+- Request context building and filtering
+- Automatic hot reload with clean shutdown
+- Memory-safe Lua integration
+- Thread-safe database operations
+
+## Performance Features
+
+- Connection pooling reduces database connection overhead
+- Prepared statement caching improves query performance
+- Thread-local caching of compiled JQ filters
+- Arena allocation reduces memory fragmentation
+- Efficient Lua state management
+- Request context filtering optimization
+- Automatic connection health checking
 
