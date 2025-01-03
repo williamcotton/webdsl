@@ -147,6 +147,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("sql", TOKEN_SQL)
     KW_MATCH("fields", TOKEN_FIELDS)
     KW_MATCH("jq", TOKEN_JQ)
+    KW_MATCH("lua", TOKEN_LUA)
     KW_MATCH("preFilter", TOKEN_PRE_FILTER)
     KW_MATCH("filter", TOKEN_FILTER)
     KW_MATCH("params", TOKEN_PARAMS)
@@ -169,37 +170,23 @@ static Token identifierOrKeyword(Lexer *lexer) {
     }
     
     TokenType type = checkKeyword(lexer->start, length);
-    
-    // Check for raw block keywords
-    if (type == TOKEN_HTML) {
+
+    // Special handling for raw block keywords
+    if (type == TOKEN_HTML || type == TOKEN_SQL || 
+        type == TOKEN_JQ || type == TOKEN_LUA) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
-            Token token = makeToken(lexer, TOKEN_HTML);
+            Token token = makeToken(lexer, type);
+            lexer->previous = token;  // Store as previous token before processing brace
             return token;
         }
     }
     
-    if (type == TOKEN_SQL) {
-        skipWhitespace(lexer);
-        if (peek(lexer) == '{') {
-            Token token = makeToken(lexer, TOKEN_SQL);
-            return token;
-        }
-    }
-    
+    // Special handling for CSS blocks - these go directly to raw block
     if (type == TOKEN_CSS) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
             return rawBlock(lexer);
-        }
-    }
-    
-    // Special handling for JQ blocks
-    if (type == TOKEN_JQ) {
-        skipWhitespace(lexer);
-        if (peek(lexer) == '{') {
-            Token token = makeToken(lexer, TOKEN_JQ);
-            return token;
         }
     }
     
@@ -377,6 +364,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_FIELDS: return "FIELDS";
         case TOKEN_RANGE: return "RANGE";
         case TOKEN_JQ: return "JQ";
+        case TOKEN_LUA: return "LUA";
         case TOKEN_PRE_FILTER: return "PRE_FILTER";
         case TOKEN_FILTER: return "FILTER";
         case TOKEN_PARAMS: return "PARAMS";
@@ -409,10 +397,11 @@ Token getNextToken(Lexer *lexer) {
     Token token;
     switch (c) {
         case '{': 
-            // Check if we just returned a HTML, SQL or JQ token
+            // Check if we just returned a HTML, SQL, JQ or LUA token
             if (lexer->previous.type == TOKEN_JQ || 
                 lexer->previous.type == TOKEN_HTML ||
-                lexer->previous.type == TOKEN_SQL) {
+                lexer->previous.type == TOKEN_SQL ||
+                lexer->previous.type == TOKEN_LUA) {
                 // Back up to include the opening brace
                 lexer->current--;
                 return rawBlock(lexer);

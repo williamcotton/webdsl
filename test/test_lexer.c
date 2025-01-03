@@ -446,6 +446,29 @@ static void test_lexer_jq_block(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_lua_block(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = "preFilter lua { function doSomething() end }";
+    initLexer(&lexer, input, &parser);
+    
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_PRE_FILTER, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_LUA, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -462,5 +485,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_api_response_fields);
     RUN_TEST(test_lexer_nested_css_blocks);
     RUN_TEST(test_lexer_jq_block);
+    RUN_TEST(test_lexer_lua_block);
     return UNITY_END();
 }

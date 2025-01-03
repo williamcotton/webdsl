@@ -29,6 +29,7 @@ typedef enum {
     TOKEN_PRE_FILTER,
     TOKEN_FILTER,
     TOKEN_JQ,
+    TOKEN_LUA,
 
     TOKEN_STRING,
     TOKEN_OPEN_BRACE,
