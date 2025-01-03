@@ -166,6 +166,7 @@ void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *
         return;
     }
     
+    // Count table elements
     size_t count = 0;
     lua_pushnil(L);
     while (lua_next(L, -2) != 0) {
@@ -173,6 +174,12 @@ void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *
         lua_pop(L, 1);
     }
     
+    if (count == 0) {
+        *values = NULL;
+        *value_count = 0;
+        return;
+    }
+
     *value_count = count;
     *values = arenaAlloc(arena, sizeof(char*) * count);
     
