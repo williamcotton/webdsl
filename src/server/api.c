@@ -21,7 +21,7 @@ static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls
                             const char ***values, size_t *value_count);
 static void extractFilterValues(Arena *arena, jv filtered_jv,
                               const char ***values, size_t *value_count);
-static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter);
+static char* handleJqPostFilter(Arena *arena, json_t *jsonData, const char *jqFilter);
 static jv processJqFilter(jq_state *jq, json_t *input_json);
 static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query, 
                                    const char **values, size_t value_count);
@@ -166,7 +166,7 @@ char* generateApiResponse(Arena *arena,
     // Apply post-filter if it exists
     if (endpoint->postFilter) {
         if (endpoint->postFilterType == FILTER_JQ) {
-            return formatResponse(arena, jsonData, endpoint->postFilter);
+            return handleJqPostFilter(arena, jsonData, endpoint->postFilter);
         } else if (endpoint->postFilterType == FILTER_LUA) {
             return handleLuaPostFilter(arena, jsonData, requestContext, endpoint->postFilter);
         }
@@ -176,7 +176,7 @@ char* generateApiResponse(Arena *arena,
     return json_dumps(jsonData, JSON_COMPACT);
 }
 
-static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter) {
+static char* handleJqPostFilter(Arena *arena, json_t *jsonData, const char *jqFilter) {
     if (!jsonData) return NULL;
 
     if (jqFilter) {
