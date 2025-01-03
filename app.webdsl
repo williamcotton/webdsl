@@ -216,11 +216,14 @@ website {
         preFilter lua {
             -- Extract and validate team_id from query params
             local team_id = query.team_id
-            if team_id then
-                team_id = tonumber(team_id)
+            
+            -- Return empty object string '{}' for null/empty values
+            -- to match JQ behavior with filter_by_optional
+            if not team_id or team_id == "" then
+                team_id = "{}"
             end
             
-            -- Return table of values for SQL query
+            -- Return array of values for SQL query
             return {team_id}
         }
         jsonResponse "employees"
