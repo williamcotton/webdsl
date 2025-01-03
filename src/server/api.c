@@ -115,7 +115,8 @@ char* generateApiResponse(Arena *arena,
                         json_t *requestContext) {
     const char **values = NULL;
     size_t value_count = 0;
-
+    json_t *preFilterResult = NULL;  // Add this to store preFilter result
+    
     // For POST requests, validate fields if specified
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
         char *validation_error = validatePostFields(arena, endpoint, con_cls);
@@ -144,23 +145,80 @@ char* generateApiResponse(Arena *arena,
             extractFilterValues(arena, filtered_jv, &values, &value_count);
             jv_free(filtered_jv);
         } else if (endpoint->preFilterType == FILTER_LUA) {
-            char *error = handleLuaPreFilter(arena, requestContext, endpoint->preFilter,
-                                           &values, &value_count);
-            if (error) {
-                return error;
+            if (endpoint->isDynamicQuery) {
+                // Create Lua state and run preFilter
+                lua_State *L = createLuaState(requestContext, arena, true);
+                
+                if (!L) {
+                    return generateErrorJson("Failed to create Lua state");
+                }
+
+                if (luaL_dostring(L, endpoint->preFilter) != 0) {
+                    const char *error = lua_tostring(L, -1);
+                    lua_close(L);
+                    return generateErrorJson(error);
+                }
+
+                // Get the preFilter result which should contain SQL and params
+                preFilterResult = luaToJson(L, -1);
+                if (!preFilterResult) {
+                    lua_close(L);
+                    return generateErrorJson("Failed to get query from Lua preFilter");
+                }
+                lua_close(L);
+            } else {
+                char *error = handleLuaPreFilter(arena, requestContext, endpoint->preFilter,
+                                               &values, &value_count);
+                if (error) {
+                    return error;
+                }
             }
         }
     }
 
-    // Common execution path for both POST and GET
-    QueryNode *query = findQuery(endpoint->executeQuery);
-    if (!query) {
-        return NULL;
-    }
+    json_t *jsonData = NULL;
 
-    json_t *jsonData = executeAndFormatQuery(arena, query, values, value_count);
-    if (!jsonData) {
-        return NULL;
+    // Execute query and get result
+    if (endpoint->isDynamicQuery) {
+        // For dynamic queries, we already have the SQL and params from preFilter
+        const char *sql = json_string_value(json_object_get(preFilterResult, "sql"));
+        if (!sql) {
+            json_decref(preFilterResult);
+            return generateErrorJson("Missing SQL in query builder result");
+        }
+        
+        json_t *params = json_object_get(preFilterResult, "params");
+        size_t param_count = json_array_size(params);
+        const char **param_values = arenaAlloc(arena, sizeof(char*) * param_count);
+        
+        // Convert params array to string array
+        for (size_t i = 0; i < param_count; i++) {
+            json_t *param = json_array_get(params, i);
+            param_values[i] = json_string_value(param);
+        }
+        
+        PGresult *result = executeParameterizedQuery(db, sql, param_values, param_count);
+        json_decref(preFilterResult);
+        
+        if (!result) {
+            return generateErrorJson("Failed to execute dynamic query");
+        }
+        
+        jsonData = resultToJson(result);
+        freeResult(result);
+    } else if (endpoint->executeQuery) {
+        // Look up the query by name
+        QueryNode *query = findQuery(endpoint->executeQuery);
+        if (!query) {
+            return generateErrorJson("Query not found");
+        }
+
+        jsonData = executeAndFormatQuery(arena, query, values, value_count);
+        if (!jsonData) {
+            return generateErrorJson("Failed to execute query");
+        }
+    } else {
+        return generateErrorJson("No query specified");
     }
 
     // Apply post-filter if it exists

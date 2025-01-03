@@ -63,7 +63,17 @@ static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     return new_ptr;
 }
 
-lua_State* createLuaState(json_t *requestContext, Arena *arena) {
+static bool loadLuaFile(lua_State *L, const char *filename) {
+    if (luaL_dofile(L, filename) == 0) {
+        lua_setglobal(L, "querybuilder");
+        return true;
+    }
+    
+    fprintf(stderr, "Failed to load %s: %s\n", filename, lua_tostring(L, -1));
+    return false;
+}
+
+lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder) {
     // Create and initialize arena wrapper
     LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
     wrapper->arena = arena;
@@ -111,6 +121,14 @@ lua_State* createLuaState(json_t *requestContext, Arena *arena) {
         lua_settable(L, -3);
     }
     lua_setglobal(L, "body");
+    
+    // Load query builder if needed
+    if (loadQueryBuilder) {
+        if (!loadLuaFile(L, "src/server/querybuilder.lua")) {
+            lua_close(L);
+            return NULL;
+        }
+    }
     
     return L;
 }
@@ -265,7 +283,7 @@ void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *
 
 char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaScript,
                         const char ***values, size_t *value_count) {
-    lua_State *L = createLuaState(requestContext, arena);
+    lua_State *L = createLuaState(requestContext, arena, false);
     if (!L) {
         return generateErrorJson("Failed to create Lua state");
     }
@@ -287,7 +305,7 @@ char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaSc
 
 char* handleLuaPostFilter(Arena *arena, json_t *jsonData, json_t *requestContext, 
                          const char *luaScript) {
-    lua_State *L = createLuaState(requestContext, arena);
+    lua_State *L = createLuaState(requestContext, arena, false);
     if (!L) {
         return generateErrorJson("Failed to create Lua state");
     }

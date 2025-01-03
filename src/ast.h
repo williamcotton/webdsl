@@ -81,11 +81,13 @@ typedef struct ApiEndpoint {
     char *executeQuery;
     char *preFilter;
     char *postFilter;
+    struct ApiEndpoint *next;
     FilterType preFilterType;
-    FilterType postFilterType; 
+    FilterType postFilterType;
+    bool isDynamicQuery;
+    uint8_t _padding[7];
     ResponseField *fields;
     ApiField *apiFields;
-    struct ApiEndpoint *next;
 } ApiEndpoint;
 
 typedef struct QueryParam {

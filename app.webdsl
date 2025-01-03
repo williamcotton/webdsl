@@ -366,4 +366,60 @@ website {
             }
         }
     }
+
+    api {
+        route "/api/v3/employees"
+        method "GET"
+        
+        preFilter lua {
+            if not querybuilder then
+                error("querybuilder module not loaded")
+            end
+            local qb = querybuilder.new()
+            if not qb then
+                error("failed to create query builder")
+            end
+            
+            local result = qb
+                :select("id", "team_id", "name", "email")
+                :from("employees")
+                :where_if(query.team_id, "team_id = ?", query.team_id)
+                :order_by("id")
+                :limit(query.limit or 20)
+                :offset(query.offset or 0)
+                :with_metadata()
+                :build()
+                
+            return result
+        }
+        
+        executeQuery dynamic
+        
+        postFilter lua {
+            local result = {
+                data = {},
+                metadata = {}
+            }
+            
+            for _, row in ipairs(rows) do
+                if row.type == "data" then
+                    table.insert(result.data, {
+                        id = row.id,
+                        name = row.name,
+                        email = row.email,
+                        team_id = row.team_id
+                    })
+                elseif row.type == "metadata" then
+                    result.metadata = {
+                        total = tonumber(row.total_count),
+                        offset = tonumber(query.offset or 0),
+                        limit = tonumber(query.limit or 20),
+                        has_more = tonumber(row.total_count) > (tonumber(query.offset or 0) + tonumber(query.limit or 20))
+                    }
+                end
+            end
+            
+            return result
+        }
+    }
 }

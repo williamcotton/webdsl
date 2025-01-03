@@ -11,7 +11,7 @@
 #include "../arena.h"
 
 // Create Lua state with request context
-lua_State* createLuaState(json_t *requestContext, Arena *arena);
+lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder);
 
 // Convert between Lua and JSON
 void pushJsonToLua(lua_State *L, json_t *json);
