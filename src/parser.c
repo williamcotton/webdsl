@@ -489,10 +489,10 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 endpoint->method = copyString(parser, parser->previous.lexeme);
                 break;
             }
-            case TOKEN_JSON_RESPONSE: {
+            case TOKEN_EXECUTE_QUERY: {
                 advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'jsonResponse'.");
-                endpoint->jsonResponse = copyString(parser, parser->previous.lexeme);
+                consume(parser, TOKEN_STRING, "Expected string after 'executeQuery'.");
+                endpoint->executeQuery = copyString(parser, parser->previous.lexeme);
                 
                 // Check for response fields
                 if (parser->current.type == TOKEN_OPEN_BRACKET) {

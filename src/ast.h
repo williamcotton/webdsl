@@ -78,7 +78,7 @@ typedef enum FilterType {
 typedef struct ApiEndpoint {
     char *route;
     char *method;
-    char *jsonResponse;
+    char *executeQuery;
     char *preFilter;
     char *postFilter;
     FilterType preFilterType;

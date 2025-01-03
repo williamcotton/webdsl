@@ -315,12 +315,12 @@ static void test_parse_website_with_api(void) {
         "  api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    jsonResponse \"users\"\n"
+        "    executeQuery \"users\"\n"
         "  }\n"
         "  api {\n"
         "    route \"/api/v1/employees\"\n"
         "    method \"POST\"\n"
-        "    jsonResponse \"insert_employee\" [name, age, position]\n"
+        "    executeQuery \"insert_employee\" [name, age, position]\n"
         "  }\n"
         "}";
     
@@ -334,14 +334,14 @@ static void test_parse_website_with_api(void) {
     ApiEndpoint *first = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
     TEST_ASSERT_EQUAL_STRING("GET", first->method);
-    TEST_ASSERT_EQUAL_STRING("users", first->jsonResponse);
+    TEST_ASSERT_EQUAL_STRING("users", first->executeQuery);
     TEST_ASSERT_NULL(first->fields);
     
     ApiEndpoint *second = first->next;
     TEST_ASSERT_NOT_NULL(second);
     TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
     TEST_ASSERT_EQUAL_STRING("POST", second->method);
-    TEST_ASSERT_EQUAL_STRING("insert_employee", second->jsonResponse);
+    TEST_ASSERT_EQUAL_STRING("insert_employee", second->executeQuery);
     
     // Test response fields
     TEST_ASSERT_NOT_NULL(second->fields);
@@ -477,7 +477,7 @@ static void test_parse_api_with_field_definitions(void) {
         "        format \"email\"\n"
         "      }\n"
         "    }\n"
-        "    jsonResponse \"insertEmployee\" [name, email]\n"
+        "    executeQuery \"insertEmployee\" [name, email]\n"
         "  }\n"
         "}";
     
@@ -604,7 +604,7 @@ static void test_parse_api_with_jq_filter(void) {
         "  api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    jsonResponse \"users\"\n"
+        "    executeQuery \"users\"\n"
         "    postFilter jq {\n"
         "      .rows | map({\n"
         "        name: .name,\n"
@@ -624,7 +624,7 @@ static void test_parse_api_with_jq_filter(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
     TEST_ASSERT_NOT_NULL(api->postFilter);
     TEST_ASSERT_NOT_NULL(strstr(api->postFilter, ".rows | map({"));
     TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "name: .name"));
@@ -640,7 +640,7 @@ static void test_parse_api_with_pre_and_post_filters(void) {
         "  api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    jsonResponse \"users\"\n"
+        "    executeQuery \"users\"\n"
         "    preFilter jq {\n"
         "      {\n"
         "        department: .query.dept,\n"
@@ -665,7 +665,7 @@ static void test_parse_api_with_pre_and_post_filters(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
     
     // Verify preFilter
     TEST_ASSERT_NOT_NULL(api->preFilter);
@@ -687,7 +687,7 @@ static void test_parse_api_with_legacy_jq(void) {
         "  api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    jsonResponse \"users\"\n"
+        "    executeQuery \"users\"\n"
         "    jq {\n"
         "      .rows | map({\n"
         "        name: .name,\n"
@@ -707,7 +707,7 @@ static void test_parse_api_with_legacy_jq(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
+    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
     
     // Verify legacy jq filter is treated as postFilter
     TEST_ASSERT_NOT_NULL(api->postFilter);

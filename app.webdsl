@@ -105,7 +105,7 @@ website {
                 limit: (.query.limit // null)
             }
         }
-        jsonResponse "employeesWithPagination"
+        executeQuery "employeesWithPagination"
         postFilter jq {
             {
                 data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
@@ -162,7 +162,7 @@ website {
     api {
         route "/api/v1/teams"
         method "GET"
-        jsonResponse "teams"
+        executeQuery "teams"
         postFilter jq {
             {
                 data: (.rows | map({id: .id, name: .name})),
@@ -196,7 +196,7 @@ website {
                 team_id: (.body.team_id // null)
             }
         }
-        jsonResponse "insertEmployee"
+        executeQuery "insertEmployee"
     }
 
     query {
@@ -218,6 +218,7 @@ website {
     api {
         route "/api/v2/employees"
         method "GET"
+
         preFilter lua {
             -- Extract query params
             local team_id = query.team_id
@@ -240,7 +241,9 @@ website {
             -- Return array of values for SQL query
             return {team_id, offset, limit}
         }
-        jsonResponse "employeesWithPagination"
+
+        executeQuery "employeesWithPagination"
+
         postFilter lua {
             -- Transform the data
             local result = {
@@ -266,7 +269,7 @@ website {
                     }
                 end
             end
-            
+
             return result
         }
     }
@@ -362,7 +365,7 @@ website {
             -- Return array of values for SQL query
             return {name, email, team_id}
         }
-        jsonResponse "insertEmployee"
+        executeQuery "insertEmployee"
         postFilter lua {
             -- Return Lua table to be converted to JSON by the API handler
             return {

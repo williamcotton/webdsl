@@ -28,7 +28,7 @@ static void test_lexer_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "website pages page styles route layout content name author version alt layouts port api method jsonResponse query sql css";
+    const char *input = "website pages page styles route layout content name author version alt layouts port api method executeQuery query sql css";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
@@ -47,7 +47,7 @@ static void test_lexer_keywords(void) {
         TOKEN_PORT,
         TOKEN_API,
         TOKEN_METHOD,
-        TOKEN_JSON_RESPONSE,
+        TOKEN_EXECUTE_QUERY,
         TOKEN_QUERY,
         TOKEN_SQL,
         TOKEN_CSS
@@ -216,7 +216,7 @@ static void test_lexer_api_features(void) {
         "api {\n"
         "    route \"/api/v1/users\"\n"
         "    method \"GET\"\n"
-        "    jsonResponse \"users\"\n"
+        "    executeQuery \"users\"\n"
         "}";
     
     initLexer(&lexer, input, &parser);
@@ -228,7 +228,7 @@ static void test_lexer_api_features(void) {
         TOKEN_STRING,
         TOKEN_METHOD,
         TOKEN_STRING,
-        TOKEN_JSON_RESPONSE,
+        TOKEN_EXECUTE_QUERY,
         TOKEN_STRING,
         TOKEN_CLOSE_BRACE
     };
@@ -240,7 +240,7 @@ static void test_lexer_api_features(void) {
         "/api/v1/users",
         NULL,           // TOKEN_METHOD
         "GET",
-        NULL,           // TOKEN_JSON_RESPONSE
+        NULL,           // TOKEN_EXECUTE_QUERY
         "users",
         NULL            // TOKEN_CLOSE_BRACE
     };
@@ -334,11 +334,11 @@ static void test_lexer_api_response_fields(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "jsonResponse \"users\" [name, age, email]";
+    const char *input = "executeQuery \"users\" [name, age, email]";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
-        TOKEN_JSON_RESPONSE,
+        TOKEN_EXECUTE_QUERY,
         TOKEN_STRING,
         TOKEN_OPEN_BRACKET,
         TOKEN_STRING,
@@ -350,7 +350,7 @@ static void test_lexer_api_response_fields(void) {
     };
     
     const char *expectedStrings[] = {
-        NULL,       // TOKEN_JSON_RESPONSE
+        NULL,       // TOKEN_EXECUTE_QUERY
         "users",    // TOKEN_STRING
         NULL,       // TOKEN_OPEN_BRACKET
         "name",     // TOKEN_STRING

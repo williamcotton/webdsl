@@ -191,7 +191,7 @@ API endpoints connect routes to database queries with optional validation:
 api {
     route "/api/v1/employees"
     method "GET"
-    jsonResponse "employees"
+    executeQuery "employees"
     jq {
         // Transform response to include metadata
         {
@@ -222,7 +222,7 @@ api {
             required false
         }
     }
-    jsonResponse "insertEmployee" [name, email, team_id]
+    executeQuery "insertEmployee" [name, email, team_id]
 }
 ```
 
@@ -324,7 +324,7 @@ API responses can be transformed using JQ filters:
 api {
     route "/api/v1/data"
     method "GET" 
-    jsonResponse "getData"
+    executeQuery "getData"
     jq {
         {
             items: (.rows | map({
@@ -363,7 +363,7 @@ api {
             }
         }
     }
-    jsonResponse "getData"
+    executeQuery "getData"
     filter jq {
         // Transform the response
         .rows | map(select(.status == "active"))
@@ -417,7 +417,7 @@ api {
         }
     }
     
-    jsonResponse "getStats"
+    executeQuery "getStats"
     
     // Post-filter response data
     filter jq {

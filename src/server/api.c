@@ -153,7 +153,7 @@ char* generateApiResponse(Arena *arena,
     }
 
     // Common execution path for both POST and GET
-    QueryNode *query = findQuery(endpoint->jsonResponse);
+    QueryNode *query = findQuery(endpoint->executeQuery);
     if (!query) {
         return NULL;
     }
