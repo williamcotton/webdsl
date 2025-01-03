@@ -9,7 +9,10 @@
 #include <stdint.h>
 #include "arena.h"
 
-#define MAX_POOL_SIZE 10
+// Start with more connections to handle typical load
+#define INITIAL_POOL_SIZE 20
+// Allow growth up to 50% of typical Postgres max_connections
+#define MAX_POOL_SIZE 50
 
 typedef struct PooledConnection {
     PGconn *conn;

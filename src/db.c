@@ -111,7 +111,7 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
         return NULL;
     }
     
-    db->pool = initConnectionPool(arena, conninfo, 5, MAX_POOL_SIZE);
+    db->pool = initConnectionPool(arena, conninfo, INITIAL_POOL_SIZE, MAX_POOL_SIZE);
     if (!db->pool) {
         pthread_mutex_destroy(&db->stmt_lock);
         return NULL;
