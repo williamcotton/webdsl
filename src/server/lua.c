@@ -3,8 +3,78 @@
 #include "utils.h"
 #include <string.h>
 
-lua_State* createLuaState(json_t *requestContext) {
-    lua_State *L = luaL_newstate();
+// Add arena wrapper struct
+typedef struct {
+    Arena *arena;
+    size_t total_allocated;
+} LuaArenaWrapper;
+
+// Add custom allocator function
+static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
+    LuaArenaWrapper *wrapper = (LuaArenaWrapper*)ud;
+    Arena *arena = wrapper->arena;
+
+    // Free case
+    if (nsize == 0) {
+        // Avoid underflow when subtracting from total_allocated
+        if (wrapper->total_allocated >= osize) {
+            wrapper->total_allocated -= osize;
+        } else {
+            wrapper->total_allocated = 0;
+        }
+        return NULL;
+    }
+
+    // Allocation case
+    if (ptr == NULL) {
+        // Check for overflow before adding to total_allocated
+        size_t new_total = wrapper->total_allocated;
+        if (__builtin_add_overflow(new_total, nsize, &new_total)) {
+            return NULL;  // Allocation would overflow
+        }
+        wrapper->total_allocated = new_total;
+        return arenaAlloc(arena, nsize);
+    }
+
+    // Reallocation case
+    void *new_ptr = arenaAlloc(arena, nsize);
+    if (new_ptr) {
+        // Copy the minimum of old and new sizes
+        size_t copy_size = (osize < nsize) ? osize : nsize;
+        if (ptr && copy_size > 0) {
+            memcpy(new_ptr, ptr, copy_size);
+        }
+        
+        // Update total allocated size
+        if (nsize > osize) {
+            size_t diff = nsize - osize;
+            if (__builtin_add_overflow(wrapper->total_allocated, diff, &wrapper->total_allocated)) {
+                wrapper->total_allocated = SIZE_MAX;  // Cap at maximum
+            }
+        } else if (osize > nsize) {
+            size_t diff = osize - nsize;
+            if (wrapper->total_allocated >= diff) {
+                wrapper->total_allocated -= diff;
+            } else {
+                wrapper->total_allocated = 0;
+            }
+        }
+    }
+    return new_ptr;
+}
+
+lua_State* createLuaState(json_t *requestContext, Arena *arena) {
+    // Create and initialize arena wrapper
+    LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
+    wrapper->arena = arena;
+    wrapper->total_allocated = 0;
+
+    // Create Lua state with custom allocator
+    lua_State *L = lua_newstate(luaArenaAlloc, wrapper);
+    if (!L) {
+        return NULL;
+    }
+
     luaL_openlibs(L);
     
     // Create tables for request context
@@ -195,7 +265,7 @@ void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *
 
 char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaScript,
                         const char ***values, size_t *value_count) {
-    lua_State *L = createLuaState(requestContext);
+    lua_State *L = createLuaState(requestContext, arena);
     if (!L) {
         return generateErrorJson("Failed to create Lua state");
     }
@@ -217,7 +287,7 @@ char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaSc
 
 char* handleLuaPostFilter(Arena *arena, json_t *jsonData, json_t *requestContext, 
                          const char *luaScript) {
-    lua_State *L = createLuaState(requestContext);
+    lua_State *L = createLuaState(requestContext, arena);
     if (!L) {
         return generateErrorJson("Failed to create Lua state");
     }

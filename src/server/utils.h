@@ -1,7 +1,10 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
+#pragma clang diagnostic pop
 
 // Generate JSON error response
 char* generateErrorJson(const char *errorMessage);
