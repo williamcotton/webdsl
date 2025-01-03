@@ -625,10 +625,10 @@ static void test_parse_api_with_jq_filter(void) {
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
     TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
-    TEST_ASSERT_NOT_NULL(api->jqFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
+    TEST_ASSERT_NOT_NULL(api->postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "email: .email"));
     
     freeArena(parser.arena);
 }
@@ -668,14 +668,14 @@ static void test_parse_api_with_pre_and_post_filters(void) {
     TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
     
     // Verify preFilter
-    TEST_ASSERT_NOT_NULL(api->preJqFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->preJqFilter, "department: .query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->preJqFilter, "role: .headers[\"X-Role\"]"));
+    TEST_ASSERT_NOT_NULL(api->preFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->preFilter, "department: .query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->preFilter, "role: .headers[\"X-Role\"]"));
     
     // Verify postFilter
-    TEST_ASSERT_NOT_NULL(api->luaFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->luaFilter, "local dept = query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->luaFilter, "local role = headers[\"X-Role\"]"));
+    TEST_ASSERT_NOT_NULL(api->postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "local dept = query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "local role = headers[\"X-Role\"]"));
     
     freeArena(parser.arena);
 }
@@ -710,11 +710,11 @@ static void test_parse_api_with_legacy_jq(void) {
     TEST_ASSERT_EQUAL_STRING("users", api->jsonResponse);
     
     // Verify legacy jq filter is treated as postFilter
-    TEST_ASSERT_NOT_NULL(api->jqFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
-    TEST_ASSERT_NULL(api->preJqFilter);  // Should not have preFilter
+    TEST_ASSERT_NOT_NULL(api->postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "email: .email"));
+    TEST_ASSERT_NULL(api->preFilter);  // Should not have preFilter
     
     freeArena(parser.arena);
 }

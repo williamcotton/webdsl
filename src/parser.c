@@ -551,9 +551,10 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 advanceParser(parser);  // consume preFilter token
                 
                 if (parser->current.type == TOKEN_JQ) {
+                    endpoint->preFilterType = FILTER_JQ;
                     advanceParser(parser);
                     if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->preJqFilter = copyString(parser, parser->current.lexeme);
+                        endpoint->preFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
                     } else {
                         char buffer[256];
@@ -564,9 +565,10 @@ static ApiEndpoint *parseApi(Parser *parser) {
                         parser->hadError = 1;
                     }
                 } else if (parser->current.type == TOKEN_LUA) {
+                    endpoint->preFilterType = FILTER_LUA;
                     advanceParser(parser);
                     if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->preLuaFilter = copyString(parser, parser->current.lexeme);
+                        endpoint->preFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
                     } else {
                         char buffer[256];
@@ -590,9 +592,10 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 advanceParser(parser);  // consume filter token
                 
                 if (parser->current.type == TOKEN_JQ) {
+                    endpoint->postFilterType = FILTER_JQ;
                     advanceParser(parser);
                     if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                        endpoint->postFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
                     } else {
                         char buffer[256];
@@ -603,9 +606,10 @@ static ApiEndpoint *parseApi(Parser *parser) {
                         parser->hadError = 1;
                     }
                 } else if (parser->current.type == TOKEN_LUA) {
+                    endpoint->postFilterType = FILTER_LUA;
                     advanceParser(parser);
                     if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->luaFilter = copyString(parser, parser->current.lexeme);
+                        endpoint->postFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
                     } else {
                         char buffer[256];
@@ -627,10 +631,11 @@ static ApiEndpoint *parseApi(Parser *parser) {
             }
             case TOKEN_JQ: {
                 // Maintain backward compatibility with existing jq syntax
+                endpoint->postFilterType = FILTER_JQ;
                 advanceParser(parser);  // consume JQ token
                 
                 if (parser->current.type == TOKEN_RAW_BLOCK) {
-                    endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                    endpoint->postFilter = copyString(parser, parser->current.lexeme);
                     advanceParser(parser);
                 } else {
                     char buffer[256];

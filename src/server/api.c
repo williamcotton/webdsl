@@ -127,20 +127,25 @@ char* generateApiResponse(Arena *arena,
     }
     
     // Process preFilter if it exists (for both GET and POST)
-    if (endpoint->preJqFilter) {
-        jq_state *pre_jq = findOrCreateJQ(endpoint->preJqFilter);
-        if (!pre_jq) {
-            return generateErrorJson("Failed to create preFilter");
-        }
+    if (endpoint->preFilter) {
+        if (endpoint->preFilterType == FILTER_JQ) {
+            jq_state *pre_jq = findOrCreateJQ(endpoint->preFilter);
+            if (!pre_jq) {
+                return generateErrorJson("Failed to create preFilter");
+            }
 
-        jv filtered_jv = processJqFilter(pre_jq, requestContext);
-        if (!jv_is_valid(filtered_jv)) {
-            return generateErrorJson("Failed to apply preFilter");
-        }
+            jv filtered_jv = processJqFilter(pre_jq, requestContext);
+            if (!jv_is_valid(filtered_jv)) {
+                return generateErrorJson("Failed to apply preFilter");
+            }
 
-        // Extract values directly from jv struct
-        extractFilterValues(arena, filtered_jv, &values, &value_count);
-        jv_free(filtered_jv);
+            // Extract values directly from jv struct
+            extractFilterValues(arena, filtered_jv, &values, &value_count);
+            jv_free(filtered_jv);
+        } else if (endpoint->preFilterType == FILTER_LUA) {
+            // TODO: Implement Lua filter processing
+            return generateErrorJson("Lua preFilter not yet implemented");
+        }
     }
 
     // Common execution path for both POST and GET
@@ -154,7 +159,18 @@ char* generateApiResponse(Arena *arena,
         return NULL;
     }
 
-    return formatResponse(arena, jsonData, endpoint->jqFilter);
+    // Apply post-filter if it exists
+    if (endpoint->postFilter) {
+        if (endpoint->postFilterType == FILTER_JQ) {
+            return formatResponse(arena, jsonData, endpoint->postFilter);
+        } else if (endpoint->postFilterType == FILTER_LUA) {
+            // TODO: Implement Lua post-filter processing
+            return generateErrorJson("Lua postFilter not yet implemented");
+        }
+    }
+
+    // If no post-filter, return the raw JSON
+    return json_dumps(jsonData, JSON_COMPACT);
 }
 
 static char* formatResponse(Arena *arena, json_t *jsonData, const char *jqFilter) {

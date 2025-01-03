@@ -70,14 +70,19 @@ typedef struct ApiField {
     struct ApiField *next;
 } ApiField;
 
+typedef enum FilterType {
+    FILTER_JQ,
+    FILTER_LUA
+} FilterType;
+
 typedef struct ApiEndpoint {
     char *route;
     char *method;
     char *jsonResponse;
-    char *preJqFilter;
-    char *jqFilter;
-    char *preLuaFilter;
-    char *luaFilter;
+    char *preFilter;
+    char *postFilter;
+    FilterType preFilterType;
+    FilterType postFilterType; 
     ResponseField *fields;
     ApiField *apiFields;
     struct ApiEndpoint *next;
