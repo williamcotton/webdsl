@@ -4,6 +4,93 @@
 #include <stdio.h>
 #include <string.h>
 #include <jansson.h>
+#include <uthash.h>
+#include "server/utils.h"
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+// Generate unique statement names
+static __thread unsigned long stmt_counter = 0;
+
+static PreparedStmt* findPreparedStmt(Database *db, PGconn *conn, const char *sql) {
+    uint32_t hash = hashString(sql) & STMT_HASH_MASK;
+    PreparedStmt *stmt = db->stmt_cache[hash];
+    
+    while (stmt) {
+        if (stmt->conn == conn && strcmp(stmt->sql, sql) == 0) {
+            return stmt;
+        }
+        stmt = stmt->next;
+    }
+    
+    return NULL;
+}
+
+static PreparedStmt* prepareSqlStatement(Database *db, PGconn *conn, const char *sql) {
+    PreparedStmt *stmt = NULL;
+    
+    pthread_mutex_lock(&db->stmt_lock);
+    
+    // Check if already prepared on this connection
+    stmt = findPreparedStmt(db, conn, sql);
+    if (stmt) {
+        pthread_mutex_unlock(&db->stmt_lock);
+        return stmt;
+    }
+    
+    // Generate unique name for this statement
+    char buf[32];
+    snprintf(buf, sizeof(buf), "stmt_%lu", ++stmt_counter);
+    const char *stmt_name = arenaDupString(db->pool->arena, buf);
+    
+    // Prepare the statement
+    PGresult *res = PQprepare(conn, stmt_name, sql, 0, NULL);
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        fprintf(stderr, "Failed to prepare statement: %s\n", PQerrorMessage(conn));
+        PQclear(res);
+        pthread_mutex_unlock(&db->stmt_lock);
+        return NULL;
+    }
+    PQclear(res);
+    
+    // Add to cache
+    uint32_t hash = hashString(sql) & STMT_HASH_MASK;
+    stmt = arenaAlloc(db->pool->arena, sizeof(PreparedStmt));
+    stmt->sql = arenaDupString(db->pool->arena, sql);
+    stmt->name = stmt_name;
+    stmt->conn = conn;
+    stmt->next = db->stmt_cache[hash];
+    db->stmt_cache[hash] = stmt;
+    
+    pthread_mutex_unlock(&db->stmt_lock);
+    return stmt;
+}
+
+PGresult* executePreparedStatement(Database *db, const char *sql, 
+                                 const char **values, size_t value_count) {
+    PGconn *conn = getDbConnection(db);
+    if (!conn) return NULL;
+    
+    // Get or create prepared statement
+    PreparedStmt *stmt = prepareSqlStatement(db, conn, sql);
+    if (!stmt) {
+        releaseDbConnection(db, conn);
+        return NULL;
+    }
+    
+    // Execute prepared statement
+    PGresult *result = PQexecPrepared(conn, stmt->name, (int)(value_count & INT_MAX), 
+                                     values, NULL, NULL, 0);
+    
+    releaseDbConnection(db, conn);
+    return result;
+}
+
+// Modify existing executeParameterizedQuery to use prepared statements
+PGresult* executeParameterizedQuery(Database *db, const char *sql, 
+                                  const char **values, size_t value_count) {
+    return executePreparedStatement(db, sql, values, value_count);
+}
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {
@@ -18,10 +105,15 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
     }
     
     db->conninfo = arenaDupString(arena, conninfo);
-    db->pool = initConnectionPool(arena, conninfo, 5, MAX_POOL_SIZE);
+    memset(db->stmt_cache, 0, sizeof(db->stmt_cache));  // Initialize hash table to NULL
     
+    if (pthread_mutex_init(&db->stmt_lock, NULL) != 0) {
+        return NULL;
+    }
+    
+    db->pool = initConnectionPool(arena, conninfo, 5, MAX_POOL_SIZE);
     if (!db->pool) {
-        fputs("Failed to initialize connection pool\n", stderr);
+        pthread_mutex_destroy(&db->stmt_lock);
         return NULL;
     }
     
@@ -60,9 +152,16 @@ void freeResult(PGresult *result) {
 }
 
 void closeDatabase(Database *db) {
-    if (db && db->pool) {
-        closeConnectionPool(db->pool);
-    }
+    if (!db) return;
+    
+    pthread_mutex_lock(&db->stmt_lock);
+    
+    // Clear statement cache (no need to free since using arena)
+    memset(db->stmt_cache, 0, sizeof(db->stmt_cache));
+    
+    pthread_mutex_unlock(&db->stmt_lock);
+    pthread_mutex_destroy(&db->stmt_lock);
+    closeConnectionPool(db->pool);
 }
 
 const char* getDatabaseError(Database *db) {
@@ -132,31 +231,6 @@ json_t* resultToJson(PGresult *result) {
     }
     
     return root;
-}
-
-PGresult* executeParameterizedQuery(Database *db, const char *sql, 
-                                  const char **values, size_t value_count) {
-    if (!db || !sql) return NULL;
-    
-    PGconn *conn = getDbConnection(db);
-    if (!conn) {
-        fputs("Could not get database connection from pool\n", stderr);
-        return NULL;
-    }
-
-    PGresult *result = PQexecParams(conn, sql, (int)value_count, 
-                                   NULL, values, NULL, NULL, 0);
-    
-    if (PQresultStatus(result) != PGRES_TUPLES_OK && 
-        PQresultStatus(result) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Query failed: %s", PQerrorMessage(conn));
-        PQclear(result);
-        releaseDbConnection(db, conn);
-        return NULL;
-    }
-    
-    releaseDbConnection(db, conn);
-    return result;
 }
 
 PGconn* getDbConnection(Database *db) {

@@ -12,9 +12,22 @@
 #include "arena.h"
 #include "db_pool.h"
 
+#define STMT_HASH_SIZE 64
+#define STMT_HASH_MASK (STMT_HASH_SIZE - 1)
+
+// Add prepared statement cache structure
+typedef struct PreparedStmt {
+    const char *sql;
+    const char *name;  // Statement name for Postgres
+    PGconn *conn;      // Connection this statement was prepared on
+    struct PreparedStmt *next;  // For hash collision chaining
+} PreparedStmt;
+
 typedef struct Database {
     ConnectionPool *pool;
     const char *conninfo;
+    PreparedStmt *stmt_cache[STMT_HASH_SIZE];  // Array of statement chains
+    pthread_mutex_t stmt_lock; // Lock for statement cache
 } Database;
 
 // Initialize database connection using arena for allocations
@@ -45,5 +58,9 @@ PGconn* getDbConnection(Database *db);
 
 // Return a connection to the pool
 void releaseDbConnection(Database *db, PGconn *conn);
+
+// Add new function declarations
+PGresult* executePreparedStatement(Database *db, const char *sql, 
+                                 const char **values, size_t value_count);
 
 #endif // DB_H

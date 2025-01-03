@@ -1,6 +1,5 @@
 #include "lexer.h"
 #include "parser.h"
-#include <stdio.h>
 #include <string.h>
 
 static Token errorToken(Parser *parser, const char *message, int line);

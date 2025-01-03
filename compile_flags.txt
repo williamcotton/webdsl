@@ -15,6 +15,7 @@
 -Wno-unused-command-line-argument
 -Wno-pre-c23-compat
 -Wno-pre-c11-compat
+-Wno-pre-c2x-compat
 -Wno-covered-switch-default
 -I/opt/homebrew/include
 -L/opt/homebrew/lib

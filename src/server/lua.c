@@ -1,6 +1,5 @@
 #include "lua.h"
 #include "../arena.h"
-#include "api.h"
 #include "utils.h"
 #include <string.h>
 

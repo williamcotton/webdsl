@@ -1,4 +1,5 @@
 #include "routing.h"
+#include "utils.h"
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -11,15 +12,6 @@ static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
 static JQHashEntry *jqTable[HASH_TABLE_SIZE];
 static __thread JQHashEntry **threadJQTable = NULL;
-
-static uint32_t hashString(const char *str) __attribute__((no_sanitize("unsigned-integer-overflow"))) {
-    uint32_t hash = 2166136261u;
-    while (*str) {
-        hash ^= (uint8_t)*str++;
-        hash *= 16777619u;
-    }
-    return hash;
-}
 
 static JQHashEntry** getThreadJQTable(void) {
     if (!threadJQTable) {
