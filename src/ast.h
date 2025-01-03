@@ -76,6 +76,8 @@ typedef struct ApiEndpoint {
     char *jsonResponse;
     char *preJqFilter;
     char *jqFilter;
+    char *preLuaFilter;
+    char *luaFilter;
     ResponseField *fields;
     ApiField *apiFields;
     struct ApiEndpoint *next;

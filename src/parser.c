@@ -549,15 +549,37 @@ static ApiEndpoint *parseApi(Parser *parser) {
             }
             case TOKEN_PRE_FILTER: {
                 advanceParser(parser);  // consume preFilter token
-                consume(parser, TOKEN_JQ, "Expected 'jq' after 'preFilter'");
                 
-                if (parser->current.type == TOKEN_RAW_BLOCK) {
-                    endpoint->preJqFilter = copyString(parser, parser->current.lexeme);
+                if (parser->current.type == TOKEN_JQ) {
                     advanceParser(parser);
+                    if (parser->current.type == TOKEN_RAW_BLOCK) {
+                        endpoint->preJqFilter = copyString(parser, parser->current.lexeme);
+                        advanceParser(parser);
+                    } else {
+                        char buffer[256];
+                        snprintf(buffer, sizeof(buffer),
+                                "Expected JQ filter block at line %d\n",
+                                parser->current.line);
+                        fputs(buffer, stderr);
+                        parser->hadError = 1;
+                    }
+                } else if (parser->current.type == TOKEN_LUA) {
+                    advanceParser(parser);
+                    if (parser->current.type == TOKEN_RAW_BLOCK) {
+                        endpoint->preLuaFilter = copyString(parser, parser->current.lexeme);
+                        advanceParser(parser);
+                    } else {
+                        char buffer[256];
+                        snprintf(buffer, sizeof(buffer),
+                                "Expected Lua filter block at line %d\n",
+                                parser->current.line);
+                        fputs(buffer, stderr);
+                        parser->hadError = 1;
+                    }
                 } else {
                     char buffer[256];
                     snprintf(buffer, sizeof(buffer),
-                            "Expected JQ filter block at line %d\n",
+                            "Expected 'jq' or 'lua' after 'preFilter' at line %d\n",
                             parser->current.line);
                     fputs(buffer, stderr);
                     parser->hadError = 1;
@@ -566,15 +588,37 @@ static ApiEndpoint *parseApi(Parser *parser) {
             }
             case TOKEN_FILTER: {
                 advanceParser(parser);  // consume filter token
-                consume(parser, TOKEN_JQ, "Expected 'jq' after 'filter'");
                 
-                if (parser->current.type == TOKEN_RAW_BLOCK) {
-                    endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                if (parser->current.type == TOKEN_JQ) {
                     advanceParser(parser);
+                    if (parser->current.type == TOKEN_RAW_BLOCK) {
+                        endpoint->jqFilter = copyString(parser, parser->current.lexeme);
+                        advanceParser(parser);
+                    } else {
+                        char buffer[256];
+                        snprintf(buffer, sizeof(buffer),
+                                "Expected JQ filter block at line %d\n",
+                                parser->current.line);
+                        fputs(buffer, stderr);
+                        parser->hadError = 1;
+                    }
+                } else if (parser->current.type == TOKEN_LUA) {
+                    advanceParser(parser);
+                    if (parser->current.type == TOKEN_RAW_BLOCK) {
+                        endpoint->luaFilter = copyString(parser, parser->current.lexeme);
+                        advanceParser(parser);
+                    } else {
+                        char buffer[256];
+                        snprintf(buffer, sizeof(buffer),
+                                "Expected Lua filter block at line %d\n",
+                                parser->current.line);
+                        fputs(buffer, stderr);
+                        parser->hadError = 1;
+                    }
                 } else {
                     char buffer[256];
                     snprintf(buffer, sizeof(buffer),
-                            "Expected JQ filter block at line %d\n",
+                            "Expected 'jq' or 'lua' after 'filter' at line %d\n",
                             parser->current.line);
                     fputs(buffer, stderr);
                     parser->hadError = 1;

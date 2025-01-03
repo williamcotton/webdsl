@@ -647,11 +647,10 @@ static void test_parse_api_with_pre_and_post_filters(void) {
         "        role: .headers[\"X-Role\"]\n"
         "      }\n"
         "    }\n"
-        "    filter jq {\n"
-        "      .rows | map({\n"
-        "        name: .name,\n"
-        "        email: .email\n"
-        "      })\n"
+        "    filter lua {\n"
+        "      local dept = query.dept\n"
+        "      local role = headers[\"X-Role\"]\n"
+        "      return dept == \"IT\" and role == \"Admin\"\n"
         "    }\n"
         "  }\n"
         "}";
@@ -674,10 +673,9 @@ static void test_parse_api_with_pre_and_post_filters(void) {
     TEST_ASSERT_NOT_NULL(strstr(api->preJqFilter, "role: .headers[\"X-Role\"]"));
     
     // Verify postFilter
-    TEST_ASSERT_NOT_NULL(api->jqFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->jqFilter, "email: .email"));
+    TEST_ASSERT_NOT_NULL(api->luaFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->luaFilter, "local dept = query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->luaFilter, "local role = headers[\"X-Role\"]"));
     
     freeArena(parser.arena);
 }
