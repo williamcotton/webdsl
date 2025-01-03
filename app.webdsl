@@ -100,16 +100,21 @@ website {
         method "GET"
         preFilter jq {
             {
-                team_id: (.query.team_id // null)
+                team_id: (.query.team_id // null),
+                offset: (.query.offset // null),
+                limit: (.query.limit // null)
             }
         }
-        jsonResponse "employees"
+        jsonResponse "employeesWithPagination"
         postFilter jq {
             {
                 data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
                 metadata: {
                     total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
-                    team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query)
+                    team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query),
+                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
+                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
+                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
                 }
             }
         }
@@ -214,19 +219,28 @@ website {
         route "/api/v2/employees"
         method "GET"
         preFilter lua {
-            -- Extract and validate team_id from query params
+            -- Extract query params
             local team_id = query.team_id
+            local offset = query.offset
+            local limit = query.limit
             
-            -- Return empty object string '{}' for null/empty values
-            -- to match JQ behavior with filter_by_optional
+            -- Handle empty/null values with '{}'
             if not team_id or team_id == "" then
                 team_id = "{}"
             end
             
+            if not offset or offset == "" then
+                offset = "{}"
+            end
+            
+            if not limit or limit == "" then
+                limit = "{}"
+            end
+            
             -- Return array of values for SQL query
-            return {team_id}
+            return {team_id, offset, limit}
         }
-        jsonResponse "employees"
+        jsonResponse "employeesWithPagination"
         postFilter lua {
             -- Transform the data
             local result = {
@@ -245,13 +259,74 @@ website {
                 elseif row.type == "metadata" then
                     result.metadata = {
                         total = row.total_count,
-                        team_id_query = row.team_id_query
+                        team_id_query = row.team_id_query,
+                        offset = row.offset,
+                        limit = row.limit,
+                        has_more = row.has_more
                     }
                 end
             end
             
-            -- Return Lua table to be converted to JSON by the API handler
             return result
+        }
+    }
+
+    query {
+        name "employeesWithPagination"
+        sql {
+            WITH filtered_employees AS (
+                SELECT *,
+                       COUNT(*) OVER() as total_count
+                FROM employees 
+                WHERE filter_by_optional(team_id, $1)
+            ),
+            page_info AS (
+                SELECT 
+                    COALESCE(parse_optional($2, 0::integer), 0) as page_offset,
+                    COALESCE(parse_optional($3, 20::integer), 20) as page_limit
+            ),
+            paginated AS (
+                SELECT fe.*, pi.page_offset, pi.page_limit
+                FROM filtered_employees fe, page_info pi
+                ORDER BY id
+                OFFSET (SELECT page_offset FROM page_info)
+                LIMIT (SELECT page_limit FROM page_info)
+            )
+            (
+                -- Metadata row
+                SELECT 
+                    'metadata' as type,
+                    (SELECT total_count FROM filtered_employees LIMIT 1) as total_count,
+                    NULL::bigint as id,
+                    NULL::integer as team_id,
+                    NULL::text as name,
+                    NULL::text as email,
+                    parse_optional($1, 0::integer) as team_id_query,
+                    (SELECT page_offset FROM page_info) as offset,
+                    (SELECT page_limit FROM page_info) as limit,
+                    EXISTS (
+                        SELECT 1 FROM filtered_employees
+                        OFFSET (SELECT page_offset + page_limit FROM page_info)
+                        LIMIT 1
+                    ) as has_more
+            )
+            UNION ALL
+            (
+                -- Data rows
+                SELECT 
+                    'data' as type,
+                    NULL::bigint as total_count,
+                    id,
+                    team_id,
+                    name,
+                    email,
+                    NULL::integer as team_id_query,
+                    NULL::integer as offset,
+                    NULL::integer as limit,
+                    NULL::boolean as has_more
+                FROM paginated
+            )
+            ORDER BY type DESC, id ASC;
         }
     }
 
