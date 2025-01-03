@@ -9,9 +9,8 @@
 #include <jansson.h>
 #include <pthread.h>
 #include <uthash.h>
-#include <lua.h>
-#include <lauxlib.h>
-#include <lualib.h>
+#include "lua.h"
+#include "utils.h"
 
 extern Arena *serverArena;
 extern Database *db;
@@ -44,7 +43,6 @@ static struct MHD_Response* createErrorResponse(const char *error_msg, int statu
     return response;
 }
 
-static char* generateErrorJson(const char *errorMessage);
 static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version);
@@ -111,197 +109,6 @@ static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query,
     return jsonData;
 }
 
-// Add these helper functions for Lua integration
-static lua_State* createLuaState(json_t *requestContext) {
-    lua_State *L = luaL_newstate();
-    luaL_openlibs(L);
-    
-    // Create tables for request context
-    lua_newtable(L);  // Main request context table
-    
-    // Add query params
-    lua_newtable(L);
-    json_t *query = json_object_get(requestContext, "query");
-    const char *key;
-    json_t *value;
-    json_object_foreach(query, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
-    }
-    lua_setglobal(L, "query");
-    
-    // Add headers
-    lua_newtable(L);
-    json_t *headers = json_object_get(requestContext, "headers");
-    json_object_foreach(headers, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
-    }
-    lua_setglobal(L, "headers");
-    
-    // Add body params
-    lua_newtable(L);
-    json_t *body = json_object_get(requestContext, "body");
-    json_object_foreach(body, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
-    }
-    lua_setglobal(L, "body");
-    
-    return L;
-}
-
-static void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *value_count) {
-    // Expect a table of values to be on top of stack
-    if (!lua_istable(L, -1)) {
-        *values = NULL;
-        *value_count = 0;
-        return;
-    }
-    
-    // Count table elements
-    size_t count = 0;
-    lua_pushnil(L);  // First key
-    while (lua_next(L, -2) != 0) {
-        count++;
-        lua_pop(L, 1);  // Remove value, keep key for next iteration
-    }
-    
-    *value_count = count;
-    *values = arenaAlloc(arena, sizeof(char*) * count);
-    
-    // Extract values
-    size_t index = 0;
-    lua_pushnil(L);  // First key
-    while (lua_next(L, -2) != 0) {
-        // Convert value to string
-        const char *value = lua_tostring(L, -1);
-        if (value) {
-            (*values)[index++] = arenaDupString(arena, value);
-        }
-        lua_pop(L, 1);  // Remove value, keep key for next iteration
-    }
-}
-
-// Add these helper functions for Lua/JSON conversion
-static void pushJsonToLua(lua_State *L, json_t *json) {
-    if (!json) {
-        lua_pushnil(L);
-        return;
-    }
-
-    switch (json_typeof(json)) {
-        case JSON_OBJECT: {
-            lua_newtable(L);
-            const char *key;
-            json_t *value;
-            json_object_foreach(json, key, value) {
-                lua_pushstring(L, key);
-                pushJsonToLua(L, value);
-                lua_settable(L, -3);
-            }
-            break;
-        }
-        case JSON_ARRAY: {
-            lua_newtable(L);
-            size_t index;
-            json_t *value;
-            json_array_foreach(json, index, value) {
-                // Convert size_t to lua_Integer safely
-                lua_Integer lua_index = (lua_Integer)(index + 1); // Lua arrays are 1-based
-                if (lua_index > 0) { // Check for overflow
-                    lua_pushinteger(L, lua_index);
-                    pushJsonToLua(L, value);
-                    lua_settable(L, -3);
-                }
-            }
-            break;
-        }
-        case JSON_STRING:
-            lua_pushstring(L, json_string_value(json));
-            break;
-        case JSON_INTEGER:
-            lua_pushinteger(L, json_integer_value(json));
-            break;
-        case JSON_REAL:
-            lua_pushnumber(L, json_real_value(json));
-            break;
-        case JSON_TRUE:
-            lua_pushboolean(L, 1);
-            break;
-        case JSON_FALSE:
-            lua_pushboolean(L, 0);
-            break;
-        case JSON_NULL:
-            lua_pushnil(L);
-            break;
-    }
-}
-
-static json_t* luaToJson(lua_State *L, int index) {
-    switch (lua_type(L, index)) {
-        case LUA_TTABLE: {
-            // Check if it's an array or object
-            bool isArray = true;
-            lua_Integer maxIndex = 0;
-            
-            lua_pushnil(L);  // First key
-            while (lua_next(L, index - 1) != 0) {
-                if (lua_type(L, -2) != LUA_TNUMBER) {
-                    isArray = false;
-                } else {
-                    lua_Integer i = lua_tointeger(L, -2);
-                    if (i > 0 && i > maxIndex) {
-                        maxIndex = i;
-                    } else {
-                        isArray = false;
-                    }
-                }
-                lua_pop(L, 1);  // Remove value, keep key for next iteration
-            }
-            
-            if (isArray && maxIndex > 0) {
-                json_t *arr = json_array();
-                for (lua_Integer i = 1; i <= maxIndex; i++) {
-                    lua_rawgeti(L, index, i);
-                    json_t *value = luaToJson(L, -1);
-                    json_array_append_new(arr, value);
-                    lua_pop(L, 1);
-                }
-                return arr;
-            } else {
-                json_t *obj = json_object();
-                lua_pushnil(L);  // First key
-                while (lua_next(L, index - 1) != 0) {
-                    const char *key = lua_tostring(L, -2);
-                    json_t *value = luaToJson(L, -1);
-                    if (key) {
-                        json_object_set_new(obj, key, value);
-                    }
-                    lua_pop(L, 1);
-                }
-                return obj;
-            }
-        }
-        case LUA_TSTRING:
-            return json_string(lua_tostring(L, index));
-        case LUA_TNUMBER:
-            if (lua_isinteger(L, index)) {
-                return json_integer(lua_tointeger(L, index));
-            }
-            return json_real(lua_tonumber(L, index));
-        case LUA_TBOOLEAN:
-            return lua_toboolean(L, index) ? json_true() : json_false();
-        case LUA_TNIL:
-            return json_null();
-        default:
-            return json_null();
-    }
-}
-
 char* generateApiResponse(Arena *arena, 
                         ApiEndpoint *endpoint, 
                         void *con_cls,
@@ -337,26 +144,11 @@ char* generateApiResponse(Arena *arena,
             extractFilterValues(arena, filtered_jv, &values, &value_count);
             jv_free(filtered_jv);
         } else if (endpoint->preFilterType == FILTER_LUA) {
-            lua_State *L = createLuaState(requestContext);
-            if (!L) {
-                return generateErrorJson("Failed to create Lua state");
+            char *error = handleLuaPreFilter(arena, requestContext, endpoint->preFilter,
+                                           &values, &value_count);
+            if (error) {
+                return error;
             }
-            
-            // Load and run the Lua script
-            if (luaL_dostring(L, endpoint->preFilter) != 0) {
-                const char *error = lua_tostring(L, -1);
-                // Make a copy of the error message before closing Lua state
-                char *error_copy = arenaDupString(arena, error);
-                lua_close(L);
-                char *response = generateErrorJson(error_copy);
-                return response;
-            }
-            
-            // Convert returned Lua table to values array
-            if (lua_istable(L, -1)) {
-                extractLuaValues(L, arena, &values, &value_count);
-            }
-            lua_close(L);
         }
     }
 
@@ -376,38 +168,7 @@ char* generateApiResponse(Arena *arena,
         if (endpoint->postFilterType == FILTER_JQ) {
             return formatResponse(arena, jsonData, endpoint->postFilter);
         } else if (endpoint->postFilterType == FILTER_LUA) {
-            lua_State *L = createLuaState(requestContext);
-            if (!L) {
-                return generateErrorJson("Failed to create Lua state");
-            }
-            
-            // Create global rows table from jsonData
-            json_t *rows = json_object_get(jsonData, "rows");
-            if (rows) {
-                pushJsonToLua(L, rows);
-                lua_setglobal(L, "rows");
-            }
-            
-            // Run the Lua script
-            if (luaL_dostring(L, endpoint->postFilter) != 0) {
-                const char *error = lua_tostring(L, -1);
-                // Make a copy of the error message before closing Lua state
-                char *error_copy = arenaDupString(arena, error);
-                lua_close(L);
-                return generateErrorJson(error_copy);
-            }
-            
-            // Convert returned Lua table to JSON
-            json_t *result = luaToJson(L, -1);
-            lua_close(L);
-            
-            if (!result) {
-                return generateErrorJson("Failed to convert Lua result to JSON");
-            }
-            
-            char *response = json_dumps(result, JSON_COMPACT);
-            json_decref(result);
-            return response;
+            return handleLuaPostFilter(arena, jsonData, requestContext, endpoint->postFilter);
         }
     }
 
@@ -507,15 +268,6 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     MHD_add_response_header(response, "Access-Control-Allow-Headers", "Content-Type");
     
     return MHD_queue_response(connection, MHD_HTTP_OK, response);
-}
-
-// Add helper function for error responses
-static char* generateErrorJson(const char *errorMessage) {
-    json_t *root = json_object();
-    json_object_set_new(root, "error", json_string(errorMessage));
-    
-    char *jsonStr = json_dumps(root, JSON_COMPACT);
-    return jsonStr;
 }
 
 static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
