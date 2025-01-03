@@ -220,23 +220,10 @@ website {
         method "GET"
 
         preFilter lua {
-            -- Extract query params
-            local team_id = query.team_id
-            local offset = query.offset
-            local limit = query.limit
-            
-            -- Handle empty/null values with '{}'
-            if not team_id or team_id == "" then
-                team_id = "{}"
-            end
-            
-            if not offset or offset == "" then
-                offset = "{}"
-            end
-            
-            if not limit or limit == "" then
-                limit = "{}"
-            end
+            -- Extract and default query params using and/or
+            local team_id = query.team_id and query.team_id ~= "" and query.team_id or "{}"
+            local offset = query.offset and query.offset ~= "" and query.offset or "{}"
+            local limit = query.limit and query.limit ~= "" and query.limit or "{}"
             
             -- Return array of values for SQL query
             return {team_id, offset, limit}
