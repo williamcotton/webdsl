@@ -469,6 +469,32 @@ static void test_lexer_lua_block(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_filter_keywords(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = "preFilter postFilter jq lua";
+    initLexer(&lexer, input, &parser);
+    
+    TokenType expected[] = {
+        TOKEN_PRE_FILTER,
+        TOKEN_POST_FILTER,
+        TOKEN_JQ,
+        TOKEN_LUA
+    };
+    
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        Token token = getNextToken(&lexer);
+        TEST_ASSERT_EQUAL(expected[i], token.type);
+    }
+    
+    Token eof = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, eof.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -486,5 +512,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_nested_css_blocks);
     RUN_TEST(test_lexer_jq_block);
     RUN_TEST(test_lexer_lua_block);
+    RUN_TEST(test_lexer_filter_keywords);
     return UNITY_END();
 }

@@ -19,3 +19,4 @@
 -I/opt/homebrew/include
 -L/opt/homebrew/lib
 -I/opt/homebrew/include/postgresql@14
+-I/opt/homebrew/include/lua

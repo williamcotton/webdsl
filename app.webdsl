@@ -104,7 +104,7 @@ website {
             }
         }
         jsonResponse "employees"
-        jq {
+        postFilter jq {
             {
                 data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
                 metadata: {
@@ -158,7 +158,7 @@ website {
         route "/api/v1/teams"
         method "GET"
         jsonResponse "teams"
-        jq {
+        postFilter jq {
             {
                 data: (.rows | map({id: .id, name: .name})),
             }
@@ -207,6 +207,95 @@ website {
             INSERT INTO employees (name, email, team_id) 
             VALUES ($1, $2, $3)
             RETURNING id, team_id, name, email
+        }
+    }
+
+    api {
+        route "/api/v2/employees"
+        method "GET"
+        preFilter lua {
+            -- Extract and validate team_id from query params
+            local team_id = query.team_id
+            if team_id then
+                team_id = tonumber(team_id)
+            end
+            
+            -- Return table of values for SQL query
+            return {team_id}
+        }
+        jsonResponse "employees"
+        postFilter lua {
+            -- Transform the data
+            local result = {
+                data = {},
+                metadata = {}
+            }
+            
+            -- Process rows (rows is a global table provided by the API handler)
+            for _, row in ipairs(rows) do
+                if row.type == "data" then
+                    table.insert(result.data, {
+                        name = row.name,
+                        email = row.email,
+                        team_id = row.team_id
+                    })
+                elseif row.type == "metadata" then
+                    result.metadata = {
+                        total = row.total_count,
+                        team_id_query = row.team_id_query
+                    }
+                end
+            end
+            
+            -- Return Lua table to be converted to JSON by the API handler
+            return result
+        }
+    }
+
+    api {
+        route "/api/v2/employees"
+        method "POST"
+        fields {
+            "name" {
+                type "string"
+                required true
+                length 10..100
+            }
+            "email" {
+                type "string"
+                required true
+                format "email"
+            }
+            "team_id" {
+                type "number"
+                required false
+            }
+        }
+        preFilter lua {
+            -- Extract and validate fields from request body
+            local name = body.name
+            local email = body.email
+            local team_id = body.team_id
+            
+            if team_id then
+                team_id = tonumber(team_id)
+            end
+            
+            -- Return array of values for SQL query
+            return {name, email, team_id}
+        }
+        jsonResponse "insertEmployee"
+        postFilter lua {
+            -- Return Lua table to be converted to JSON by the API handler
+            return {
+                success = true,
+                employee = {
+                    id = rows[1].id,
+                    name = rows[1].name,
+                    email = rows[1].email,
+                    team_id = rows[1].team_id
+                }
+            }
         }
     }
 }

@@ -588,8 +588,8 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 }
                 break;
             }
-            case TOKEN_FILTER: {
-                advanceParser(parser);  // consume filter token
+            case TOKEN_POST_FILTER: {
+                advanceParser(parser);  // consume postFilter token
                 
                 if (parser->current.type == TOKEN_JQ) {
                     endpoint->postFilterType = FILTER_JQ;
@@ -622,7 +622,7 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 } else {
                     char buffer[256];
                     snprintf(buffer, sizeof(buffer),
-                            "Expected 'jq' or 'lua' after 'filter' at line %d\n",
+                            "Expected 'jq' or 'lua' after 'postFilter' at line %d\n",
                             parser->current.line);
                     fputs(buffer, stderr);
                     parser->hadError = 1;
