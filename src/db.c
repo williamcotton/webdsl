@@ -116,6 +116,7 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
         pthread_mutex_destroy(&db->stmt_lock);
         return NULL;
     }
+    printf("Database connection pool initialized\n");
     
     return db;
 }
