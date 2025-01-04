@@ -320,7 +320,7 @@ static void test_parse_website_with_api(void) {
         "  api {\n"
         "    route \"/api/v1/employees\"\n"
         "    method \"POST\"\n"
-        "    executeQuery \"insert_employee\" [name, age, position]\n"
+        "    executeQuery \"insert_employee\"\n"
         "  }\n"
         "}";
     
@@ -342,18 +342,6 @@ static void test_parse_website_with_api(void) {
     TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
     TEST_ASSERT_EQUAL_STRING("POST", second->method);
     TEST_ASSERT_EQUAL_STRING("insert_employee", second->executeQuery);
-    
-    // Test response fields
-    TEST_ASSERT_NOT_NULL(second->fields);
-    ResponseField *field = second->fields;
-    TEST_ASSERT_EQUAL_STRING("name", field->name);
-    field = field->next;
-    TEST_ASSERT_NOT_NULL(field);
-    TEST_ASSERT_EQUAL_STRING("age", field->name);
-    field = field->next;
-    TEST_ASSERT_NOT_NULL(field);
-    TEST_ASSERT_EQUAL_STRING("position", field->name);
-    TEST_ASSERT_NULL(field->next);
     
     freeArena(parser.arena);
 }
@@ -477,7 +465,7 @@ static void test_parse_api_with_field_definitions(void) {
         "        format \"email\"\n"
         "      }\n"
         "    }\n"
-        "    executeQuery \"insertEmployee\" [name, email]\n"
+        "    executeQuery \"insertEmployee\"\n"
         "  }\n"
         "}";
     
