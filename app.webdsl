@@ -407,4 +407,99 @@ website {
             }
         }
     }
+
+    api {
+        route "/api/v4/employees"
+        method "GET"
+        
+        pipeline {
+            lua {
+                if not querybuilder then
+                    error("querybuilder module not loaded")
+                end
+                local qb = querybuilder.new()
+                if not qb then
+                    error("failed to create query builder")
+                end
+                
+                local result = qb
+                    :select("id", "team_id", "name", "email")
+                    :from("employees")
+                    :where_if(query.team_id, "team_id = ?", query.team_id)
+                    :order_by("id")
+                    :limit(query.limit or 20)
+                    :offset(query.offset or 0)
+                    :with_metadata()
+                    :build()
+                    
+                return result
+            }
+            
+            executeQuery dynamic
+            
+            jq {
+                {
+                    data: (.rows | map(select(.type == "data")) | map({
+                        name: .name,
+                        email: .email,
+                        team_id: .team_id
+                    })),
+                    metadata: {
+                        total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
+                        offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
+                        limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
+                        has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+                    }
+                }
+            }
+        }
+    }
+
+    api {
+        route "/api/v4/employees"
+        method "POST"
+        fields {
+            "name" {
+                type "string"
+                required true
+                length 10..100
+            }
+            "email" {
+                type "string"
+                required true
+                format "email"
+            }
+            "team_id" {
+                type "number"
+                required false
+            }
+        }
+        pipeline {
+            lua {
+                local name = body.name
+                local email = body.email
+                local team_id = body.team_id
+                
+                if team_id then
+                    team_id = tonumber(team_id)
+                end
+                
+                return {name, email, team_id}
+            }
+            
+            executeQuery "insertEmployee"
+            
+            lua {
+                return {
+                    success = true,
+                    employee = {
+                        id = rows[1].id,
+                        name = rows[1].name,
+                        email = rows[1].email,
+                        team_id = rows[1].team_id
+                    }
+                }
+            }
+        }
+    }
 }

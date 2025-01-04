@@ -21,6 +21,8 @@ static ApiEndpoint *parseApi(Parser *parser);
 static QueryNode *parseQuery(Parser *parser);
 static ApiField *parseApiFields(Parser *parser);
 static QueryParam *parseQueryParams(Parser *parser);
+static PipelineStepNode* parsePipelineStep(Parser *parser);
+static PipelineStepNode* parsePipeline(Parser *parser);
 
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
@@ -465,152 +467,191 @@ static bool parsePort(const char* str, int* result) {
     return true;
 }
 
+static PipelineStepNode* parsePipelineStep(Parser *parser) {
+    PipelineStepNode *step = arenaAlloc(parser->arena, sizeof(PipelineStepNode));
+    memset(step, 0, sizeof(PipelineStepNode));
+    
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wswitch-enum"
+    switch (parser->current.type) {
+        case TOKEN_JQ:
+            step->type = STEP_JQ;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                step->code = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected JQ filter code block\n", stderr);
+            }
+            break;
+            
+        case TOKEN_LUA:
+            step->type = STEP_LUA;
+            step->is_dynamic = true;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                step->code = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected Lua code block\n", stderr);
+            }
+            break;
+            
+        case TOKEN_EXECUTE_QUERY:
+            step->type = STEP_SQL;
+            step->is_dynamic = false;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_STRING) {
+                step->name = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else if (parser->current.type == TOKEN_DYNAMIC) {
+                step->is_dynamic = true;
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected query name or 'dynamic' after executeQuery\n", stderr);
+            }
+            break;
+            
+        default:
+            parser->hadError = 1;
+            fputs("Expected pipeline step (jq, lua, or executeQuery)\n", stderr);
+            break;
+    }
+    #pragma clang diagnostic pop
+    
+    return step;
+}
+
+static PipelineStepNode* parsePipeline(Parser *parser) {
+    PipelineStepNode *head = NULL;
+    PipelineStepNode *tail = NULL;
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after pipeline");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        
+        PipelineStepNode *step = parsePipelineStep(parser);
+        if (step) {
+            if (!head) {
+                head = step;
+                tail = step;
+            } else {
+                tail->next = step;
+                tail = step;
+            }
+        }
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after pipeline block");
+    return head;
+}
+
 static ApiEndpoint *parseApi(Parser *parser) {
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'api'.");
+    
     ApiEndpoint *endpoint = arenaAlloc(parser->arena, sizeof(ApiEndpoint));
     memset(endpoint, 0, sizeof(ApiEndpoint));
-
-    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'api'.");
-
-    while (parser->current.type != TOKEN_CLOSE_BRACE &&
-           parser->current.type != TOKEN_EOF && !parser->hadError) {
-
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
-            case TOKEN_ROUTE: {
+            case TOKEN_ROUTE:
                 advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'route'.");
+                consume(parser, TOKEN_STRING, "Expected string after 'route'");
                 endpoint->route = copyString(parser, parser->previous.lexeme);
                 break;
-            }
-            case TOKEN_METHOD: {
+                
+            case TOKEN_METHOD:
                 advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'method'.");
+                consume(parser, TOKEN_STRING, "Expected string after 'method'");
                 endpoint->method = copyString(parser, parser->previous.lexeme);
                 break;
-            }
-            case TOKEN_EXECUTE_QUERY: {
+                
+            case TOKEN_PIPELINE:
                 advanceParser(parser);
-                if (strcmp(parser->current.lexeme, "dynamic") == 0) {
-                    endpoint->isDynamicQuery = true;
+                endpoint->uses_pipeline = true;
+                endpoint->handler.pipeline = parsePipeline(parser);
+                break;
+                
+            case TOKEN_EXECUTE_QUERY:
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_DYNAMIC) {
+                    endpoint->handler.legacy.isDynamicQuery = true;
                     advanceParser(parser);
                 } else {
-                    consume(parser, TOKEN_STRING, "Expected string or 'dynamic' after 'executeQuery'.");
-                    endpoint->executeQuery = copyString(parser, parser->previous.lexeme);
+                    consume(parser, TOKEN_STRING, "Expected string after 'executeQuery'");
+                    endpoint->handler.legacy.executeQuery = copyString(parser, parser->previous.lexeme);
                 }
                 break;
-            }
-            case TOKEN_PRE_FILTER: {
-                advanceParser(parser);  // consume preFilter token
                 
+            case TOKEN_PRE_FILTER:
+                advanceParser(parser);
                 if (parser->current.type == TOKEN_JQ) {
-                    endpoint->preFilterType = FILTER_JQ;
+                    endpoint->handler.legacy.preFilterType = FILTER_JQ;
                     advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->preFilter = copyString(parser, parser->current.lexeme);
+                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                        endpoint->handler.legacy.preFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
-                    } else {
-                        char buffer[256];
-                        snprintf(buffer, sizeof(buffer),
-                                "Expected JQ filter block at line %d\n",
-                                parser->current.line);
-                        fputs(buffer, stderr);
-                        parser->hadError = 1;
                     }
                 } else if (parser->current.type == TOKEN_LUA) {
-                    endpoint->preFilterType = FILTER_LUA;
+                    endpoint->handler.legacy.preFilterType = FILTER_LUA;
                     advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->preFilter = copyString(parser, parser->current.lexeme);
+                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                        endpoint->handler.legacy.preFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
-                    } else {
-                        char buffer[256];
-                        snprintf(buffer, sizeof(buffer),
-                                "Expected Lua filter block at line %d\n",
-                                parser->current.line);
-                        fputs(buffer, stderr);
-                        parser->hadError = 1;
                     }
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected 'jq' or 'lua' after 'preFilter' at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
                 }
                 break;
-            }
-            case TOKEN_POST_FILTER: {
-                advanceParser(parser);  // consume postFilter token
                 
+            case TOKEN_POST_FILTER:
+                advanceParser(parser);
                 if (parser->current.type == TOKEN_JQ) {
-                    endpoint->postFilterType = FILTER_JQ;
+                    endpoint->handler.legacy.postFilterType = FILTER_JQ;
                     advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->postFilter = copyString(parser, parser->current.lexeme);
+                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                        endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
-                    } else {
-                        char buffer[256];
-                        snprintf(buffer, sizeof(buffer),
-                                "Expected JQ filter block at line %d\n",
-                                parser->current.line);
-                        fputs(buffer, stderr);
-                        parser->hadError = 1;
                     }
                 } else if (parser->current.type == TOKEN_LUA) {
-                    endpoint->postFilterType = FILTER_LUA;
+                    endpoint->handler.legacy.postFilterType = FILTER_LUA;
                     advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK) {
-                        endpoint->postFilter = copyString(parser, parser->current.lexeme);
+                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                        endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
                         advanceParser(parser);
-                    } else {
-                        char buffer[256];
-                        snprintf(buffer, sizeof(buffer),
-                                "Expected Lua filter block at line %d\n",
-                                parser->current.line);
-                        fputs(buffer, stderr);
-                        parser->hadError = 1;
                     }
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected 'jq' or 'lua' after 'postFilter' at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
                 }
                 break;
-            }
-            case TOKEN_JQ: {
-                // Maintain backward compatibility with existing jq syntax
-                endpoint->postFilterType = FILTER_JQ;
-                advanceParser(parser);  // consume JQ token
                 
-                if (parser->current.type == TOKEN_RAW_BLOCK) {
-                    endpoint->postFilter = copyString(parser, parser->current.lexeme);
+            case TOKEN_JQ:
+                // Legacy JQ filter is treated as a post filter
+                endpoint->handler.legacy.postFilterType = FILTER_JQ;
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
                     advanceParser(parser);
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected JQ filter block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
                 }
                 break;
-            }
-            case TOKEN_FIELDS: {
+                
+            case TOKEN_FIELDS:
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");
                 endpoint->apiFields = parseApiFields(parser);
                 break;
-            }
+                
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
-                        "Unexpected token in API block at line %d: %s\n",
-                        parser->current.line, parser->current.lexeme);
+                        "Unexpected token in api endpoint at line %d\n",
+                        parser->current.line);
                 fputs(buffer, stderr);
                 parser->hadError = 1;
                 break;
@@ -618,9 +659,8 @@ static ApiEndpoint *parseApi(Parser *parser) {
         }
         #pragma clang diagnostic pop
     }
-
-    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after API block.");
-
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after api endpoint");
     return endpoint;
 }
 

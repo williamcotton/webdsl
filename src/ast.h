@@ -75,19 +75,44 @@ typedef enum FilterType {
     FILTER_LUA
 } FilterType;
 
+typedef enum StepType {
+    STEP_JQ,
+    STEP_LUA,
+    STEP_SQL,
+    STEP_DYNAMIC_SQL
+} StepType;
+
+typedef struct PipelineStepNode {
+    char *code;       // The actual filter/query code
+    char *name;
+    StepType type;    // Optional name for SQL queries
+    bool is_dynamic;  // For SQL steps
+    uint64_t : 24;    // Padding for alignment
+    struct PipelineStepNode *next;
+} PipelineStepNode;
+
 typedef struct ApiEndpoint {
     char *route;
     char *method;
-    char *executeQuery;
-    char *preFilter;
-    char *postFilter;
-    struct ApiEndpoint *next;
-    FilterType preFilterType;
-    FilterType postFilterType;
-    bool isDynamicQuery;
+    union {
+        // Legacy style
+        struct {
+            char *executeQuery;
+            char *preFilter;
+            char *postFilter;
+            FilterType preFilterType;
+            FilterType postFilterType;
+            bool isDynamicQuery;
+            uint8_t _padding[7];
+        } legacy;
+        // New style
+        PipelineStepNode *pipeline;
+    } handler;
+    bool uses_pipeline;  // Flag to indicate which union member to use
     uint8_t _padding[7];
     ResponseField *fields;
     ApiField *apiFields;
+    struct ApiEndpoint *next;
 } ApiEndpoint;
 
 typedef struct QueryParam {

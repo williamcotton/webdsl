@@ -68,8 +68,6 @@ static bool loadLuaFile(lua_State *L, const char *filename) {
         lua_setglobal(L, "querybuilder");
         return true;
     }
-    
-    fprintf(stderr, "Failed to load %s: %s\n", filename, lua_tostring(L, -1));
     return false;
 }
 

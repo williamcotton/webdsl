@@ -30,6 +30,8 @@ typedef enum {
     TOKEN_POST_FILTER,
     TOKEN_JQ,
     TOKEN_LUA,
+    TOKEN_PIPELINE,
+    TOKEN_DYNAMIC,
 
     TOKEN_STRING,
     TOKEN_OPEN_BRACE,

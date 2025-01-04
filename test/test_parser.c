@@ -334,14 +334,14 @@ static void test_parse_website_with_api(void) {
     ApiEndpoint *first = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
     TEST_ASSERT_EQUAL_STRING("GET", first->method);
-    TEST_ASSERT_EQUAL_STRING("users", first->executeQuery);
+    TEST_ASSERT_EQUAL_STRING("users", first->handler.legacy.executeQuery);
     TEST_ASSERT_NULL(first->fields);
     
     ApiEndpoint *second = first->next;
     TEST_ASSERT_NOT_NULL(second);
     TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
     TEST_ASSERT_EQUAL_STRING("POST", second->method);
-    TEST_ASSERT_EQUAL_STRING("insert_employee", second->executeQuery);
+    TEST_ASSERT_EQUAL_STRING("insert_employee", second->handler.legacy.executeQuery);
     
     freeArena(parser.arena);
 }
@@ -612,11 +612,11 @@ static void test_parse_api_with_jq_filter(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
-    TEST_ASSERT_NOT_NULL(api->postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "email: .email"));
+    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
+    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "email: .email"));
     
     freeArena(parser.arena);
 }
@@ -653,17 +653,17 @@ static void test_parse_api_with_pre_and_post_filters(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
+    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
     
     // Verify preFilter
-    TEST_ASSERT_NOT_NULL(api->preFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->preFilter, "department: .query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->preFilter, "role: .headers[\"X-Role\"]"));
+    TEST_ASSERT_NOT_NULL(api->handler.legacy.preFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.preFilter, "department: .query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.preFilter, "role: .headers[\"X-Role\"]"));
     
     // Verify postFilter
-    TEST_ASSERT_NOT_NULL(api->postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "local dept = query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "local role = headers[\"X-Role\"]"));
+    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "local dept = query.dept"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "local role = headers[\"X-Role\"]"));
     
     freeArena(parser.arena);
 }
@@ -695,14 +695,14 @@ static void test_parse_api_with_legacy_jq(void) {
     ApiEndpoint *api = website->apiHead;
     TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->executeQuery);
+    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
     
     // Verify legacy jq filter is treated as postFilter
-    TEST_ASSERT_NOT_NULL(api->postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->postFilter, "email: .email"));
-    TEST_ASSERT_NULL(api->preFilter);  // Should not have preFilter
+    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, ".rows | map({"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "name: .name"));
+    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "email: .email"));
+    TEST_ASSERT_NULL(api->handler.legacy.preFilter);  // Should not have preFilter
     
     freeArena(parser.arena);
 }

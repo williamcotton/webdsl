@@ -109,13 +109,155 @@ static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query,
     return jsonData;
 }
 
-char* generateApiResponse(Arena *arena, 
-                        ApiEndpoint *endpoint, 
-                        void *con_cls,
-                        json_t *requestContext) {
+// Add new function for pipeline execution
+static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, Arena *arena) {
+    switch (step->type) {
+        case STEP_JQ: {
+            jq_state *jq = findOrCreateJQ(step->code);
+            if (!jq) {
+                return NULL;
+            }
+            
+            jv filtered_jv = processJqFilter(jq, input);
+            if (!jv_is_valid(filtered_jv)) {
+                return NULL;
+            }
+            
+            // Convert JQ result to string
+            jv dumped = jv_dump_string(filtered_jv, 0);
+            const char *str = jv_string_value(dumped);
+            json_error_t error;
+            json_t *result = json_loads(str, 0, &error);
+            jv_free(dumped);
+            jv_free(filtered_jv);
+            
+            if (!result) {
+                fprintf(stderr, "Failed to parse JQ result as JSON: %s\n", error.text);
+            }
+            return result;
+        }
+        
+        case STEP_LUA: {
+            lua_State *L = createLuaState(input, arena, step->is_dynamic);
+            if (!L) {
+                return NULL;
+            }
+            
+            if (luaL_dostring(L, step->code) != 0) {
+                const char *error = lua_tostring(L, -1);
+                fprintf(stderr, "Lua execution error: %s\n", error);
+                lua_close(L);
+                return NULL;
+            }
+            
+            json_t *result = luaToJson(L, -1);
+            lua_close(L);
+            
+            if (!result) {
+                fprintf(stderr, "Failed to convert Lua result to JSON\n");
+            }
+            return result;
+        }
+        
+        case STEP_SQL:
+        case STEP_DYNAMIC_SQL: {
+            if (step->is_dynamic) {
+                // For dynamic SQL, expect input to contain SQL and params
+                const char *sql = json_string_value(json_object_get(input, "sql"));
+                if (!sql) {
+                    return NULL;
+                }
+                
+                json_t *params = json_object_get(input, "params");
+                const char **param_values = NULL;
+                size_t param_count = 0;
+                
+                if (json_is_array(params)) {
+                    param_count = json_array_size(params);
+                    if (param_count > 0) {
+                        param_values = arenaAlloc(arena, sizeof(char*) * param_count);
+                        
+                        for (size_t i = 0; i < param_count; i++) {
+                            json_t *param = json_array_get(params, i);
+                            param_values[i] = json_string_value(param);
+                        }
+                    }
+                }
+                
+                PGresult *result = executeParameterizedQuery(db, sql, param_values, param_count);
+                if (!result) {
+                    return NULL;
+                }
+                
+                json_t *jsonResult = resultToJson(result);
+                freeResult(result);
+                
+                if (!jsonResult) {
+                    fprintf(stderr, "Failed to convert SQL result to JSON\n");
+                }
+                return jsonResult;
+            } else {
+                // For static SQL, look up the query and execute it
+                QueryNode *query = findQuery(step->name);
+                if (!query) {
+                    return NULL;
+                }
+                
+                // Extract parameters from input if needed
+                const char **values = NULL;
+                size_t value_count = 0;
+                if (input) {
+                    json_t *params = json_object_get(input, "params");
+                    if (json_is_array(params)) {
+                        value_count = json_array_size(params);
+                        values = arenaAlloc(arena, sizeof(char*) * value_count);
+                        for (size_t i = 0; i < value_count; i++) {
+                            values[i] = json_string_value(json_array_get(params, i));
+                        }
+                    }
+                }
+                
+                return executeAndFormatQuery(arena, query, values, value_count);
+            }
+        }
+    }
+    
+    return NULL;
+}
+
+static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Arena *arena) {
+    json_t *current = requestContext;
+    PipelineStepNode *step = endpoint->handler.pipeline;
+    
+    while (step) {
+        json_t *result = executePipelineStep(step, current, arena);
+        if (current != requestContext) {
+            json_decref(current);
+        }
+        if (!result) {
+            return NULL;
+        }
+        current = result;
+        step = step->next;
+    }
+    
+    return current;
+}
+
+char* generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls, json_t *requestContext) {
+    if (endpoint->uses_pipeline) {
+        // New pipeline execution path
+        json_t *result = executePipeline(endpoint, requestContext, arena);
+        if (!result) {
+            return generateErrorJson("Pipeline execution failed");
+        }
+        return json_dumps(result, JSON_COMPACT);
+    }
+    
+    // Legacy execution path
     const char **values = NULL;
     size_t value_count = 0;
-    json_t *preFilterResult = NULL;  // Add this to store preFilter result
+    json_t *preFilterResult = NULL;
     
     // For POST requests, validate fields if specified
     if (strcmp(endpoint->method, "POST") == 0 && endpoint->fields) {
@@ -129,9 +271,9 @@ char* generateApiResponse(Arena *arena,
     }
     
     // Process preFilter if it exists
-    if (endpoint->preFilter) {
-        if (endpoint->preFilterType == FILTER_JQ) {
-            jq_state *pre_jq = findOrCreateJQ(endpoint->preFilter);
+    if (endpoint->handler.legacy.preFilter) {
+        if (endpoint->handler.legacy.preFilterType == FILTER_JQ) {
+            jq_state *pre_jq = findOrCreateJQ(endpoint->handler.legacy.preFilter);
             if (!pre_jq) {
                 return generateErrorJson("Failed to create preFilter");
             }
@@ -141,25 +283,22 @@ char* generateApiResponse(Arena *arena,
                 return generateErrorJson("Failed to apply preFilter");
             }
 
-            // Extract values directly from jv struct
             extractFilterValues(arena, filtered_jv, &values, &value_count);
             jv_free(filtered_jv);
-        } else if (endpoint->preFilterType == FILTER_LUA) {
-            if (endpoint->isDynamicQuery) {
-                // Create Lua state and run preFilter
+        } else if (endpoint->handler.legacy.preFilterType == FILTER_LUA) {
+            if (endpoint->handler.legacy.isDynamicQuery) {
                 lua_State *L = createLuaState(requestContext, arena, true);
                 
                 if (!L) {
                     return generateErrorJson("Failed to create Lua state");
                 }
 
-                if (luaL_dostring(L, endpoint->preFilter) != 0) {
+                if (luaL_dostring(L, endpoint->handler.legacy.preFilter) != 0) {
                     const char *error = lua_tostring(L, -1);
                     lua_close(L);
                     return generateErrorJson(error);
                 }
 
-                // Get the preFilter result which should contain SQL and params
                 preFilterResult = luaToJson(L, -1);
                 if (!preFilterResult) {
                     lua_close(L);
@@ -167,7 +306,7 @@ char* generateApiResponse(Arena *arena,
                 }
                 lua_close(L);
             } else {
-                char *error = handleLuaPreFilter(arena, requestContext, endpoint->preFilter,
+                char *error = handleLuaPreFilter(arena, requestContext, endpoint->handler.legacy.preFilter,
                                                &values, &value_count);
                 if (error) {
                     return error;
@@ -179,8 +318,7 @@ char* generateApiResponse(Arena *arena,
     json_t *jsonData = NULL;
 
     // Execute query and get result
-    if (endpoint->isDynamicQuery) {
-        // For dynamic queries, we already have the SQL and params from preFilter
+    if (endpoint->handler.legacy.isDynamicQuery) {
         const char *sql = json_string_value(json_object_get(preFilterResult, "sql"));
         if (!sql) {
             json_decref(preFilterResult);
@@ -191,7 +329,6 @@ char* generateApiResponse(Arena *arena,
         size_t param_count = json_array_size(params);
         const char **param_values = arenaAlloc(arena, sizeof(char*) * param_count);
         
-        // Convert params array to string array
         for (size_t i = 0; i < param_count; i++) {
             json_t *param = json_array_get(params, i);
             param_values[i] = json_string_value(param);
@@ -206,9 +343,8 @@ char* generateApiResponse(Arena *arena,
         
         jsonData = resultToJson(result);
         freeResult(result);
-    } else if (endpoint->executeQuery) {
-        // Look up the query by name
-        QueryNode *query = findQuery(endpoint->executeQuery);
+    } else if (endpoint->handler.legacy.executeQuery) {
+        QueryNode *query = findQuery(endpoint->handler.legacy.executeQuery);
         if (!query) {
             return generateErrorJson("Query not found");
         }
@@ -222,11 +358,11 @@ char* generateApiResponse(Arena *arena,
     }
 
     // Apply post-filter if it exists
-    if (endpoint->postFilter) {
-        if (endpoint->postFilterType == FILTER_JQ) {
-            return handleJqPostFilter(arena, jsonData, endpoint->postFilter);
-        } else if (endpoint->postFilterType == FILTER_LUA) {
-            return handleLuaPostFilter(arena, jsonData, requestContext, endpoint->postFilter);
+    if (endpoint->handler.legacy.postFilter) {
+        if (endpoint->handler.legacy.postFilterType == FILTER_JQ) {
+            return handleJqPostFilter(arena, jsonData, endpoint->handler.legacy.postFilter);
+        } else if (endpoint->handler.legacy.postFilterType == FILTER_LUA) {
+            return handleLuaPostFilter(arena, jsonData, requestContext, endpoint->handler.legacy.postFilter);
         }
     }
 
