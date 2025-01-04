@@ -5,12 +5,13 @@
 #include <string.h>
 #include <jansson.h>
 #include <uthash.h>
+#include <stdatomic.h>
 #include "server/utils.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 // Generate unique statement names
-static __thread unsigned long stmt_counter = 0;
+static atomic_ulong stmt_counter = 0;
 
 static PreparedStmt* findPreparedStmt(Database *db, PGconn *conn, const char *sql) {
     uint32_t hash = hashString(sql) & STMT_HASH_MASK;
@@ -40,7 +41,7 @@ static PreparedStmt* prepareSqlStatement(Database *db, PGconn *conn, const char 
     
     // Generate unique name for this statement
     char buf[32];
-    snprintf(buf, sizeof(buf), "stmt_%lu", ++stmt_counter);
+    snprintf(buf, sizeof(buf), "stmt_%d_%lu", PQbackendPID(conn), atomic_fetch_add(&stmt_counter, 1));
     const char *stmt_name = arenaDupString(db->pool->arena, buf);
     
     // Prepare the statement
