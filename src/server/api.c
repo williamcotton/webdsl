@@ -110,7 +110,7 @@ static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query,
 }
 
 // Add new function for pipeline execution
-static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, Arena *arena) {
+static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
     switch (step->type) {
         case STEP_JQ: {
             jq_state *jq = findOrCreateJQ(step->code);
@@ -142,6 +142,44 @@ static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, Arena 
             if (!L) {
                 return NULL;
             }
+            
+            // Set up input from previous step
+            pushJsonToLua(L, input);
+            lua_setglobal(L, "request");
+            
+            // Set up globals from the original request context
+            json_t *query = json_object_get(requestContext, "query");
+            json_t *body = json_object_get(requestContext, "body");
+            json_t *headers = json_object_get(requestContext, "headers");
+            
+            // Create query table
+            lua_newtable(L);
+            const char *key;
+            json_t *value;
+            json_object_foreach(query, key, value) {
+                lua_pushstring(L, key);
+                lua_pushstring(L, json_string_value(value));
+                lua_settable(L, -3);
+            }
+            lua_setglobal(L, "query");
+            
+            // Create body table
+            lua_newtable(L);
+            json_object_foreach(body, key, value) {
+                lua_pushstring(L, key);
+                lua_pushstring(L, json_string_value(value));
+                lua_settable(L, -3);
+            }
+            lua_setglobal(L, "body");
+            
+            // Create headers table
+            lua_newtable(L);
+            json_object_foreach(headers, key, value) {
+                lua_pushstring(L, key);
+                lua_pushstring(L, json_string_value(value));
+                lua_settable(L, -3);
+            }
+            lua_setglobal(L, "headers");
             
             if (luaL_dostring(L, step->code) != 0) {
                 const char *error = lua_tostring(L, -1);
@@ -230,7 +268,7 @@ static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Ar
     PipelineStepNode *step = endpoint->handler.pipeline;
     
     while (step) {
-        json_t *result = executePipelineStep(step, current, arena);
+        json_t *result = executePipelineStep(step, current, requestContext, arena);
         if (current != requestContext) {
             json_decref(current);
         }
