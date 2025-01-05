@@ -2,7 +2,7 @@
 #include "handler.h"
 #include "routing.h"
 #include "validation.h"
-#include "../db.h"
+#include "db.h"
 #include <jq.h>
 #include <string.h>
 #include <stdio.h>

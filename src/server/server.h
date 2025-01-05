@@ -3,7 +3,7 @@
 
 #include "../ast.h"
 #include "../arena.h"
-#include "../db.h"
+#include "db.h"
 
 // Global state accessible to other server components
 extern WebsiteNode *currentWebsite;

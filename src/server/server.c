@@ -1,7 +1,7 @@
 #include "server.h"
 #include "handler.h"
 #include "routing.h"
-#include "../db.h"
+#include "db.h"
 #include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
