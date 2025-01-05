@@ -28,6 +28,7 @@ static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query,
 static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind, 
                                       const char *key, const char *value);
 static jv janssonToJv(json_t *json);
+static json_t* jvToJansson(jv value);
 
 // Fix the const qualifier drop warning
 static struct MHD_Response* createErrorResponse(const char *error_msg, int status_code) {
@@ -123,16 +124,11 @@ static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t
                 return NULL;
             }
             
-            // Convert JQ result to string
-            jv dumped = jv_dump_string(filtered_jv, 0);
-            const char *str = jv_string_value(dumped);
-            json_error_t error;
-            json_t *result = json_loads(str, 0, &error);
-            jv_free(dumped);
+            json_t *result = jvToJansson(filtered_jv);
             jv_free(filtered_jv);
             
             if (!result) {
-                fprintf(stderr, "Failed to parse JQ result as JSON: %s\n", error.text);
+                fprintf(stderr, "Failed to convert JQ result to JSON\n");
             }
             return result;
         }
@@ -602,6 +598,56 @@ static jv janssonToJv(json_t *json) {
             return jv_null();
         default:
             return jv_null();
+    }
+}
+
+static json_t* jvToJansson(jv value) {
+    if (!jv_is_valid(value)) {
+        return NULL;
+    }
+
+    switch (jv_get_kind(value)) {
+        case JV_KIND_OBJECT: {
+            json_t *obj = json_object();
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wconditional-uninitialized"
+            jv_object_foreach(value, key, val) {
+                const char *key_str = jv_string_value(key);
+                json_t *json_val = jvToJansson(val);
+                if (json_val) {
+                    json_object_set_new(obj, key_str, json_val);
+                }
+            }
+            #pragma clang diagnostic pop
+            return obj;
+        }
+        case JV_KIND_ARRAY: {
+            json_t *arr = json_array();
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wconditional-uninitialized"
+            jv_array_foreach(value, index, val) {
+                json_t *json_val = jvToJansson(val);
+                if (json_val) {
+                    json_array_append_new(arr, json_val);
+                }
+            }
+            #pragma clang diagnostic pop
+            return arr;
+        }
+        case JV_KIND_STRING:
+            return json_string(jv_string_value(value));
+        case JV_KIND_NUMBER:
+            return json_real(jv_number_value(value));
+        case JV_KIND_TRUE:
+            return json_true();
+        case JV_KIND_FALSE:
+            return json_false();
+        case JV_KIND_NULL:
+            return json_null();
+        case JV_KIND_INVALID:
+            return NULL;
+        default:
+            return NULL;
     }
 }
 
