@@ -11,6 +11,7 @@
 #pragma clang diagnostic pop
 #include "arena.h"
 #include "db_pool.h"
+#include "../ast.h"
 
 #define STMT_HASH_SIZE 64
 #define STMT_HASH_MASK (STMT_HASH_SIZE - 1)
@@ -62,5 +63,11 @@ void releaseDbConnection(Database *db, PGconn *conn);
 // Add new function declarations
 PGresult* executePreparedStatement(Database *db, const char *sql, 
                                  const char **values, size_t value_count);
+
+json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
+                              const char **values, size_t value_count);
+
+json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
+                       json_t *requestContext, Arena *arena);
 
 #endif // DB_H

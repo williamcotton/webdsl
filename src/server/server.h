@@ -8,7 +8,7 @@
 // Global state accessible to other server components
 extern WebsiteNode *currentWebsite;
 extern Arena *serverArena;
-extern Database *db;
+extern Database *globalDb;
 extern struct MHD_Daemon *httpd;
 
 // Server operations

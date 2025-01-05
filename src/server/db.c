@@ -7,6 +7,9 @@
 #include <uthash.h>
 #include <stdatomic.h>
 #include "server/utils.h"
+#include "routing.h"
+
+extern Database *globalDb;
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
@@ -254,4 +257,158 @@ void releaseDbConnection(Database *db, PGconn *conn) {
         }
         pooled = pooled->next;
     }
+}
+
+json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
+                                     const char **values, size_t value_count) {
+  (void)arena;
+
+  if (!query) {
+    return NULL;
+  }
+
+  // Execute query
+  PGresult *result;
+  if (values && value_count > 0) {
+    result =
+        executeParameterizedQuery(globalDb, query->sql, values, value_count);
+  } else {
+    result = executeQuery(globalDb, query->sql);
+  }
+
+  if (!result) {
+    return NULL;
+  }
+
+  // Convert result to JSON
+  json_t *jsonData = resultToJson(result);
+  freeResult(result);
+
+  if (!jsonData) {
+    return NULL;
+  }
+
+  return jsonData;
+}
+
+json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
+                              json_t *requestContext, Arena *arena) {
+  (void)requestContext;
+
+  if (step->is_dynamic) {
+    // For dynamic SQL, expect input to contain SQL and params
+    const char *sql = json_string_value(json_object_get(input, "sql"));
+    if (!sql) {
+      return NULL;
+    }
+
+    json_t *params = json_object_get(input, "params");
+    const char **param_values = NULL;
+    size_t param_count = 0;
+
+    if (json_is_array(params)) {
+      param_count = json_array_size(params);
+      if (param_count > 0) {
+        param_values = arenaAlloc(arena, sizeof(char *) * param_count);
+
+        for (size_t i = 0; i < param_count; i++) {
+          json_t *param = json_array_get(params, i);
+          if (json_is_string(param)) {
+            param_values[i] = json_string_value(param);
+          } else {
+            // For non-string values, convert to string
+            char *str = json_dumps(param, JSON_COMPACT);
+            if (str) {
+              param_values[i] = arenaDupString(arena, str);
+              free(str);
+            }
+          }
+        }
+      }
+    }
+
+    PGresult *result =
+        executeParameterizedQuery(globalDb, sql, param_values, param_count);
+    if (!result) {
+      return NULL;
+    }
+
+    json_t *jsonResult = resultToJson(result);
+    freeResult(result);
+
+    // add the input to the result
+    if (input) {
+      json_object_set(jsonResult, "request", input);
+    }
+
+    if (!jsonResult) {
+      fprintf(stderr, "Failed to convert SQL result to JSON\n");
+    }
+    return jsonResult;
+  } else {
+    // For static SQL, look up the query and execute it
+    QueryNode *query = findQuery(step->name);
+    if (!query) {
+      return NULL;
+    }
+
+    // Extract parameters from input if needed
+    const char **values = NULL;
+    size_t value_count = 0;
+
+    // Check if input has a params array
+    if (input) {
+      json_t *params = json_object_get(input, "params");
+      if (json_is_array(params)) {
+        value_count = json_array_size(params);
+        if (value_count > 0) {
+          values = arenaAlloc(arena, sizeof(char *) * value_count);
+          for (size_t i = 0; i < value_count; i++) {
+            json_t *param = json_array_get(params, i);
+            if (json_is_string(param)) {
+              values[i] = json_string_value(param);
+            } else {
+              // For non-string values, convert to string
+              char *str = json_dumps(param, JSON_COMPACT);
+              if (str) {
+                values[i] = arenaDupString(arena, str);
+                free(str);
+              }
+            }
+          }
+        }
+      } else if (json_is_array(input)) {
+        // If input itself is an array, use it directly as params
+        value_count = json_array_size(input);
+        if (value_count > 0) {
+          values = arenaAlloc(arena, sizeof(char *) * value_count);
+          for (size_t i = 0; i < value_count; i++) {
+            json_t *param = json_array_get(input, i);
+            if (json_is_string(param)) {
+              values[i] = json_string_value(param);
+            } else {
+              // For non-string values, convert to string
+              char *str = json_dumps(param, JSON_COMPACT);
+              if (str) {
+                values[i] = arenaDupString(arena, str);
+                free(str);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    json_t *jsonData = executeAndFormatQuery(arena, query, values, value_count);
+    if (!jsonData) {
+      return NULL;
+    }
+
+    // add the input to the result
+    if (input) {
+      json_object_set(jsonData, "request", input);
+    }
+
+    return jsonData;
+  }
 }

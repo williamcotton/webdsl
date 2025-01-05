@@ -11,7 +11,7 @@
 WebsiteNode *currentWebsite = NULL;
 struct MHD_Daemon *httpd = NULL;
 Arena *serverArena = NULL;
-Database *db = NULL;
+Database *globalDb = NULL;
 
 void startServer(WebsiteNode *website, Arena *arena) {
     currentWebsite = website;
@@ -20,12 +20,13 @@ void startServer(WebsiteNode *website, Arena *arena) {
 
     // Initialize database connection
     if (website->databaseUrl) {
-        db = initDatabase(serverArena, website->databaseUrl);
+        globalDb = initDatabase(serverArena, website->databaseUrl);
     }
-    if (!db) {
-        fprintf(stderr, "Failed to connect to database: %s\n", 
-               website->databaseUrl ? website->databaseUrl : "no database URL configured");
-        exit(1);
+    if (!globalDb) {
+      fprintf(stderr, "Failed to connect to database: %s\n",
+              website->databaseUrl ? website->databaseUrl
+                                   : "no database URL configured");
+      exit(1);
     }
 
     // Get port number from website definition, default to 8080 if not specified
@@ -57,8 +58,8 @@ void stopServer(void) {
         currentWebsite = NULL;
     }
 
-    if (db) {
-        closeDatabase(db);
-        db = NULL;
+    if (globalDb) {
+      closeDatabase(globalDb);
+      globalDb = NULL;
     }
 }
