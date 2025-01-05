@@ -229,6 +229,11 @@ static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t
                 
                 json_t *jsonResult = resultToJson(result);
                 freeResult(result);
+
+                // // add the input to the result
+                if (input) {
+                    json_object_set(jsonResult, "request", input);
+                }
                 
                 if (!jsonResult) {
                     fprintf(stderr, "Failed to convert SQL result to JSON\n");
