@@ -110,158 +110,180 @@ static json_t* executeAndFormatQuery(Arena *arena, QueryNode *query,
     return jsonData;
 }
 
-// Add new function for pipeline execution
-static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
-    switch (step->type) {
-        case STEP_JQ: {
-            jq_state *jq = findOrCreateJQ(step->code);
-            if (!jq) {
-                return NULL;
-            }
-            
-            jv filtered_jv = processJqFilter(jq, input);
-            if (!jv_is_valid(filtered_jv)) {
-                return NULL;
-            }
-            
-            json_t *result = jvToJansson(filtered_jv);
-            jv_free(filtered_jv);
-            
-            if (!result) {
-                fprintf(stderr, "Failed to convert JQ result to JSON\n");
-            }
-            return result;
-        }
-        
-        case STEP_LUA: {
-            lua_State *L = createLuaState(input, arena, step->is_dynamic);
-            if (!L) {
-                return NULL;
-            }
-            
-            // Set up input from previous step
-            pushJsonToLua(L, input);
-            lua_setglobal(L, "request");
-            
-            // Set up globals from the original request context
-            json_t *query = json_object_get(requestContext, "query");
-            json_t *body = json_object_get(requestContext, "body");
-            json_t *headers = json_object_get(requestContext, "headers");
-            
-            // Create query table
-            lua_newtable(L);
-            const char *key;
-            json_t *value;
-            json_object_foreach(query, key, value) {
-                lua_pushstring(L, key);
-                lua_pushstring(L, json_string_value(value));
-                lua_settable(L, -3);
-            }
-            lua_setglobal(L, "query");
-            
-            // Create body table
-            lua_newtable(L);
-            json_object_foreach(body, key, value) {
-                lua_pushstring(L, key);
-                lua_pushstring(L, json_string_value(value));
-                lua_settable(L, -3);
-            }
-            lua_setglobal(L, "body");
-            
-            // Create headers table
-            lua_newtable(L);
-            json_object_foreach(headers, key, value) {
-                lua_pushstring(L, key);
-                lua_pushstring(L, json_string_value(value));
-                lua_settable(L, -3);
-            }
-            lua_setglobal(L, "headers");
-            
-            if (luaL_dostring(L, step->code) != 0) {
-                const char *error = lua_tostring(L, -1);
-                fprintf(stderr, "Lua execution error: %s\n", error);
-                lua_close(L);
-                return NULL;
-            }
-            
-            json_t *result = luaToJson(L, -1);
-            lua_close(L);
-            
-            if (!result) {
-                fprintf(stderr, "Failed to convert Lua result to JSON\n");
-            }
-            return result;
-        }
-        
-        case STEP_SQL:
-        case STEP_DYNAMIC_SQL: {
-            if (step->is_dynamic) {
-                // For dynamic SQL, expect input to contain SQL and params
-                const char *sql = json_string_value(json_object_get(input, "sql"));
-                if (!sql) {
-                    return NULL;
-                }
-                
-                json_t *params = json_object_get(input, "params");
-                const char **param_values = NULL;
-                size_t param_count = 0;
-                
-                if (json_is_array(params)) {
-                    param_count = json_array_size(params);
-                    if (param_count > 0) {
-                        param_values = arenaAlloc(arena, sizeof(char*) * param_count);
-                        
-                        for (size_t i = 0; i < param_count; i++) {
-                            json_t *param = json_array_get(params, i);
-                            param_values[i] = json_string_value(param);
-                        }
-                    }
-                }
-                
-                PGresult *result = executeParameterizedQuery(db, sql, param_values, param_count);
-                if (!result) {
-                    return NULL;
-                }
-                
-                json_t *jsonResult = resultToJson(result);
-                freeResult(result);
-
-                // // add the input to the result
-                if (input) {
-                    json_object_set(jsonResult, "request", input);
-                }
-                
-                if (!jsonResult) {
-                    fprintf(stderr, "Failed to convert SQL result to JSON\n");
-                }
-                return jsonResult;
-            } else {
-                // For static SQL, look up the query and execute it
-                QueryNode *query = findQuery(step->name);
-                if (!query) {
-                    return NULL;
-                }
-                
-                // Extract parameters from input if needed
-                const char **values = NULL;
-                size_t value_count = 0;
-                if (input) {
-                    json_t *params = json_object_get(input, "params");
-                    if (json_is_array(params)) {
-                        value_count = json_array_size(params);
-                        values = arenaAlloc(arena, sizeof(char*) * value_count);
-                        for (size_t i = 0; i < value_count; i++) {
-                            values[i] = json_string_value(json_array_get(params, i));
-                        }
-                    }
-                }
-                
-                return executeAndFormatQuery(arena, query, values, value_count);
-            }
-        }
+// Type-specific execution functions
+static json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+    (void)requestContext;
+    (void)arena;
+    
+    jq_state *jq = findOrCreateJQ(step->code);
+    if (!jq) {
+        return NULL;
     }
     
-    return NULL;
+    jv filtered_jv = processJqFilter(jq, input);
+    if (!jv_is_valid(filtered_jv)) {
+        return NULL;
+    }
+    
+    json_t *result = jvToJansson(filtered_jv);
+    jv_free(filtered_jv);
+    
+    if (!result) {
+        fprintf(stderr, "Failed to convert JQ result to JSON\n");
+    }
+    return result;
+}
+
+static json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+    lua_State *L = createLuaState(input, arena, step->is_dynamic);
+    if (!L) {
+        return NULL;
+    }
+    
+    // Set up input from previous step
+    pushJsonToLua(L, input);
+    lua_setglobal(L, "request");
+    
+    // Set up globals from the original request context
+    json_t *query = json_object_get(requestContext, "query");
+    json_t *body = json_object_get(requestContext, "body");
+    json_t *headers = json_object_get(requestContext, "headers");
+    
+    // Create query table
+    lua_newtable(L);
+    const char *key;
+    json_t *value;
+    json_object_foreach(query, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "query");
+    
+    // Create body table
+    lua_newtable(L);
+    json_object_foreach(body, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "body");
+    
+    // Create headers table
+    lua_newtable(L);
+    json_object_foreach(headers, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "headers");
+    
+    if (luaL_dostring(L, step->code) != 0) {
+        const char *error = lua_tostring(L, -1);
+        fprintf(stderr, "Lua execution error: %s\n", error);
+        lua_close(L);
+        return NULL;
+    }
+    
+    json_t *result = luaToJson(L, -1);
+    lua_close(L);
+    
+    if (!result) {
+        fprintf(stderr, "Failed to convert Lua result to JSON\n");
+    }
+    return result;
+}
+
+static json_t* executeSqlStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+    (void)requestContext;
+    
+    if (step->is_dynamic) {
+        // For dynamic SQL, expect input to contain SQL and params
+        const char *sql = json_string_value(json_object_get(input, "sql"));
+        if (!sql) {
+            return NULL;
+        }
+        
+        json_t *params = json_object_get(input, "params");
+        const char **param_values = NULL;
+        size_t param_count = 0;
+        
+        if (json_is_array(params)) {
+            param_count = json_array_size(params);
+            if (param_count > 0) {
+                param_values = arenaAlloc(arena, sizeof(char*) * param_count);
+                
+                for (size_t i = 0; i < param_count; i++) {
+                    json_t *param = json_array_get(params, i);
+                    param_values[i] = json_string_value(param);
+                }
+            }
+        }
+        
+        PGresult *result = executeParameterizedQuery(db, sql, param_values, param_count);
+        if (!result) {
+            return NULL;
+        }
+        
+        json_t *jsonResult = resultToJson(result);
+        freeResult(result);
+
+        // add the input to the result
+        if (input) {
+            json_object_set(jsonResult, "request", input);
+        }
+        
+        if (!jsonResult) {
+            fprintf(stderr, "Failed to convert SQL result to JSON\n");
+        }
+        return jsonResult;
+    } else {
+        // For static SQL, look up the query and execute it
+        QueryNode *query = findQuery(step->name);
+        if (!query) {
+            return NULL;
+        }
+        
+        // Extract parameters from input if needed
+        const char **values = NULL;
+        size_t value_count = 0;
+        if (input) {
+            json_t *params = json_object_get(input, "params");
+            if (json_is_array(params)) {
+                value_count = json_array_size(params);
+                values = arenaAlloc(arena, sizeof(char*) * value_count);
+                for (size_t i = 0; i < value_count; i++) {
+                    values[i] = json_string_value(json_array_get(params, i));
+                }
+            }
+        }
+        
+        return executeAndFormatQuery(arena, query, values, value_count);
+    }
+}
+
+// Function to set up the executor based on step type
+void setupStepExecutor(PipelineStepNode *step) {
+    switch (step->type) {
+        case STEP_JQ:
+            step->execute = executeJqStep;
+            break;
+        case STEP_LUA:
+            step->execute = executeLuaStep;
+            break;
+        case STEP_SQL:
+        case STEP_DYNAMIC_SQL:
+            step->execute = executeSqlStep;
+            break;
+    }
+}
+
+// Simplified executePipelineStep that just uses the function pointer
+static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+    if (!step || !step->execute) {
+        return NULL;
+    }
+    return step->execute(step, input, requestContext, arena);
 }
 
 static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Arena *arena) {

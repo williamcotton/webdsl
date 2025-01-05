@@ -6,6 +6,8 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 #include <jq.h>
 #pragma clang diagnostic pop
+#include <jansson.h>
+#include "arena.h"
 
 typedef struct ContentNode {
     char *type;
@@ -82,13 +84,20 @@ typedef enum StepType {
     STEP_DYNAMIC_SQL
 } StepType;
 
+// Forward declare the struct
+struct PipelineStepNode;
+
+// Add function pointer type for step execution
+typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena);
+
 typedef struct PipelineStepNode {
-    char *code;       // The actual filter/query code
-    char *name;
-    StepType type;    // Optional name for SQL queries
-    bool is_dynamic;  // For SQL steps
-    uint64_t : 24;    // Padding for alignment
-    struct PipelineStepNode *next;
+    StepExecutor execute;  // Function pointer for execution (8 bytes)
+    char *code;           // The actual filter/query code (8 bytes)
+    char *name;           // Optional name for SQL queries (8 bytes)
+    StepType type;        // Type of step (4 bytes)
+    bool is_dynamic;      // For SQL steps (1 byte)
+    uint8_t _padding[3];  // Explicit padding (3 bytes)
+    struct PipelineStepNode *next;  // Next step in pipeline (8 bytes)
 } PipelineStepNode;
 
 typedef struct ApiEndpoint {

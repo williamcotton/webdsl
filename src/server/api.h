@@ -26,6 +26,9 @@ char* generateApiResponse(Arena *arena,
                         void *con_cls,
                         json_t *requestContext);
 
+// Pipeline step executor setup
+void setupStepExecutor(PipelineStepNode *step);
+
 // Internal functions (if needed by tests)
 #ifdef TESTING
 char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena);

@@ -24,6 +24,9 @@ static QueryParam *parseQueryParams(Parser *parser);
 static PipelineStepNode* parsePipelineStep(Parser *parser);
 static PipelineStepNode* parsePipeline(Parser *parser);
 
+// Forward declaration of setupStepExecutor from api.c
+void setupStepExecutor(PipelineStepNode *step);
+
 void initParser(Parser *parser, const char *source) {
     initLexer(&parser->lexer, source, parser);
     parser->current.type = TOKEN_UNKNOWN;
@@ -522,6 +525,7 @@ static PipelineStepNode* parsePipelineStep(Parser *parser) {
     }
     #pragma clang diagnostic pop
     
+    setupStepExecutor(step);
     return step;
 }
 
