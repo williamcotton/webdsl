@@ -96,107 +96,16 @@ website {
     }
 
     api {
-        route "/api/v1/employees"
+        route "/api/v1/teams"
         method "GET"
-        preFilter jq {
-            {
-                team_id: (.query.team_id // null),
-                offset: (.query.offset // null),
-                limit: (.query.limit // null)
-            }
-        }
-        executeQuery "employeesWithPagination"
-        postFilter jq {
-            {
-                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
-                metadata: {
-                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
-                    team_id_query: (.rows | map(select(.type == "metadata")) | .[0].team_id_query),
-                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
-                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
-                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+        pipeline {
+            executeQuery "teams"
+            jq {
+                {
+                    data: (.rows | map({id: .id, name: .name})),
                 }
             }
         }
-    }
-
-    query {
-        name "employees"
-        sql {
-            WITH filtered_employees AS (
-                SELECT *
-                FROM employees 
-                WHERE filter_by_optional(team_id, $1)
-            ),
-            metadata AS (
-                SELECT
-                    'metadata'::text as type,
-                    COUNT(*)::bigint as total_count,
-                    NULL::bigint as id,
-                    NULL::integer as team_id,
-                    NULL::text as name,
-                    NULL::text as email,
-                    parse_optional($1, 0::integer) as team_id_query
-                FROM filtered_employees
-            ),
-            employee_data AS (
-                SELECT
-                    'data'::text as type,
-                    NULL::bigint as total_count,
-                    id::bigint,
-                    team_id::integer,
-                    name::text,
-                    email::text,
-                    NULL::integer as team_id_query
-                FROM filtered_employees
-                ORDER BY id
-                LIMIT 20
-            )
-            SELECT * FROM metadata
-            UNION ALL
-            SELECT * FROM employee_data
-            ORDER BY type DESC, id ASC;
-        }
-    }
-
-    api {
-        route "/api/v1/teams"
-        method "GET"
-        executeQuery "teams"
-        postFilter jq {
-            {
-                data: (.rows | map({id: .id, name: .name})),
-            }
-        }
-    }
-
-    api {
-        route "/api/v1/employees"
-        method "POST"
-        fields {
-            "name" {
-                type "string"
-                required true
-                length 10..100
-            }
-            "email" {
-                type "string"
-                required true
-                format "email"
-            }
-            "team_id" {
-                type "number"
-                required false
-            }
-        }
-        preFilter jq {
-            {
-                name: (.body.name // null),
-                email: (.body.email // null),
-                team_id: (.body.team_id // null)
-            }
-        }
-        executeQuery "insertEmployee"
     }
 
     query {
@@ -206,210 +115,8 @@ website {
         }
     }
 
-    query {
-        name "insertEmployee"
-        sql {
-            INSERT INTO employees (name, email, team_id) 
-            VALUES ($1, $2, $3)
-            RETURNING id, team_id, name, email
-        }
-    }
-
     api {
-        route "/api/v2/employees"
-        method "GET"
-
-        preFilter lua {
-            -- Extract and default query params using and/or
-            local team_id = query.team_id and query.team_id ~= "" and query.team_id or "{}"
-            local offset = query.offset and query.offset ~= "" and query.offset or "{}"
-            local limit = query.limit and query.limit ~= "" and query.limit or "{}"
-            
-            -- Return array of values for SQL query
-            return {team_id, offset, limit}
-        }
-
-        executeQuery "employeesWithPagination"
-
-        postFilter lua {
-            -- Transform the data
-            local result = {
-                data = {},
-                metadata = {}
-            }
-            
-            -- Process rows (rows is a global table provided by the API handler)
-            for _, row in ipairs(rows) do
-                if row.type == "data" then
-                    table.insert(result.data, {
-                        name = row.name,
-                        email = row.email,
-                        team_id = row.team_id
-                    })
-                elseif row.type == "metadata" then
-                    result.metadata = {
-                        total = row.total_count,
-                        team_id_query = row.team_id_query,
-                        offset = row.offset,
-                        limit = row.limit,
-                        has_more = row.has_more
-                    }
-                end
-            end
-
-            return result
-        }
-    }
-
-    query {
-        name "employeesWithPagination"
-        sql {
-            WITH filtered_employees AS (
-                SELECT *,
-                       COUNT(*) OVER() as total_count
-                FROM employees 
-                WHERE filter_by_optional(team_id, $1)
-            ),
-            page_info AS (
-                SELECT 
-                    COALESCE(parse_optional($2, 0::integer), 0) as page_offset,
-                    COALESCE(parse_optional($3, 20::integer), 20) as page_limit
-            ),
-            paginated AS (
-                SELECT fe.*, pi.page_offset, pi.page_limit
-                FROM filtered_employees fe, page_info pi
-                ORDER BY id
-                OFFSET (SELECT page_offset FROM page_info)
-                LIMIT (SELECT page_limit FROM page_info)
-            )
-            (
-                -- Metadata row
-                SELECT 
-                    'metadata' as type,
-                    (SELECT total_count FROM filtered_employees LIMIT 1) as total_count,
-                    NULL::bigint as id,
-                    NULL::integer as team_id,
-                    NULL::text as name,
-                    NULL::text as email,
-                    parse_optional($1, 0::integer) as team_id_query,
-                    (SELECT page_offset FROM page_info) as offset,
-                    (SELECT page_limit FROM page_info) as limit,
-                    EXISTS (
-                        SELECT 1 FROM filtered_employees
-                        OFFSET (SELECT page_offset + page_limit FROM page_info)
-                        LIMIT 1
-                    ) as has_more
-            )
-            UNION ALL
-            (
-                -- Data rows
-                SELECT 
-                    'data' as type,
-                    NULL::bigint as total_count,
-                    id,
-                    team_id,
-                    name,
-                    email,
-                    NULL::integer as team_id_query,
-                    NULL::integer as offset,
-                    NULL::integer as limit,
-                    NULL::boolean as has_more
-                FROM paginated
-            )
-            ORDER BY type DESC, id ASC;
-        }
-    }
-
-    api {
-        route "/api/v2/employees"
-        method "POST"
-        fields {
-            "name" {
-                type "string"
-                required true
-                length 10..100
-            }
-            "email" {
-                type "string"
-                required true
-                format "email"
-            }
-            "team_id" {
-                type "number"
-                required false
-            }
-        }
-        preFilter lua {
-            -- Extract and validate fields from request body
-            local name = body.name
-            local email = body.email
-            local team_id = body.team_id
-            
-            if team_id then
-                team_id = tonumber(team_id)
-            end
-            
-            -- Return array of values for SQL query
-            return {name, email, team_id}
-        }
-        executeQuery "insertEmployee"
-        postFilter lua {
-            -- Return Lua table to be converted to JSON by the API handler
-            return {
-                success = true,
-                employee = {
-                    id = rows[1].id,
-                    name = rows[1].name,
-                    email = rows[1].email,
-                    team_id = rows[1].team_id
-                }
-            }
-        }
-    }
-
-    api {
-        route "/api/v3/employees"
-        method "GET"
-        
-        preFilter lua {
-            if not querybuilder then
-                error("querybuilder module not loaded")
-            end
-            local qb = querybuilder.new()
-            if not qb then
-                error("failed to create query builder")
-            end
-            
-            local result = qb
-                :select("id", "team_id", "name", "email")
-                :from("employees")
-                :where_if(query.team_id, "team_id = ?", query.team_id)
-                :order_by("id")
-                :limit(query.limit or 20)
-                :offset(query.offset or 0)
-                :with_metadata()
-                :build()
-                
-            return result
-        }
-        
-        executeQuery dynamic
-        
-        postFilter jq {
-            {
-                data: (.rows | map(select(.type == "data")) | map({name: .name, email: .email, team_id: .team_id})),
-                metadata: {
-                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
-                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
-                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
-                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
-                }
-            }
-        }
-    }
-
-    api {
-        route "/api/v4/employees"
+        route "/api/v1/employees"
         method "GET"
         
         pipeline {
@@ -458,7 +165,7 @@ website {
     }
 
     api {
-        route "/api/v4/employees"
+        route "/api/v1/employees"
         method "POST"
         fields {
             "name" {
@@ -486,27 +193,41 @@ website {
                     team_id = tonumber(team_id)
                 end
                 
-                return {name, email, team_id}
+                -- Return params array for SQL step
+                return {
+                    params = {name, email, team_id}
+                }
             }
             
             executeQuery "insertEmployee"
             
             lua {
+                -- Access rows from the input parameter
+                local result = request.rows[1]
                 return {
                     success = true,
                     employee = {
-                        id = rows[1].id,
-                        name = rows[1].name,
-                        email = rows[1].email,
-                        team_id = rows[1].team_id
+                        id = result.id,
+                        name = result.name,
+                        email = result.email,
+                        team_id = result.team_id
                     }
                 }
             }
         }
     }
 
+    query {
+        name "insertEmployee"
+        sql {
+            INSERT INTO employees (name, email, team_id) 
+            VALUES ($1, $2, $3)
+            RETURNING id, team_id, name, email
+        }
+    }
+
     api {
-        route "/queryecho"
+        route "/api/v1/queryecho"
         method "GET"
         pipeline {
             jq {

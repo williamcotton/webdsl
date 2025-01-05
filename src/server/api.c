@@ -98,7 +98,16 @@ static json_t* executeSqlStep(PipelineStepNode *step, json_t *input, json_t *req
                 
                 for (size_t i = 0; i < param_count; i++) {
                     json_t *param = json_array_get(params, i);
-                    param_values[i] = json_string_value(param);
+                    if (json_is_string(param)) {
+                        param_values[i] = json_string_value(param);
+                    } else {
+                        // For non-string values, convert to string
+                        char *str = json_dumps(param, JSON_COMPACT);
+                        if (str) {
+                            param_values[i] = arenaDupString(arena, str);
+                            free(str);
+                        }
+                    }
                 }
             }
         }
@@ -130,18 +139,61 @@ static json_t* executeSqlStep(PipelineStepNode *step, json_t *input, json_t *req
         // Extract parameters from input if needed
         const char **values = NULL;
         size_t value_count = 0;
+        
+        // Check if input has a params array
         if (input) {
             json_t *params = json_object_get(input, "params");
             if (json_is_array(params)) {
                 value_count = json_array_size(params);
-                values = arenaAlloc(arena, sizeof(char*) * value_count);
-                for (size_t i = 0; i < value_count; i++) {
-                    values[i] = json_string_value(json_array_get(params, i));
+                if (value_count > 0) {
+                    values = arenaAlloc(arena, sizeof(char*) * value_count);
+                    for (size_t i = 0; i < value_count; i++) {
+                        json_t *param = json_array_get(params, i);
+                        if (json_is_string(param)) {
+                            values[i] = json_string_value(param);
+                        } else {
+                            // For non-string values, convert to string
+                            char *str = json_dumps(param, JSON_COMPACT);
+                            if (str) {
+                                values[i] = arenaDupString(arena, str);
+                                free(str);
+                            }
+                        }
+                    }
+                }
+            } else if (json_is_array(input)) {
+                // If input itself is an array, use it directly as params
+                value_count = json_array_size(input);
+                if (value_count > 0) {
+                    values = arenaAlloc(arena, sizeof(char*) * value_count);
+                    for (size_t i = 0; i < value_count; i++) {
+                        json_t *param = json_array_get(input, i);
+                        if (json_is_string(param)) {
+                            values[i] = json_string_value(param);
+                        } else {
+                            // For non-string values, convert to string
+                            char *str = json_dumps(param, JSON_COMPACT);
+                            if (str) {
+                                values[i] = arenaDupString(arena, str);
+                                free(str);
+                            }
+                        }
+                    }
                 }
             }
         }
         
-        return executeAndFormatQuery(arena, query, values, value_count);
+        json_t *jsonData = executeAndFormatQuery(arena, query, values, value_count);
+        if (!jsonData) {
+            return NULL;
+        }
+
+        // add the input to the result
+        if (input) {
+            json_object_set(jsonData, "request", input);
+        }
+
+        return jsonData;
     }
 }
 
