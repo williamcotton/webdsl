@@ -4,7 +4,7 @@
 #include <jq.h>
 #include <jansson.h>
 #include "../arena.h"
-#include "routing.h"
+#include "../ast.h"
 
 // Process a JQ filter on JSON input
 jv processJqFilter(jq_state *jq, json_t *input_json);

@@ -1,9 +1,9 @@
 #include "jq.h"
-#include "utils.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <jv.h>
+#include "routing.h"
 
 jv processJqFilter(jq_state *jq, json_t *input_json) {
     if (!jq || !input_json) return jv_invalid();
