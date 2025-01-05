@@ -9,6 +9,7 @@
 #include <jansson.h>
 #pragma clang diagnostic pop
 #include "../arena.h"
+#include "../ast.h"
 
 // Create Lua state with request context
 lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder);
@@ -25,5 +26,8 @@ char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaSc
                         const char ***values, size_t *value_count);
 char* handleLuaPostFilter(Arena *arena, json_t *jsonData, json_t *requestContext, 
                          const char *luaScript);
+
+json_t *executeLuaStep(PipelineStepNode *step, json_t *input,
+                       json_t *requestContext, Arena *arena);
 
 #endif
