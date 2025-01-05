@@ -140,12 +140,15 @@ fields {
 
 ### Request Pipeline
 1. Parse incoming request
-2. Build request context
-3. Execute pre-filter (JQ/Lua)
-4. Validate fields
-5. Execute database query
-6. Execute post-filter (JQ/Lua)
-7. Return JSON response
+2. Build request context (query params, headers, body)
+3. Validate field definitions (if specified)
+4. Execute pipeline steps in sequence:
+   - Each step receives previous step's output as input
+   - Lua steps can access request context directly
+   - JQ steps can transform JSON data
+   - Dynamic SQL queries can be built and executed
+   - Multiple transformations can be chained
+5. Return final JSON response
 
 ### Key Components
 - Thread-local filter caching
