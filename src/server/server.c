@@ -34,7 +34,7 @@ void startServer(WebsiteNode *website, Arena *arena) {
     httpd = MHD_start_daemon(MHD_USE_POLL_INTERNAL_THREAD | MHD_USE_INTERNAL_POLLING_THREAD, port,
                             NULL, NULL, &handleRequest, NULL,
                             MHD_OPTION_CONNECTION_TIMEOUT, 30,
-                            MHD_OPTION_THREAD_POOL_SIZE, 4,
+                            MHD_OPTION_THREAD_POOL_SIZE, 8,
                             MHD_OPTION_NOTIFY_COMPLETED, handleRequestCompleted, NULL,
                             MHD_OPTION_END);
     if (httpd == NULL) {
