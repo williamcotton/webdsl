@@ -149,8 +149,6 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("lua", TOKEN_LUA)
     KW_MATCH("pipeline", TOKEN_PIPELINE)
     KW_MATCH("dynamic", TOKEN_DYNAMIC)
-    KW_MATCH("preFilter", TOKEN_PRE_FILTER)
-    KW_MATCH("postFilter", TOKEN_POST_FILTER)
     KW_MATCH("params", TOKEN_PARAMS)
 
     return TOKEN_UNKNOWN;
@@ -366,8 +364,6 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_RANGE: return "RANGE";
         case TOKEN_JQ: return "JQ";
         case TOKEN_LUA: return "LUA";
-        case TOKEN_PRE_FILTER: return "PRE_FILTER";
-        case TOKEN_POST_FILTER: return "POST_FILTER";
         case TOKEN_PARAMS: return "PARAMS";
         case TOKEN_PIPELINE: return "PIPELINE";
         case TOKEN_DYNAMIC: return "DYNAMIC";

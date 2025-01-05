@@ -26,8 +26,6 @@ typedef enum {
     TOKEN_HTML,
     TOKEN_CSS,
     TOKEN_NUMBER,
-    TOKEN_PRE_FILTER,
-    TOKEN_POST_FILTER,
     TOKEN_JQ,
     TOKEN_LUA,
     TOKEN_PIPELINE,

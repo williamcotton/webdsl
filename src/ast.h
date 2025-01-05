@@ -103,20 +103,7 @@ typedef struct PipelineStepNode {
 typedef struct ApiEndpoint {
     char *route;
     char *method;
-    union {
-        // Legacy style
-        struct {
-            char *executeQuery;
-            char *preFilter;
-            char *postFilter;
-            FilterType preFilterType;
-            FilterType postFilterType;
-            bool isDynamicQuery;
-            uint8_t _padding[7];
-        } legacy;
-        // New style
-        PipelineStepNode *pipeline;
-    } handler;
+    PipelineStepNode *pipeline;
     bool uses_pipeline;  // Flag to indicate which union member to use
     uint8_t _padding[7];
     ResponseField *fields;

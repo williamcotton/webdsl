@@ -18,15 +18,6 @@ lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBu
 void pushJsonToLua(lua_State *L, json_t *json);
 json_t* luaToJson(lua_State *L, int index);
 
-// Extract values from Lua state
-void extractLuaValues(lua_State *L, Arena *arena, const char ***values, size_t *value_count);
-
-// High level handlers for pre/post filters
-char* handleLuaPreFilter(Arena *arena, json_t *requestContext, const char *luaScript,
-                        const char ***values, size_t *value_count);
-char* handleLuaPostFilter(Arena *arena, json_t *jsonData, json_t *requestContext, 
-                         const char *luaScript);
-
 json_t *executeLuaStep(PipelineStepNode *step, json_t *input,
                        json_t *requestContext, Arena *arena);
 

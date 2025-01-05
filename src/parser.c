@@ -583,68 +583,9 @@ static ApiEndpoint *parseApi(Parser *parser) {
             case TOKEN_PIPELINE:
                 advanceParser(parser);
                 endpoint->uses_pipeline = true;
-                endpoint->handler.pipeline = parsePipeline(parser);
+                endpoint->pipeline = parsePipeline(parser);
                 break;
-                
-            case TOKEN_EXECUTE_QUERY:
-                advanceParser(parser);
-                if (parser->current.type == TOKEN_DYNAMIC) {
-                    endpoint->handler.legacy.isDynamicQuery = true;
-                    advanceParser(parser);
-                } else {
-                    consume(parser, TOKEN_STRING, "Expected string after 'executeQuery'");
-                    endpoint->handler.legacy.executeQuery = copyString(parser, parser->previous.lexeme);
-                }
-                break;
-                
-            case TOKEN_PRE_FILTER:
-                advanceParser(parser);
-                if (parser->current.type == TOKEN_JQ) {
-                    endpoint->handler.legacy.preFilterType = FILTER_JQ;
-                    advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                        endpoint->handler.legacy.preFilter = copyString(parser, parser->current.lexeme);
-                        advanceParser(parser);
-                    }
-                } else if (parser->current.type == TOKEN_LUA) {
-                    endpoint->handler.legacy.preFilterType = FILTER_LUA;
-                    advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                        endpoint->handler.legacy.preFilter = copyString(parser, parser->current.lexeme);
-                        advanceParser(parser);
-                    }
-                }
-                break;
-                
-            case TOKEN_POST_FILTER:
-                advanceParser(parser);
-                if (parser->current.type == TOKEN_JQ) {
-                    endpoint->handler.legacy.postFilterType = FILTER_JQ;
-                    advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                        endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
-                        advanceParser(parser);
-                    }
-                } else if (parser->current.type == TOKEN_LUA) {
-                    endpoint->handler.legacy.postFilterType = FILTER_LUA;
-                    advanceParser(parser);
-                    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                        endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
-                        advanceParser(parser);
-                    }
-                }
-                break;
-                
-            case TOKEN_JQ:
-                // Legacy JQ filter is treated as a post filter
-                endpoint->handler.legacy.postFilterType = FILTER_JQ;
-                advanceParser(parser);
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    endpoint->handler.legacy.postFilter = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);
-                }
-                break;
-                
+            
             case TOKEN_FIELDS:
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");

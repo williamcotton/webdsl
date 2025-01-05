@@ -451,13 +451,10 @@ static void test_lexer_lua_block(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "preFilter lua { function doSomething() end }";
+    const char *input = "lua { function doSomething() end }";
     initLexer(&lexer, input, &parser);
     
     Token token = getNextToken(&lexer);
-    TEST_ASSERT_EQUAL(TOKEN_PRE_FILTER, token.type);
-    
-    token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_LUA, token.type);
     
     token = getNextToken(&lexer);
@@ -474,12 +471,10 @@ static void test_lexer_filter_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "preFilter postFilter jq lua";
+    const char *input = "jq lua";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
-        TOKEN_PRE_FILTER,
-        TOKEN_POST_FILTER,
         TOKEN_JQ,
         TOKEN_LUA
     };

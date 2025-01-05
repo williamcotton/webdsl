@@ -308,44 +308,6 @@ static void test_parse_invalid_constructs(void) {
     freeArena(parser.arena);
 }
 
-static void test_parse_website_with_api(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  api {\n"
-        "    route \"/api/v1/users\"\n"
-        "    method \"GET\"\n"
-        "    executeQuery \"users\"\n"
-        "  }\n"
-        "  api {\n"
-        "    route \"/api/v1/employees\"\n"
-        "    method \"POST\"\n"
-        "    executeQuery \"insert_employee\"\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->apiHead);
-    
-    ApiEndpoint *first = website->apiHead;
-    TEST_ASSERT_EQUAL_STRING("/api/v1/users", first->route);
-    TEST_ASSERT_EQUAL_STRING("GET", first->method);
-    TEST_ASSERT_EQUAL_STRING("users", first->handler.legacy.executeQuery);
-    TEST_ASSERT_NULL(first->fields);
-    
-    ApiEndpoint *second = first->next;
-    TEST_ASSERT_NOT_NULL(second);
-    TEST_ASSERT_EQUAL_STRING("/api/v1/employees", second->route);
-    TEST_ASSERT_EQUAL_STRING("POST", second->method);
-    TEST_ASSERT_EQUAL_STRING("insert_employee", second->handler.legacy.executeQuery);
-    
-    freeArena(parser.arena);
-}
-
 static void test_parse_invalid_api(void) {
     Parser parser;
     const char *input = 
@@ -465,7 +427,6 @@ static void test_parse_api_with_field_definitions(void) {
         "        format \"email\"\n"
         "      }\n"
         "    }\n"
-        "    executeQuery \"insertEmployee\"\n"
         "  }\n"
         "}";
     
@@ -585,128 +546,6 @@ static void test_parse_nested_css_block(void) {
     freeArena(parser.arena);
 }
 
-static void test_parse_api_with_jq_filter(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  api {\n"
-        "    route \"/api/v1/users\"\n"
-        "    method \"GET\"\n"
-        "    executeQuery \"users\"\n"
-        "    postFilter jq {\n"
-        "      .rows | map({\n"
-        "        name: .name,\n"
-        "        email: .email\n"
-        "      })\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->apiHead);
-    
-    ApiEndpoint *api = website->apiHead;
-    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
-    TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
-    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "email: .email"));
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_api_with_pre_and_post_filters(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  api {\n"
-        "    route \"/api/v1/users\"\n"
-        "    method \"GET\"\n"
-        "    executeQuery \"users\"\n"
-        "    preFilter jq {\n"
-        "      {\n"
-        "        department: .query.dept,\n"
-        "        role: .headers[\"X-Role\"]\n"
-        "      }\n"
-        "    }\n"
-        "    postFilter lua {\n"
-        "      local dept = query.dept\n"
-        "      local role = headers[\"X-Role\"]\n"
-        "      return dept == \"IT\" and role == \"Admin\"\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->apiHead);
-    
-    ApiEndpoint *api = website->apiHead;
-    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
-    TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
-    
-    // Verify preFilter
-    TEST_ASSERT_NOT_NULL(api->handler.legacy.preFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.preFilter, "department: .query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.preFilter, "role: .headers[\"X-Role\"]"));
-    
-    // Verify postFilter
-    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "local dept = query.dept"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "local role = headers[\"X-Role\"]"));
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_api_with_legacy_jq(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  api {\n"
-        "    route \"/api/v1/users\"\n"
-        "    method \"GET\"\n"
-        "    executeQuery \"users\"\n"
-        "    jq {\n"
-        "      .rows | map({\n"
-        "        name: .name,\n"
-        "        email: .email\n"
-        "      })\n"
-        "    }\n"
-        "  }\n"
-        "}";
-
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->apiHead);
-    
-    ApiEndpoint *api = website->apiHead;
-    TEST_ASSERT_EQUAL_STRING("/api/v1/users", api->route);
-    TEST_ASSERT_EQUAL_STRING("GET", api->method);
-    TEST_ASSERT_EQUAL_STRING("users", api->handler.legacy.executeQuery);
-    
-    // Verify legacy jq filter is treated as postFilter
-    TEST_ASSERT_NOT_NULL(api->handler.legacy.postFilter);
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, ".rows | map({"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "name: .name"));
-    TEST_ASSERT_NOT_NULL(strstr(api->handler.legacy.postFilter, "email: .email"));
-    TEST_ASSERT_NULL(api->handler.legacy.preFilter);  // Should not have preFilter
-    
-    freeArena(parser.arena);
-}
-
 static void test_parse_query_with_named_params(void) {
     Parser parser;
     const char *input = 
@@ -764,16 +603,12 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_error_recovery);
     RUN_TEST(test_parse_complex_website);
     RUN_TEST(test_parse_invalid_constructs);
-    RUN_TEST(test_parse_website_with_api);
     RUN_TEST(test_parse_invalid_api);
     RUN_TEST(test_parse_website_with_query);
     RUN_TEST(test_parse_html_content);
     RUN_TEST(test_parse_api_with_field_definitions);
     RUN_TEST(test_parse_raw_css_block);
     RUN_TEST(test_parse_nested_css_block);
-    RUN_TEST(test_parse_api_with_jq_filter);
-    RUN_TEST(test_parse_api_with_pre_and_post_filters);
-    RUN_TEST(test_parse_api_with_legacy_jq);
     RUN_TEST(test_parse_query_with_named_params);
     return UNITY_END();
 }

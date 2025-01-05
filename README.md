@@ -92,18 +92,28 @@ api {
     route "/api/v2/employees"
     method "GET"
     
-    preFilter lua {
-        -- Transform request context
-        local team_id = query.team_id or "{}"
-        return {team_id, query.offset, query.limit}
-    }
-    
-    executeQuery "employeesWithPagination"
-    
-    postFilter jq {
-        {
-            data: (.rows | map(select(.type == "data"))),
-            metadata: (.rows | map(select(.type == "metadata")) | .[0])
+    pipeline {
+        lua {
+            -- Transform request context
+            local qb = querybuilder.new()
+            local result = qb
+                :select("*")
+                :from("employees")
+                :where_if(query.team_id, "team_id = ?", query.team_id)
+                :limit(query.limit or 20)
+                :offset(query.offset or 0)
+                :with_metadata()
+                :build()
+            return result
+        }
+        
+        executeQuery dynamic
+        
+        jq {
+            {
+                data: (.rows | map(select(.type == "data"))),
+                metadata: (.rows | map(select(.type == "metadata")) | .[0])
+            }
         }
     }
 }

@@ -59,35 +59,6 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
     return result;
 }
 
-char* handleJqPostFilter(Arena *arena, json_t *jsonData, const char *jqFilter) {
-    if (!jsonData) return NULL;
-
-    if (jqFilter) {
-        jq_state *jq = findOrCreateJQ(jqFilter);
-        if (!jq) {
-            return NULL;
-        }
-
-        jv filtered_jv = processJqFilter(jq, jsonData);
-
-        if (!jv_is_valid(filtered_jv)) {
-            return NULL;
-        }
-
-        // Convert JQ result to string
-        jv dumped = jv_dump_string(filtered_jv, 0);
-        const char *str = jv_string_value(dumped);
-        char *response = arenaDupString(arena, str);
-        jv_free(dumped);
-        jv_free(filtered_jv);
-        return response;
-    }
-
-    // No filter - just convert to string
-    char *jsonString = json_dumps(jsonData, JSON_COMPACT);
-    return jsonString;
-}
-
 jv janssonToJv(json_t *json) {
     switch (json_typeof(json)) {
         case JSON_OBJECT: {
@@ -175,36 +146,5 @@ json_t* jvToJansson(jv value) {
             return NULL;
         default:
             return NULL;
-    }
-}
-
-void extractFilterValues(Arena *arena, jv filtered_jv,
-                              const char ***values, size_t *value_count) {
-    if (jv_get_kind(filtered_jv) != JV_KIND_OBJECT) {
-        *values = NULL;
-        *value_count = 0;
-        return;
-    }
-
-    // Count the number of fields in the object
-    int length = jv_object_length(jv_copy(filtered_jv));
-    *value_count = length > 0 ? (size_t)length : 0;
-    *values = arenaAlloc(arena, sizeof(char*) * (*value_count));
-    
-    size_t index = 0;
-    jv_object_foreach(filtered_jv, key, value) {
-        (void)key;  // Silence unused variable warning
-        // pragma ignore -Wconditional-uninitialized
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wconditional-uninitialized"
-        if (jv_get_kind(value) == JV_KIND_STRING) {
-            (*values)[index++] = arenaDupString(arena, jv_string_value(value));
-        } else {
-            // For non-string values, dump to JSON string
-            jv dumped = jv_dump_string(value, 0);
-            (*values)[index++] = arenaDupString(arena, jv_string_value(dumped));
-            jv_free(dumped);
-        }
-        #pragma clang diagnostic pop
     }
 }
