@@ -182,7 +182,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   char *json = generateApiResponse(arena, api, con_cls, request_context);
   if (!json) {
     const char *error_msg =
-        "{ \"error\": \"Internal server error processing JQ filter\" }";
+        "{ \"error\": \"Internal server error processing pipeline\" }";
     struct MHD_Response *response =
         createErrorResponse(error_msg, MHD_HTTP_INTERNAL_SERVER_ERROR);
     enum MHD_Result ret = MHD_queue_response(
