@@ -11,9 +11,6 @@
 #include "utils.h"
 #include "jq.h"
 
-extern Arena *serverArena;
-extern Database *globalDb;
-
 // Fix the const qualifier drop warning
 static struct MHD_Response* createErrorResponse(const char *error_msg, int status_code) {
     (void)status_code;
