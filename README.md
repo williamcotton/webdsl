@@ -4,31 +4,32 @@ WebDSL is an experimental domain-specific language and server implementation for
 
 ## Features
 
-### Core Features
-- Declarative website configuration
-- Layout system with content placeholders
-- Page routing and templating
-- CSS styling with raw and structured blocks
-- REST API endpoints with validation
-- Hot reloading of configuration changes
+### Web Framework
+- Declarative configuration for routes, layouts, and pages
+- Component-based templating with content placeholders
+- Built-in CSS styling with raw and structured syntax
+- Hot reloading for rapid development
 
-### Database Features
-- PostgreSQL integration with connection pooling
-- Prepared statement caching
-- Named query parameters
-- Automatic connection health checking
+### API Development
+- REST endpoint definition with field validation
+- Pipeline-based request processing
+- JQ and Lua transformation steps
+- Dynamic query building
+- Automatic JSON response formatting
 
-### Data Processing
-- JQ and Lua filtering pipelines
-- Request context filtering
-- JSON response transformation
-- Form validation with multiple types
+### Database Integration
+- Native PostgreSQL support with connection pooling
+- Prepared statement caching for performance
+- Query parameterization and validation
+- Automatic pagination support
+- Health checks and connection management
 
-### Performance & Safety
+### Developer Experience
 - Memory-safe arena allocation
-- Thread-safe operations
-- Connection pooling
-- Filter compilation caching
+- Thread-safe request handling
+- Comprehensive validation rules
+- Detailed error messages
+- Live configuration reloading
 
 ## Quick Start
 
