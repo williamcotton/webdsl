@@ -71,7 +71,7 @@ static bool loadLuaFile(lua_State *L, const char *filename) {
     return false;
 }
 
-lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder) {
+static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder) {
     // Create and initialize arena wrapper
     LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
     wrapper->arena = arena;
@@ -131,7 +131,7 @@ lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBu
     return L;
 }
 
-void pushJsonToLua(lua_State *L, json_t *json) {
+static void pushJsonToLua(lua_State *L, json_t *json) {
     if (!json) {
         lua_pushnil(L);
         return;
@@ -184,7 +184,7 @@ void pushJsonToLua(lua_State *L, json_t *json) {
     }
 }
 
-json_t* luaToJson(lua_State *L, int index) {
+static json_t* luaToJson(lua_State *L, int index) {
     switch (lua_type(L, index)) {
         case LUA_TTABLE: {
             bool isArray = true;
