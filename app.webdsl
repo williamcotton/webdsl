@@ -242,4 +242,25 @@ website {
             }
         }
     }
+
+    api {
+        route "/api/v1/team"
+        method "GET"
+        pipeline {
+            lua {
+                return {
+                    params = {query.id}
+                }
+            }
+            sql {
+                SELECT * FROM teams
+                WHERE id = $1
+            }
+            jq {
+                {
+                    data: (.rows | map({id: .id, name: .name})),
+                }
+            }
+        }
+    }
 }

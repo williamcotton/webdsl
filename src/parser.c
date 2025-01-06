@@ -517,6 +517,19 @@ static PipelineStepNode* parsePipelineStep(Parser *parser) {
                 fputs("Expected query name or 'dynamic' after executeQuery\n", stderr);
             }
             break;
+
+        case TOKEN_SQL:
+            step->type = STEP_SQL;
+            step->is_dynamic = false;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                step->code = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected SQL query block\n", stderr);
+            }
+            break;
             
         default:
             parser->hadError = 1;

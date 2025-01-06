@@ -248,11 +248,11 @@ static json_t* resultToJson(PGresult *result) {
     return root;
 }
 
-static json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
+static json_t *executeAndFormatQuery(Arena *arena, char *sql,
                                      const char **values, size_t value_count) {
   (void)arena;
 
-  if (!query) {
+  if (!sql) {
     return NULL;
   }
 
@@ -260,9 +260,9 @@ static json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
   PGresult *result;
   if (values && value_count > 0) {
     result =
-        executeParameterizedQuery(globalDb, query->sql, values, value_count);
+        executeParameterizedQuery(globalDb, sql, values, value_count);
   } else {
-    result = executeQuery(globalDb, query->sql);
+    result = executeQuery(globalDb, sql);
   }
 
   if (!result) {
@@ -335,9 +335,15 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     }
     return jsonResult;
   } else {
-    // For static SQL, look up the query and execute it
-    QueryNode *query = findQuery(step->name);
-    if (!query) {
+    // For static SQL, use the code or look up the query and execute it
+    char *sql = step->code;
+
+    if (step->name) {
+      QueryNode *query = findQuery(step->name);
+      sql = query->sql;
+    }
+
+    if (!sql) {
       return NULL;
     }
 
@@ -356,13 +362,18 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
             json_t *param = json_array_get(params, i);
             if (json_is_string(param)) {
               values[i] = json_string_value(param);
+            } else if (json_is_number(param)) {
+                // For numbers, convert directly to string without extra quotes
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%.0f", json_number_value(param));
+                values[i] = arenaDupString(arena, buf);
             } else {
-              // For non-string values, convert to string
-              char *str = json_dumps(param, JSON_COMPACT);
-              if (str) {
-                values[i] = arenaDupString(arena, str);
-                free(str);
-              }
+                // For other non-string values, convert to string
+                char *str = json_dumps(param, JSON_COMPACT);
+                if (str) {
+                    values[i] = arenaDupString(arena, str);
+                    free(str);
+                }
             }
           }
         }
@@ -388,7 +399,7 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
       }
     }
 
-    json_t *jsonData = executeAndFormatQuery(arena, query, values, value_count);
+    json_t *jsonData = executeAndFormatQuery(arena, sql, values, value_count);
     if (!jsonData) {
       return NULL;
     }
