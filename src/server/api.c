@@ -1,6 +1,7 @@
 #include "api.h"
 #include "handler.h"
 #include "db.h"
+#include "validation.h"
 #include <jq.h>
 #include <string.h>
 #include <stdio.h>
@@ -126,19 +127,99 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     return context;
 }
 
+static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
+    struct PostContext *post_ctx = con_cls;
+    json_t *errors_obj = json_object();
+    json_t *error_fields = json_object();
+    bool has_errors = false;
+
+    // Validate each field
+    ApiField *field = endpoint->apiFields;
+    size_t field_index = 0;
+
+    while (field) {
+        const char *value = NULL;
+        if (field_index < post_ctx->post_data.value_count) {
+            value = post_ctx->post_data.values[field_index];
+        }
+
+        char *error = validateField(arena, value, field);
+        if (error) {
+            json_object_set_new(error_fields, field->name, json_string(error));
+            has_errors = true;
+        }
+
+        field_index++;
+        field = field->next;
+    }
+
+    if (has_errors) {
+        json_object_set_new(errors_obj, "errors", error_fields);
+        char *json_str = json_dumps(errors_obj, JSON_INDENT(2));
+        json_decref(errors_obj);
+        return json_str;
+    }
+
+    json_decref(errors_obj);
+    return NULL;
+}
+
+static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
+                            const char ***values, size_t *value_count) {
+    struct PostContext *post_ctx = con_cls;
+    *values = arenaAlloc(arena, sizeof(char*) * 32);
+    *value_count = 0;
+
+    // Extract validated fields for query
+    ApiField *field = endpoint->apiFields;
+    size_t field_index = 0;
+
+    while (field) {
+        const char *value = NULL;
+        if (field_index < post_ctx->post_data.value_count) {
+            value = post_ctx->post_data.values[field_index++];
+        }
+        (*values)[(*value_count)++] = value;
+        field = field->next;
+    }
+}
+
 char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
                           json_t *requestContext) {
-  (void)con_cls;
-  if (endpoint->uses_pipeline) {
-    // New pipeline execution path
-    json_t *result = executePipeline(endpoint, requestContext, arena);
-    if (!result) {
-      return generateErrorJson("Pipeline execution failed");
+    // For POST requests, validate fields if specified
+    if (endpoint->apiFields && strcmp(endpoint->method, "POST") == 0) {
+        char *validation_error = validatePostFields(arena, endpoint, con_cls);
+        if (validation_error) {
+            return validation_error;
+        }
+
+        // Extract values from POST data
+        const char **values = NULL;
+        size_t value_count = 0;
+        extractPostValues(arena, endpoint, con_cls, &values, &value_count);
+
+        // Add extracted values to request context
+        json_t *body = json_object_get(requestContext, "body");
+        if (body && json_is_object(body)) {
+            ApiField *field = endpoint->apiFields;
+            for (size_t i = 0; i < value_count && field; i++, field = field->next) {
+                if (values[i]) {
+                    json_object_set_new(body, field->name, json_string(values[i]));
+                }
+            }
+        }
     }
-    return json_dumps(result, JSON_COMPACT);
-  } else {
-    return generateErrorJson("No pipeline found");
-  }
+
+    if (endpoint->uses_pipeline) {
+        // Execute pipeline with validated request context
+        json_t *result = executePipeline(endpoint, requestContext, arena);
+        if (!result) {
+            return generateErrorJson("Pipeline execution failed");
+        }
+        return json_dumps(result, JSON_COMPACT);
+    } else {
+        return generateErrorJson("No pipeline found");
+    }
 }
 
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,

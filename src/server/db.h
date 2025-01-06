@@ -35,37 +35,7 @@ typedef struct Database {
 // Returns NULL on error
 Database* initDatabase(Arena *arena, const char *conninfo);
 
-// Execute a query and return the result
-// Returns NULL on error
-PGresult* executeQuery(Database *db, const char *sql);
-
-// Convert query result to JSON object
-// Returns NULL on error
-json_t* resultToJson(PGresult *result);
-
-// Free database resources (but not arena memory)
-void freeResult(PGresult *result);
 void closeDatabase(Database *db);
-
-// Get last error message from database
-const char* getDatabaseError(Database *db);
-
-// Execute a parameterized query and return the result
-// Returns NULL on error
-PGresult* executeParameterizedQuery(Database *db, const char *sql, const char **values, size_t value_count);
-
-// Get a connection from the pool
-PGconn* getDbConnection(Database *db);
-
-// Return a connection to the pool
-void releaseDbConnection(Database *db, PGconn *conn);
-
-// Add new function declarations
-PGresult* executePreparedStatement(Database *db, const char *sql, 
-                                 const char **values, size_t value_count);
-
-json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
-                              const char **values, size_t value_count);
 
 json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
                        json_t *requestContext, Arena *arena);

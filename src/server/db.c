@@ -16,6 +16,14 @@ extern Database *globalDb;
 // Generate unique statement names
 static atomic_ulong stmt_counter = 0;
 
+static PGconn *getDbConnection(Database *db) {
+  if (!db || !db->pool)
+    return NULL;
+
+  PooledConnection *conn = getConnection(db->pool);
+  return conn ? conn->conn : NULL;
+}
+
 static PreparedStmt* findPreparedStmt(Database *db, PGconn *conn, const char *sql) {
     uint32_t hash = hashString(sql) & STMT_HASH_MASK;
     PreparedStmt *stmt = db->stmt_cache[hash];
@@ -70,7 +78,22 @@ static PreparedStmt* prepareSqlStatement(Database *db, PGconn *conn, const char 
     return stmt;
 }
 
-PGresult* executePreparedStatement(Database *db, const char *sql, 
+static void releaseDbConnection(Database *db, PGconn *conn) {
+  if (!db || !db->pool || !conn)
+    return;
+
+  // Find the PooledConnection that contains this PGconn
+  PooledConnection *pooled = db->pool->connections;
+  while (pooled) {
+    if (pooled->conn == conn) {
+      returnConnection(db->pool, pooled);
+      break;
+    }
+    pooled = pooled->next;
+  }
+}
+
+static PGresult* executePreparedStatement(Database *db, const char *sql,
                                  const char **values, size_t value_count) {
     PGconn *conn = getDbConnection(db);
     if (!conn) return NULL;
@@ -91,7 +114,7 @@ PGresult* executePreparedStatement(Database *db, const char *sql,
 }
 
 // Modify existing executeParameterizedQuery to use prepared statements
-PGresult* executeParameterizedQuery(Database *db, const char *sql, 
+static PGresult* executeParameterizedQuery(Database *db, const char *sql, 
                                   const char **values, size_t value_count) {
     return executePreparedStatement(db, sql, values, value_count);
 }
@@ -125,7 +148,7 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
     return db;
 }
 
-PGresult* executeQuery(Database *db, const char *query) {
+static PGresult* executeQuery(Database *db, const char *query) {
     if (!db || !query) {
         fputs("Invalid database or query\n", stderr);
         return NULL;
@@ -150,7 +173,7 @@ PGresult* executeQuery(Database *db, const char *query) {
     return result;
 }
 
-void freeResult(PGresult *result) {
+static void freeResult(PGresult *result) {
     if (result) {
         PQclear(result);
     }
@@ -169,20 +192,7 @@ void closeDatabase(Database *db) {
     closeConnectionPool(db->pool);
 }
 
-const char* getDatabaseError(Database *db) {
-    if (!db || !db->pool) return "No database connection";
-    
-    // Get a connection from the pool to check its error message
-    PGconn *conn = getDbConnection(db);
-    if (!conn) return "No available database connections";
-    
-    const char *error = PQerrorMessage(conn);
-    releaseDbConnection(db, conn);
-    
-    return error;
-}
-
-json_t* resultToJson(PGresult *result) {
+static json_t* resultToJson(PGresult *result) {
     if (!result) return NULL;
     
     // printf("\n=== SQL Result ===\n");
@@ -238,28 +248,7 @@ json_t* resultToJson(PGresult *result) {
     return root;
 }
 
-PGconn* getDbConnection(Database *db) {
-    if (!db || !db->pool) return NULL;
-    
-    PooledConnection *conn = getConnection(db->pool);
-    return conn ? conn->conn : NULL;
-}
-
-void releaseDbConnection(Database *db, PGconn *conn) {
-    if (!db || !db->pool || !conn) return;
-    
-    // Find the PooledConnection that contains this PGconn
-    PooledConnection *pooled = db->pool->connections;
-    while (pooled) {
-        if (pooled->conn == conn) {
-            returnConnection(db->pool, pooled);
-            break;
-        }
-        pooled = pooled->next;
-    }
-}
-
-json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
+static json_t *executeAndFormatQuery(Arena *arena, QueryNode *query,
                                      const char **values, size_t value_count) {
   (void)arena;
 
