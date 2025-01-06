@@ -1,6 +1,8 @@
 #include "lua.h"
 #include "../arena.h"
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include "../ast.h"
 
 // Add arena wrapper struct
@@ -63,7 +65,94 @@ static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     return new_ptr;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+static struct {
+    unsigned char* bytecode;
+    size_t bytecode_len;
+    bool is_initialized;
+} QueryBuilder = {0};
+#pragma clang diagnostic pop
+
+// Add writer function for lua_dump
+static int bytecodeWriter(lua_State *L __attribute__((unused)), 
+                         const void* p, 
+                         size_t sz, 
+                         void* ud __attribute__((unused))) {
+    unsigned char* new_code;
+    
+    // Reallocate buffer to fit new chunk
+    new_code = realloc(QueryBuilder.bytecode, QueryBuilder.bytecode_len + sz);
+    if (!new_code) return 1; // Error
+    
+    // Copy new chunk
+    memcpy(new_code + QueryBuilder.bytecode_len, p, sz);
+    
+    QueryBuilder.bytecode = new_code;
+    QueryBuilder.bytecode_len += sz;
+    return 0;
+}
+
+bool initLua(void) {
+    lua_State *L = luaL_newstate();
+    if (!L) return false;
+    
+    luaL_openlibs(L);
+    
+    // Load and compile the file
+    if (luaL_loadfile(L, "src/server/querybuilder.lua") != 0) {
+        fprintf(stderr, "Failed to load querybuilder.lua: %s\n", lua_tostring(L, -1));
+        lua_close(L);
+        return false;
+    }
+    
+    // Dump the compiled bytecode
+    QueryBuilder.bytecode_len = 0;
+    if (lua_dump(L, bytecodeWriter, NULL, 0) != 0) {
+        fprintf(stderr, "Failed to dump querybuilder bytecode\n");
+        free(QueryBuilder.bytecode);
+        QueryBuilder.bytecode = NULL;
+        lua_close(L);
+        return false;
+    }
+    
+    QueryBuilder.is_initialized = true;
+    lua_close(L);
+    return true;
+}
+
+void cleanupLua(void) {
+    if (QueryBuilder.bytecode) {
+        free(QueryBuilder.bytecode);
+        QueryBuilder.bytecode = NULL;
+        QueryBuilder.bytecode_len = 0;
+        QueryBuilder.is_initialized = false;
+    }
+}
+
+// Modify loadLuaFile to use cached bytecode
 static bool loadLuaFile(lua_State *L, const char *filename) {
+    // For querybuilder.lua, use cached bytecode
+    if (strcmp(filename, "src/server/querybuilder.lua") == 0) {
+        if (!QueryBuilder.is_initialized) {
+            return false;
+        }
+        
+        if (luaL_loadbuffer(L, (const char*)QueryBuilder.bytecode, 
+                           QueryBuilder.bytecode_len, "querybuilder") != 0) {
+            return false;
+        }
+        
+        // Execute the loaded chunk to create the querybuilder table
+        if (lua_pcall(L, 0, 1, 0) != 0) {
+            return false;
+        }
+        
+        lua_setglobal(L, "querybuilder");
+        return true;
+    }
+    
+    // For other files, load normally
     if (luaL_dofile(L, filename) == 0) {
         lua_setglobal(L, "querybuilder");
         return true;

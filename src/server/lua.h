@@ -8,10 +8,16 @@
 #pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
 #pragma clang diagnostic pop
-#include "../arena.h"
 #include "../ast.h"
+#include "../arena.h"
 
-json_t *executeLuaStep(PipelineStepNode *step, json_t *input,
-                       json_t *requestContext, Arena *arena);
+// Initialize Lua subsystem
+bool initLua(void);
+
+// Clean up Lua subsystem
+void cleanupLua(void);
+
+// Execute a Lua pipeline step
+json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena);
 
 #endif
