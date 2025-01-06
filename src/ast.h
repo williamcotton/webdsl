@@ -6,7 +6,10 @@
 #pragma clang diagnostic ignored "-Wunused-function"
 #include <jq.h>
 #pragma clang diagnostic pop
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
+#pragma clang diagnostic pop
 #include "arena.h"
 
 typedef struct ContentNode {
