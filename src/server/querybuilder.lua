@@ -197,4 +197,4 @@ end
 
 return {
     new = QueryBuilder.new
-} 
+}
