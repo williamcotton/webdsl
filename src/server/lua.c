@@ -4,12 +4,28 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../ast.h"
+#include "utils.h"
+#include "server.h"
+
+#define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
+#define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
 
 // Add arena wrapper struct
 typedef struct {
     Arena *arena;
     size_t total_allocated;
 } LuaArenaWrapper;
+
+typedef struct {
+    unsigned char* bytecode;
+    size_t bytecode_len;
+} LuaBytecode;
+
+typedef struct LuaChunkEntry {
+    const char* code;           // Original Lua code for comparison
+    LuaBytecode bytecode;
+    struct LuaChunkEntry* next;
+} LuaChunkEntry;
 
 // Add custom allocator function
 static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
@@ -74,32 +90,102 @@ static struct {
 } QueryBuilder = {0};
 #pragma clang diagnostic pop
 
-// Add writer function for lua_dump
+// Modify bytecodeWriter to handle both cases
 static int bytecodeWriter(lua_State *L __attribute__((unused)), 
                          const void* p, 
                          size_t sz, 
-                         void* ud __attribute__((unused))) {
-    unsigned char* new_code;
-    
-    // Reallocate buffer to fit new chunk
-    new_code = realloc(QueryBuilder.bytecode, QueryBuilder.bytecode_len + sz);
-    if (!new_code) return 1; // Error
-    
-    // Copy new chunk
-    memcpy(new_code + QueryBuilder.bytecode_len, p, sz);
-    
-    QueryBuilder.bytecode = new_code;
-    QueryBuilder.bytecode_len += sz;
+                         void* ud) {
+    // Check if we're writing querybuilder or pipeline bytecode
+    if (!ud) {
+        // QueryBuilder case
+        unsigned char* new_code = realloc(QueryBuilder.bytecode, 
+                                        QueryBuilder.bytecode_len + sz);
+        if (!new_code) return 1;
+        
+        memcpy(new_code + QueryBuilder.bytecode_len, p, sz);
+        QueryBuilder.bytecode = new_code;
+        QueryBuilder.bytecode_len += sz;
+    } else {
+        // Pipeline bytecode case
+        LuaBytecode* bytecode = (LuaBytecode*)ud;
+        unsigned char* new_code = realloc(bytecode->bytecode, 
+                                        bytecode->bytecode_len + sz);
+        if (!new_code) return 1;
+        
+        memcpy(new_code + bytecode->bytecode_len, p, sz);
+        bytecode->bytecode = new_code;
+        bytecode->bytecode_len += sz;
+    }
     return 0;
 }
 
+static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
+
+// Add new function to walk AST and compile Lua steps
+static bool compilePipelineSteps(WebsiteNode* website) {
+    ApiEndpoint* endpoint = website->apiHead;
+    while (endpoint) {
+        PipelineStepNode* step = endpoint->pipeline;
+        while (step) {
+            if (step->type == STEP_LUA) {
+                uint32_t hash = hashString(step->code) & LUA_HASH_MASK;
+                
+                // Check if already cached
+                LuaChunkEntry* entry = chunkTable[hash];
+                while (entry) {
+                    if (strcmp(entry->code, step->code) == 0) {
+                        break;
+                    }
+                    entry = entry->next;
+                }
+                
+                if (!entry) {
+                    // New chunk - compile and cache it
+                    entry = malloc(sizeof(LuaChunkEntry));
+                    entry->code = step->code;
+                    entry->bytecode.bytecode = NULL;
+                    entry->bytecode.bytecode_len = 0;
+                    
+                    lua_State *L = luaL_newstate();
+                    if (!L) return false;
+                    
+                    luaL_openlibs(L);
+                    
+                    if (luaL_loadstring(L, step->code) != 0) {
+                        lua_close(L);
+                        free(entry);
+                        return false;
+                    }
+                    
+                    if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
+                        lua_close(L);
+                        free(entry);
+                        return false;
+                    }
+                    
+                    lua_close(L);
+                    
+                    // Add to hash table
+                    entry->next = chunkTable[hash];
+                    chunkTable[hash] = entry;
+                }
+            }
+            step = step->next;
+        }
+        endpoint = endpoint->next;
+    }
+    return true;
+}
+
+// Modify initLua to also compile pipeline steps:
 bool initLua(void) {
+    // Keep existing querybuilder initialization
     lua_State *L = luaL_newstate();
     if (!L) return false;
     
     luaL_openlibs(L);
     
-    // Load and compile the file
+    // Load and compile querybuilder.lua
     if (luaL_loadfile(L, "src/server/querybuilder.lua") != 0) {
         fprintf(stderr, "Failed to load querybuilder.lua: %s\n", lua_tostring(L, -1));
         lua_close(L);
@@ -118,15 +204,36 @@ bool initLua(void) {
     
     QueryBuilder.is_initialized = true;
     lua_close(L);
+
+    // Add pipeline step compilation
+    if (!compilePipelineSteps(currentWebsite)) {
+        cleanupLua();
+        return false;
+    }
+    
     return true;
 }
 
+// Modify cleanupLua to also cleanup chunk table:
 void cleanupLua(void) {
+    // Keep existing querybuilder cleanup
     if (QueryBuilder.bytecode) {
         free(QueryBuilder.bytecode);
         QueryBuilder.bytecode = NULL;
         QueryBuilder.bytecode_len = 0;
         QueryBuilder.is_initialized = false;
+    }
+
+    // Cleanup chunk table
+    for (int i = 0; i < LUA_HASH_TABLE_SIZE; i++) {
+        LuaChunkEntry* entry = chunkTable[i];
+        while (entry) {
+            LuaChunkEntry* next = entry->next;
+            free(entry->bytecode.bytecode);
+            free(entry);
+            entry = next;
+        }
+        chunkTable[i] = NULL;
     }
 }
 
@@ -377,7 +484,31 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     }
     lua_setglobal(L, "headers");
     
-    if (luaL_dostring(L, step->code) != 0) {
+    // Find cached bytecode
+    uint32_t hash = hashString(step->code) & LUA_HASH_MASK;
+    LuaChunkEntry* entry = chunkTable[hash];
+    while (entry) {
+        if (strcmp(entry->code, step->code) == 0) {
+            break;
+        }
+        entry = entry->next;
+    }
+    
+    if (!entry) {
+        lua_close(L);
+        return NULL;
+    }
+    
+    // Load and execute
+    if (luaL_loadbuffer(L, (const char*)entry->bytecode.bytecode, 
+                       entry->bytecode.bytecode_len, "step") != 0) {
+        const char *error = lua_tostring(L, -1);
+        fprintf(stderr, "Lua load error: %s\n", error);
+        lua_close(L);
+        return NULL;
+    }
+    
+    if (lua_pcall(L, 0, 1, 0) != 0) {
         const char *error = lua_tostring(L, -1);
         fprintf(stderr, "Lua execution error: %s\n", error);
         lua_close(L);
@@ -387,8 +518,5 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     json_t *result = luaToJson(L, -1);
     lua_close(L);
     
-    if (!result) {
-        fprintf(stderr, "Failed to convert Lua result to JSON\n");
-    }
     return result;
 }
