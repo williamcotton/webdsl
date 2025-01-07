@@ -14,4 +14,4 @@ typedef struct ServerContext {
     struct MHD_Daemon *daemon;
 } ServerContext;
 
-#endif // SERVER_CONTEXT_H 
+#endif // SERVER_CONTEXT_H
