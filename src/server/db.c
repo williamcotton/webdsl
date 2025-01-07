@@ -325,13 +325,13 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     json_t *jsonResult = resultToJson(result);
     freeResult(result);
 
-    // add the input to the result
+    // Merge input properties into jsonResult instead of nesting
     if (input) {
-      json_object_set(jsonResult, "request", input);
+        json_object_update(jsonResult, input);
     }
 
     if (!jsonResult) {
-      fprintf(stderr, "Failed to convert SQL result to JSON\n");
+        fprintf(stderr, "Failed to convert SQL result to JSON\n");
     }
     return jsonResult;
   } else {
@@ -404,9 +404,9 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
       return NULL;
     }
 
-    // add the input to the result
+    // Merge input properties into jsonData instead of nesting
     if (input) {
-      json_object_set(jsonData, "request", input);
+        json_object_update(jsonData, input);
     }
 
     return jsonData;

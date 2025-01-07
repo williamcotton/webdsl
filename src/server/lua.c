@@ -518,5 +518,10 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     json_t *result = luaToJson(L, -1);
     lua_close(L);
     
+    // Merge input properties into result
+    if (input) {
+        json_object_update(result, input);
+    }
+    
     return result;
 }

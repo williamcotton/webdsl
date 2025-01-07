@@ -138,8 +138,6 @@ website {
                     :offset(query.offset or 0)
                     :with_metadata()
                     :build()
-                    
-                result.request = request
                 return result
             }
             
@@ -158,7 +156,7 @@ website {
                         limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
                         has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
                     },
-                    request: .request
+                    request: .
                 }
             }
         }
