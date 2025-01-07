@@ -16,12 +16,32 @@ extern Database *globalDb;
 // Generate unique statement names
 static atomic_ulong stmt_counter = 0;
 
-static PGconn *getDbConnection(Database *db) {
-  if (!db || !db->pool)
-    return NULL;
+typedef struct {
+    Database *db;
+    PGconn *conn;
+    PooledConnection *pooled;
+} DbConnection;
 
-  PooledConnection *conn = getConnection(db->pool);
-  return conn ? conn->conn : NULL;
+static DbConnection getDbConnection(Database *db) {
+    DbConnection conn = {db, NULL, NULL};
+    if (!db || !db->pool) {
+        return conn;
+    }
+    
+    conn.pooled = getConnection(db->pool);
+    if (conn.pooled) {
+        conn.conn = conn.pooled->conn;
+    }
+    return conn;
+}
+
+static void releaseConnection(DbConnection *conn) {
+    if (!conn || !conn->db || !conn->pooled) {
+        return;
+    }
+    returnConnection(conn->db->pool, conn->pooled);
+    conn->conn = NULL;
+    conn->pooled = NULL;
 }
 
 static PreparedStmt* findPreparedStmt(Database *db, PGconn *conn, const char *sql) {
@@ -78,38 +98,23 @@ static PreparedStmt* prepareSqlStatement(Database *db, PGconn *conn, const char 
     return stmt;
 }
 
-static void releaseDbConnection(Database *db, PGconn *conn) {
-  if (!db || !db->pool || !conn)
-    return;
-
-  // Find the PooledConnection that contains this PGconn
-  PooledConnection *pooled = db->pool->connections;
-  while (pooled) {
-    if (pooled->conn == conn) {
-      returnConnection(db->pool, pooled);
-      break;
-    }
-    pooled = pooled->next;
-  }
-}
-
 static PGresult* executePreparedStatement(Database *db, const char *sql,
                                  const char **values, size_t value_count) {
-    PGconn *conn = getDbConnection(db);
-    if (!conn) return NULL;
+    DbConnection conn = getDbConnection(db);
+    if (!conn.conn) return NULL;
     
     // Get or create prepared statement
-    PreparedStmt *stmt = prepareSqlStatement(db, conn, sql);
+    PreparedStmt *stmt = prepareSqlStatement(db, conn.conn, sql);
     if (!stmt) {
-        releaseDbConnection(db, conn);
+        releaseConnection(&conn);
         return NULL;
     }
     
     // Execute prepared statement
-    PGresult *result = PQexecPrepared(conn, stmt->name, (int)(value_count & INT_MAX), 
+    PGresult *result = PQexecPrepared(conn.conn, stmt->name, (int)(value_count & INT_MAX), 
                                      values, NULL, NULL, 0);
     
-    releaseDbConnection(db, conn);
+    releaseConnection(&conn);
     return result;
 }
 
@@ -154,22 +159,22 @@ static PGresult* executeQuery(Database *db, const char *query) {
         return NULL;
     }
 
-    PGconn *conn = getDbConnection(db);
-    if (!conn) {
+    DbConnection conn = getDbConnection(db);
+    if (!conn.conn) {
         fputs("Could not get database connection from pool\n", stderr);
         return NULL;
     }
 
-    PGresult *result = PQexec(conn, query);
+    PGresult *result = PQexec(conn.conn, query);
     if (PQresultStatus(result) != PGRES_TUPLES_OK && 
         PQresultStatus(result) != PGRES_COMMAND_OK) {
-        fprintf(stderr, "Query failed: %s", PQerrorMessage(conn));
+        fprintf(stderr, "Query failed: %s", PQerrorMessage(conn.conn));
         PQclear(result);
-        releaseDbConnection(db, conn);
+        releaseConnection(&conn);
         return NULL;
     }
     
-    releaseDbConnection(db, conn);
+    releaseConnection(&conn);
     return result;
 }
 
@@ -248,192 +253,119 @@ static json_t* resultToJson(PGresult *result) {
     return root;
 }
 
+static json_t* executeSqlWithParams(Database *db, const char *sql, const char **values, size_t value_count) {
+    PGresult *result;
+    if (values && value_count > 0) {
+        result = executeParameterizedQuery(db, sql, values, value_count);
+    } else {
+        result = executeQuery(db, sql);
+    }
+
+    if (!result) {
+        return NULL;
+    }
+
+    json_t *jsonData = resultToJson(result);
+    freeResult(result);
+    return jsonData;
+}
+
 static json_t *executeAndFormatQuery(Arena *arena, char *sql,
                                      const char **values, size_t value_count) {
-  (void)arena;
+    (void)arena;
 
-  if (!sql) {
-    return NULL;
-  }
+    if (!sql) {
+        return NULL;
+    }
 
-  // Execute query
-  PGresult *result;
-  if (values && value_count > 0) {
-    result =
-        executeParameterizedQuery(globalDb, sql, values, value_count);
-  } else {
-    result = executeQuery(globalDb, sql);
-  }
+    return executeSqlWithParams(globalDb, sql, values, value_count);
+}
 
-  if (!result) {
-    return NULL;
-  }
+static json_t* createErrorResponse(const char* message) {
+    json_t *result = json_object();
+    json_object_set_new(result, "error", json_string(message));
+    return result;
+}
 
-  // Convert result to JSON
-  json_t *jsonData = resultToJson(result);
-  freeResult(result);
+static void extractJsonParams(json_t *input, Arena *arena, const char ***values, size_t *value_count) {
+    json_t *params = json_object_get(input, "params");
+    *values = NULL;
+    *value_count = 0;
 
-  if (!jsonData) {
-    return NULL;
-  }
+    if (!json_is_array(params)) {
+        if (json_is_array(input)) {
+            params = input;
+        } else {
+            return;
+        }
+    }
 
-  return jsonData;
+    *value_count = json_array_size(params);
+    if (*value_count > 0) {
+        *values = arenaAlloc(arena, sizeof(char *) * (*value_count));
+        if (!*values) {
+            return;
+        }
+
+        for (size_t i = 0; i < *value_count; i++) {
+            json_t *param = json_array_get(params, i);
+            if (json_is_string(param)) {
+                (*values)[i] = json_string_value(param);
+            } else if (json_is_number(param)) {
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%.0f", json_number_value(param));
+                (*values)[i] = arenaDupString(arena, buf);
+            } else {
+                char *str = json_dumps(param, JSON_COMPACT);
+                if (str) {
+                    (*values)[i] = arenaDupString(arena, str);
+                    free(str);
+                }
+            }
+        }
+    }
 }
 
 json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
                               json_t *requestContext, Arena *arena) {
-  (void)requestContext;
+    (void)requestContext;
 
-  // Check for existing error
-  json_t *error = json_object_get(input, "error");
-  if (error) {
-      return json_deep_copy(input);
-  }
-
-  if (step->is_dynamic) {
-    // For dynamic SQL, expect input to contain SQL and params
-    const char *sql = json_string_value(json_object_get(input, "sql"));
-    if (!sql) {
-      json_t *result = json_object();
-      json_object_set_new(result, "error", json_string("No SQL query provided"));
-      return result;
+    // Check for existing error
+    json_t *error = json_object_get(input, "error");
+    if (error) {
+        return json_deep_copy(input);
     }
 
-    json_t *params = json_object_get(input, "params");
-    const char **param_values = NULL;
-    size_t param_count = 0;
-
-    if (json_is_array(params)) {
-      param_count = json_array_size(params);
-      if (param_count > 0) {
-        param_values = arenaAlloc(arena, sizeof(char *) * param_count);
-        if (!param_values) {
-          json_t *result = json_object();
-          json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
-          return result;
+    char *sql;
+    if (step->is_dynamic) {
+        sql = (char *)json_string_value(json_object_get(input, "sql"));
+        if (!sql) {
+            return createErrorResponse("No SQL query provided");
         }
-
-        for (size_t i = 0; i < param_count; i++) {
-          json_t *param = json_array_get(params, i);
-          if (json_is_string(param)) {
-            param_values[i] = json_string_value(param);
-          } else {
-            // For non-string values, convert to string
-            char *str = json_dumps(param, JSON_COMPACT);
-            if (str) {
-              param_values[i] = arenaDupString(arena, str);
-              free(str);
-            }
-          }
+    } else {
+        sql = step->code;
+        if (step->name) {
+            QueryNode *query = findQuery(step->name);
+            sql = query->sql;
         }
-      }
+        if (!sql) {
+            return createErrorResponse("No SQL query found");
+        }
     }
 
-    PGresult *result =
-        executeParameterizedQuery(globalDb, sql, param_values, param_count);
-    if (!result) {
-      json_t *error_result = json_object();
-      json_object_set_new(error_result, "error", json_string("Failed to execute SQL query"));
-      return error_result;
-    }
-
-    json_t *jsonResult = resultToJson(result);
-    freeResult(result);
-
-    if (!jsonResult) {
-      json_t *error_result = json_object();
-      json_object_set_new(error_result, "error", json_string("Failed to convert SQL result to JSON"));
-      return error_result;
-    }
-
-    // Merge input properties into jsonResult
-    if (input) {
-        json_object_update(jsonResult, input);
-    }
-
-    return jsonResult;
-  } else {
-    // For static SQL, use the code or look up the query and execute it
-    char *sql = step->code;
-
-    if (step->name) {
-      QueryNode *query = findQuery(step->name);
-      sql = query->sql;
-    }
-
-    if (!sql) {
-      json_t *result = json_object();
-      json_object_set_new(result, "error", json_string("No SQL query found"));
-      return result;
-    }
-
-    // Extract parameters from input if needed
     const char **values = NULL;
     size_t value_count = 0;
-
-    // Check if input has a params array
+    
     if (input) {
-      json_t *params = json_object_get(input, "params");
-      if (json_is_array(params)) {
-        value_count = json_array_size(params);
-        if (value_count > 0) {
-          values = arenaAlloc(arena, sizeof(char *) * value_count);
-          if (!values) {
-            json_t *result = json_object();
-            json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
-            return result;
-          }
-          for (size_t i = 0; i < value_count; i++) {
-            json_t *param = json_array_get(params, i);
-            if (json_is_string(param)) {
-              values[i] = json_string_value(param);
-            } else if (json_is_number(param)) {
-                // For numbers, convert directly to string without extra quotes
-                char buf[32];
-                snprintf(buf, sizeof(buf), "%.0f", json_number_value(param));
-                values[i] = arenaDupString(arena, buf);
-            } else {
-                // For other non-string values, convert to string
-                char *str = json_dumps(param, JSON_COMPACT);
-                if (str) {
-                    values[i] = arenaDupString(arena, str);
-                    free(str);
-                }
-            }
-          }
+        extractJsonParams(input, arena, &values, &value_count);
+        if (!values && value_count > 0) {
+            return createErrorResponse("Failed to allocate memory for parameters");
         }
-      } else if (json_is_array(input)) {
-        // If input itself is an array, use it directly as params
-        value_count = json_array_size(input);
-        if (value_count > 0) {
-          values = arenaAlloc(arena, sizeof(char *) * value_count);
-          if (!values) {
-            json_t *result = json_object();
-            json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
-            return result;
-          }
-          for (size_t i = 0; i < value_count; i++) {
-            json_t *param = json_array_get(input, i);
-            if (json_is_string(param)) {
-              values[i] = json_string_value(param);
-            } else {
-              // For non-string values, convert to string
-              char *str = json_dumps(param, JSON_COMPACT);
-              if (str) {
-                values[i] = arenaDupString(arena, str);
-                free(str);
-              }
-            }
-          }
-        }
-      }
     }
 
     json_t *jsonData = executeAndFormatQuery(arena, sql, values, value_count);
     if (!jsonData) {
-      json_t *result = json_object();
-      json_object_set_new(result, "error", json_string("Failed to execute SQL query"));
-      return result;
+        return createErrorResponse("Failed to execute SQL query");
     }
 
     // Merge input properties into jsonData
@@ -442,5 +374,4 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     }
 
     return jsonData;
-  }
 }
