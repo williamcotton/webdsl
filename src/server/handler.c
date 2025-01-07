@@ -41,15 +41,16 @@ static enum MHD_Result post_iterator(void *cls,
                                    const char *data,
                                    uint64_t off,
                                    size_t size) {
-    (void)kind; (void)filename; (void)content_type; (void)key;
+    (void)kind; (void)filename; (void)content_type;
     (void)transfer_encoding; (void)off; (void)size;
     
     struct PostData *post_data = cls;
     
-    // Store the value in our array
+    // Store the value in our array using arena allocation
     if (post_data->value_count < 32) {
-        post_data->values[post_data->value_count++] = strdup(data);
-        post_data->keys[post_data->value_count - 1] = strdup(key);
+        post_data->values[post_data->value_count] = arenaDupString(post_data->arena, data);
+        post_data->keys[post_data->value_count] = arenaDupString(post_data->arena, key);
+        post_data->value_count++;
     }
     
     return MHD_YES;
@@ -67,16 +68,20 @@ enum MHD_Result handleRequest(void *cls,
 
     // First call for this connection
     if (*con_cls == NULL) {
+        Arena *arena = createArena(1024 * 1024); // 1MB initial size
+        
         if (strcmp(method, "POST") == 0) {
-            struct PostContext *post = malloc(sizeof(struct PostContext));
+            struct PostContext *post = arenaAlloc(arena, sizeof(struct PostContext));
             post->data = NULL;
             post->size = 0;
             post->processed = 0;
             post->raw_json = NULL;
+            post->pp = NULL;  // Initialize pp to NULL for all requests
             post->post_data.connection = connection;
             post->post_data.error = 0;
             post->post_data.value_count = 0;
-            post->arena = createArena(1024 * 1024); // 1MB initial size
+            post->post_data.arena = arena;
+            post->arena = arena;
             
             // Check content type for JSON
             const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
@@ -89,8 +94,7 @@ enum MHD_Result handleRequest(void *cls,
                                                    post_iterator,
                                                    &post->post_data);
                 if (!post->pp) {
-                    freeArena(post->arena);
-                    free(post);
+                    freeArena(arena);
                     return MHD_NO;
                 }
             }
@@ -98,8 +102,8 @@ enum MHD_Result handleRequest(void *cls,
             return MHD_YES;
         }
         // For GET requests, create a simple context with an arena
-        struct RequestContext *ctx = malloc(sizeof(struct RequestContext));
-        ctx->arena = createArena(1024 * 1024); // 1MB initial size
+        struct RequestContext *ctx = arenaAlloc(arena, sizeof(struct RequestContext));
+        ctx->arena = arena;
         ctx->type = REQUEST_TYPE_GET;
         *con_cls = ctx;
         return MHD_YES;
@@ -124,14 +128,16 @@ enum MHD_Result handleRequest(void *cls,
         
         if (*upload_data_size != 0) {
             if (post->type == REQUEST_TYPE_JSON_POST) {
-                // Accumulate JSON data
+                // Accumulate JSON data using arena allocation
                 if (!post->raw_json) {
-                    post->raw_json = malloc(*upload_data_size + 1);
+                    post->raw_json = arenaAlloc(post->arena, *upload_data_size + 1);
                     memcpy(post->raw_json, upload_data, *upload_data_size);
                     post->size = *upload_data_size;
                 } else {
-                    post->raw_json = realloc(post->raw_json, post->size + *upload_data_size + 1);
-                    memcpy(post->raw_json + post->size, upload_data, *upload_data_size);
+                    char *new_buffer = arenaAlloc(post->arena, post->size + *upload_data_size + 1);
+                    memcpy(new_buffer, post->raw_json, post->size);
+                    memcpy(new_buffer + post->size, upload_data, *upload_data_size);
+                    post->raw_json = new_buffer;
                     post->size += *upload_data_size;
                 }
                 post->raw_json[post->size] = '\0';
@@ -176,30 +182,20 @@ void handleRequestCompleted(void *cls,
     (void)cls; (void)connection; (void)toe;
     
     if (*con_cls != NULL) {
-        if (((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_POST ||
-            ((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_JSON_POST) {
-            struct PostContext *post = *con_cls;
-            if (post) {
-                if (post->data)
-                    free(post->data);
-                if (post->pp)
-                    MHD_destroy_post_processor(post->pp);
-                if (post->raw_json)
-                    free(post->raw_json);
-                for (size_t i = 0; i < post->post_data.value_count; i++) {
-                    free(post->post_data.values[i]);
-                }
-                if (post->arena) {
-                    freeArena(post->arena);
-                }
-                free(post);
+        struct RequestContext *ctx = *con_cls;
+        if (!ctx) {
+            return;
+        }
+        
+        if (ctx->type == REQUEST_TYPE_POST || ctx->type == REQUEST_TYPE_JSON_POST) {
+            struct PostContext *post = (struct PostContext *)ctx;
+            if (post->pp) {
+                MHD_destroy_post_processor(post->pp);
             }
+            // No need to free raw_json, data, values, or keys - they're all in the arena
+            freeArena(post->arena);
         } else {
-            struct RequestContext *ctx = *con_cls;
-            if (ctx->arena) {
-                freeArena(ctx->arena);
-            }
-            free(ctx);
+            freeArena(ctx->arena);
         }
         *con_cls = NULL;
     }

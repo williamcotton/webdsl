@@ -2,6 +2,7 @@
 #define SERVER_HANDLER_H
 
 #include <microhttpd.h>
+#include <string.h>
 #include "../arena.h"
 
 // Add thread-local storage for JSON arena
@@ -13,32 +14,32 @@ enum RequestType {
     REQUEST_TYPE_JSON_POST
 };
 
-// Forward declarations
 struct PostData {
-    char *values[32];  // Array of values matching the expected fields
-    char *keys[32];
     struct MHD_Connection *connection;
+    char *values[32];
+    char *keys[32];
     size_t value_count;
     int error;
     uint32_t : 32;
+    Arena *arena;  // Add arena field for form data allocation
 };
 
 struct PostContext {
-    char *data;
-    size_t size;
-    size_t processed;
-    struct MHD_PostProcessor *pp;
-    struct PostData post_data;
-    Arena *arena;
     enum RequestType type;
     uint32_t : 32;
-    char *raw_json;  // Buffer for raw JSON data
+    struct MHD_PostProcessor *pp;
+    char *data;
+    char *raw_json;
+    size_t size;
+    size_t processed;
+    struct PostData post_data;
+    Arena *arena;
 };
 
 struct RequestContext {
-    Arena *arena;
     enum RequestType type;
     uint32_t : 32;
+    Arena *arena;
 };
 
 // Request handling
