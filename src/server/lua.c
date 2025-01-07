@@ -279,6 +279,8 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
         return NULL;
     }
 
+    lua_gc(L, LUA_GCSTOP, 0);
+
     luaL_openlibs(L);
     
     // Create tables for request context
