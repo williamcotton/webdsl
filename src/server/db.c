@@ -284,11 +284,19 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
                               json_t *requestContext, Arena *arena) {
   (void)requestContext;
 
+  // Check for existing error
+  json_t *error = json_object_get(input, "error");
+  if (error) {
+      return json_deep_copy(input);
+  }
+
   if (step->is_dynamic) {
     // For dynamic SQL, expect input to contain SQL and params
     const char *sql = json_string_value(json_object_get(input, "sql"));
     if (!sql) {
-      return NULL;
+      json_t *result = json_object();
+      json_object_set_new(result, "error", json_string("No SQL query provided"));
+      return result;
     }
 
     json_t *params = json_object_get(input, "params");
@@ -299,6 +307,11 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
       param_count = json_array_size(params);
       if (param_count > 0) {
         param_values = arenaAlloc(arena, sizeof(char *) * param_count);
+        if (!param_values) {
+          json_t *result = json_object();
+          json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
+          return result;
+        }
 
         for (size_t i = 0; i < param_count; i++) {
           json_t *param = json_array_get(params, i);
@@ -319,20 +332,25 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     PGresult *result =
         executeParameterizedQuery(globalDb, sql, param_values, param_count);
     if (!result) {
-      return NULL;
+      json_t *error_result = json_object();
+      json_object_set_new(error_result, "error", json_string("Failed to execute SQL query"));
+      return error_result;
     }
 
     json_t *jsonResult = resultToJson(result);
     freeResult(result);
 
-    // Merge input properties into jsonResult instead of nesting
+    if (!jsonResult) {
+      json_t *error_result = json_object();
+      json_object_set_new(error_result, "error", json_string("Failed to convert SQL result to JSON"));
+      return error_result;
+    }
+
+    // Merge input properties into jsonResult
     if (input) {
         json_object_update(jsonResult, input);
     }
 
-    if (!jsonResult) {
-        fprintf(stderr, "Failed to convert SQL result to JSON\n");
-    }
     return jsonResult;
   } else {
     // For static SQL, use the code or look up the query and execute it
@@ -344,7 +362,9 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     }
 
     if (!sql) {
-      return NULL;
+      json_t *result = json_object();
+      json_object_set_new(result, "error", json_string("No SQL query found"));
+      return result;
     }
 
     // Extract parameters from input if needed
@@ -358,6 +378,11 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
         value_count = json_array_size(params);
         if (value_count > 0) {
           values = arenaAlloc(arena, sizeof(char *) * value_count);
+          if (!values) {
+            json_t *result = json_object();
+            json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
+            return result;
+          }
           for (size_t i = 0; i < value_count; i++) {
             json_t *param = json_array_get(params, i);
             if (json_is_string(param)) {
@@ -382,6 +407,11 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
         value_count = json_array_size(input);
         if (value_count > 0) {
           values = arenaAlloc(arena, sizeof(char *) * value_count);
+          if (!values) {
+            json_t *result = json_object();
+            json_object_set_new(result, "error", json_string("Failed to allocate memory for parameters"));
+            return result;
+          }
           for (size_t i = 0; i < value_count; i++) {
             json_t *param = json_array_get(input, i);
             if (json_is_string(param)) {
@@ -401,10 +431,12 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
 
     json_t *jsonData = executeAndFormatQuery(arena, sql, values, value_count);
     if (!jsonData) {
-      return NULL;
+      json_t *result = json_object();
+      json_object_set_new(result, "error", json_string("Failed to execute SQL query"));
+      return result;
     }
 
-    // Merge input properties into jsonData instead of nesting
+    // Merge input properties into jsonData
     if (input) {
         json_object_update(jsonData, input);
     }

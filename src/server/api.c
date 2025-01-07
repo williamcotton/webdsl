@@ -216,6 +216,16 @@ char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
         if (!result) {
             return generateErrorJson("Pipeline execution failed");
         }
+
+        json_t *error = json_object_get(result, "error");
+        if (error) {
+            // Extract just the error into a new object
+            json_t *error_response = json_object();
+            json_object_set(error_response, "error", error);
+            char *response = json_dumps(error_response, JSON_COMPACT);
+            return response;
+        }
+
         return json_dumps(result, JSON_COMPACT);
     } else {
         return generateErrorJson("No pipeline found");

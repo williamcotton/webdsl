@@ -441,9 +441,17 @@ static json_t* luaToJson(lua_State *L, int index) {
 }
 
 json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+    // Check for existing error
+    json_t *error = json_object_get(input, "error");
+    if (error) {
+        return json_deep_copy(input);
+    }
+
     lua_State *L = createLuaState(input, arena, step->is_dynamic);
     if (!L) {
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to create Lua state"));
+        return result;
     }
     
     // Set up input from previous step
@@ -496,27 +504,37 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     
     if (!entry) {
         lua_close(L);
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to find cached Lua bytecode"));
+        return result;
     }
     
     // Load and execute
     if (luaL_loadbuffer(L, (const char*)entry->bytecode.bytecode, 
                        entry->bytecode.bytecode_len, "step") != 0) {
-        const char *error = lua_tostring(L, -1);
-        fprintf(stderr, "Lua load error: %s\n", error);
+        const char *error_msg = lua_tostring(L, -1);
         lua_close(L);
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string(error_msg));
+        return result;
     }
     
     if (lua_pcall(L, 0, 1, 0) != 0) {
-        const char *error = lua_tostring(L, -1);
-        fprintf(stderr, "Lua execution error: %s\n", error);
+        const char *error_msg = lua_tostring(L, -1);
         lua_close(L);
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string(error_msg));
+        return result;
     }
     
     json_t *result = luaToJson(L, -1);
     lua_close(L);
+    
+    if (!result) {
+        json_t *error_result = json_object();
+        json_object_set_new(error_result, "error", json_string("Failed to convert Lua result to JSON"));
+        return error_result;
+    }
     
     // Merge input properties into result
     if (input) {

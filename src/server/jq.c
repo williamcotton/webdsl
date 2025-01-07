@@ -130,21 +130,34 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
     (void)requestContext;
     (void)arena;
     
+    // Check for existing error
+    json_t *error = json_object_get(input, "error");
+    if (error) {
+        return json_deep_copy(input);
+    }
+    
     jq_state *jq = findOrCreateJQ(step->code);
     if (!jq) {
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to create JQ state"));
+        return result;
     }
     
     jv filtered_jv = processJqFilter(jq, input);
     if (!jv_is_valid(filtered_jv)) {
-        return NULL;
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("Failed to process JQ filter"));
+        return result;
     }
     
     json_t *result = jvToJansson(filtered_jv);
     jv_free(filtered_jv);
     
     if (!result) {
-        fprintf(stderr, "Failed to convert JQ result to JSON\n");
+        json_t *error_result = json_object();
+        json_object_set_new(error_result, "error", json_string("Failed to convert JQ result to JSON"));
+        return error_result;
     }
+    
     return result;
 }

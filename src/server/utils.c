@@ -5,7 +5,6 @@ char* generateErrorJson(const char *errorMessage) {
     json_object_set_new(root, "error", json_string(errorMessage));
     
     char *jsonStr = json_dumps(root, JSON_COMPACT);
-    json_decref(root);
     return jsonStr;
 }
 
