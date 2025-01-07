@@ -111,13 +111,24 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     json_t *body = json_object();
     if (strcmp(method, "POST") == 0) {
         struct PostContext *post_ctx = con_cls;
-        if (post_ctx && post_ctx->type == REQUEST_TYPE_POST) {
-            // loop over post_ctx->post_data.values and add to body
-            for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
-                const char *value = post_ctx->post_data.values[i];
-                const char *key = post_ctx->post_data.keys[i];
-                if (value) {
-                    json_object_set_new(body, key, json_string(value));
+        if (post_ctx) {
+            if (post_ctx->type == REQUEST_TYPE_JSON_POST && post_ctx->raw_json) {
+                // Parse JSON data
+                json_error_t error;
+                json_t *json_body = json_loads(post_ctx->raw_json, 0, &error);
+                if (json_body) {
+                    // Replace the empty body object with the parsed JSON
+                    json_decref(body);
+                    body = json_body;
+                }
+            } else if (post_ctx->type == REQUEST_TYPE_POST) {
+                // Handle form data as before
+                for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+                    const char *value = post_ctx->post_data.values[i];
+                    const char *key = post_ctx->post_data.keys[i];
+                    if (value) {
+                        json_object_set_new(body, key, json_string(value));
+                    }
                 }
             }
         }
@@ -135,12 +146,37 @@ static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_c
 
     // Validate each field
     ApiField *field = endpoint->apiFields;
-    size_t field_index = 0;
 
     while (field) {
         const char *value = NULL;
-        if (field_index < post_ctx->post_data.value_count) {
-            value = post_ctx->post_data.values[field_index];
+        
+        if (post_ctx->type == REQUEST_TYPE_JSON_POST && post_ctx->raw_json) {
+            // Parse JSON data if not already parsed
+            json_error_t json_error;
+            json_t *json_body = json_loads(post_ctx->raw_json, 0, &json_error);
+            if (json_body) {
+                // Get value from JSON body
+                json_t *json_value = json_object_get(json_body, field->name);
+                if (json_value) {
+                    if (json_is_string(json_value)) {
+                        value = json_string_value(json_value);
+                    } else if (json_is_number(json_value)) {
+                        // Convert number to string for validation
+                        char num_str[32];
+                        snprintf(num_str, sizeof(num_str), "%.0f", json_number_value(json_value));
+                        value = arenaDupString(arena, num_str);
+                    }
+                }
+                json_decref(json_body);
+            }
+        } else if (post_ctx->type == REQUEST_TYPE_POST) {
+            // Get value from form data
+            for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+                if (strcmp(post_ctx->post_data.keys[i], field->name) == 0) {
+                    value = post_ctx->post_data.values[i];
+                    break;
+                }
+            }
         }
 
         char *error = validateField(arena, value, field);
@@ -149,7 +185,6 @@ static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_c
             has_errors = true;
         }
 
-        field_index++;
         field = field->next;
     }
 
@@ -172,13 +207,38 @@ static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls
 
     // Extract validated fields for query
     ApiField *field = endpoint->apiFields;
-    size_t field_index = 0;
 
     while (field) {
         const char *value = NULL;
-        if (field_index < post_ctx->post_data.value_count) {
-            value = post_ctx->post_data.values[field_index++];
+        
+        if (post_ctx->type == REQUEST_TYPE_JSON_POST && post_ctx->raw_json) {
+            // Parse JSON data
+            json_error_t json_error;
+            json_t *json_body = json_loads(post_ctx->raw_json, 0, &json_error);
+            if (json_body) {
+                // Get value from JSON body
+                json_t *json_value = json_object_get(json_body, field->name);
+                if (json_value) {
+                    if (json_is_string(json_value)) {
+                        value = arenaDupString(arena, json_string_value(json_value));
+                    } else if (json_is_number(json_value)) {
+                        char num_str[32];
+                        snprintf(num_str, sizeof(num_str), "%.0f", json_number_value(json_value));
+                        value = arenaDupString(arena, num_str);
+                    }
+                }
+                json_decref(json_body);
+            }
+        } else if (post_ctx->type == REQUEST_TYPE_POST) {
+            // Get value from form data
+            for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+                if (strcmp(post_ctx->post_data.keys[i], field->name) == 0) {
+                    value = post_ctx->post_data.values[i];
+                    break;
+                }
+            }
         }
+        
         (*values)[(*value_count)++] = value;
         field = field->next;
     }

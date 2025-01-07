@@ -72,21 +72,28 @@ enum MHD_Result handleRequest(void *cls,
             post->data = NULL;
             post->size = 0;
             post->processed = 0;
+            post->raw_json = NULL;
             post->post_data.connection = connection;
             post->post_data.error = 0;
             post->post_data.value_count = 0;
             post->arena = createArena(1024 * 1024); // 1MB initial size
             
-            post->pp = MHD_create_post_processor(connection,
-                                               32 * 1024,  // 32k buffer
-                                               post_iterator,
-                                               &post->post_data);
-            if (!post->pp) {
-                freeArena(post->arena);
-                free(post);
-                return MHD_NO;
+            // Check content type for JSON
+            const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
+            if (content_type && strstr(content_type, "application/json") != NULL) {
+                post->type = REQUEST_TYPE_JSON_POST;
+            } else {
+                post->type = REQUEST_TYPE_POST;
+                post->pp = MHD_create_post_processor(connection,
+                                                   32 * 1024,  // 32k buffer
+                                                   post_iterator,
+                                                   &post->post_data);
+                if (!post->pp) {
+                    freeArena(post->arena);
+                    free(post);
+                    return MHD_NO;
+                }
             }
-            post->type = REQUEST_TYPE_POST;
             *con_cls = post;
             return MHD_YES;
         }
@@ -116,8 +123,22 @@ enum MHD_Result handleRequest(void *cls,
         struct PostContext *post = *con_cls;
         
         if (*upload_data_size != 0) {
-            if (MHD_post_process(post->pp, upload_data, *upload_data_size) == MHD_NO) {
-                return MHD_NO;
+            if (post->type == REQUEST_TYPE_JSON_POST) {
+                // Accumulate JSON data
+                if (!post->raw_json) {
+                    post->raw_json = malloc(*upload_data_size + 1);
+                    memcpy(post->raw_json, upload_data, *upload_data_size);
+                    post->size = *upload_data_size;
+                } else {
+                    post->raw_json = realloc(post->raw_json, post->size + *upload_data_size + 1);
+                    memcpy(post->raw_json + post->size, upload_data, *upload_data_size);
+                    post->size += *upload_data_size;
+                }
+                post->raw_json[post->size] = '\0';
+            } else {
+                if (MHD_post_process(post->pp, upload_data, *upload_data_size) == MHD_NO) {
+                    return MHD_NO;
+                }
             }
             *upload_data_size = 0;
             return MHD_YES;
@@ -155,13 +176,16 @@ void handleRequestCompleted(void *cls,
     (void)cls; (void)connection; (void)toe;
     
     if (*con_cls != NULL) {
-        if (((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_POST) {
+        if (((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_POST ||
+            ((struct RequestContext*)*con_cls)->type == REQUEST_TYPE_JSON_POST) {
             struct PostContext *post = *con_cls;
             if (post) {
                 if (post->data)
                     free(post->data);
                 if (post->pp)
                     MHD_destroy_post_processor(post->pp);
+                if (post->raw_json)
+                    free(post->raw_json);
                 for (size_t i = 0; i < post->post_data.value_count; i++) {
                     free(post->post_data.values[i]);
                 }

@@ -9,7 +9,8 @@ extern _Thread_local Arena* currentJsonArena;
 
 enum RequestType {
     REQUEST_TYPE_GET,
-    REQUEST_TYPE_POST
+    REQUEST_TYPE_POST,
+    REQUEST_TYPE_JSON_POST
 };
 
 // Forward declarations
@@ -30,6 +31,7 @@ struct PostContext {
     struct PostData post_data;
     Arena *arena;
     enum RequestType type;
+    char *raw_json;  // Buffer for raw JSON data
     uint32_t : 32;
 };
 

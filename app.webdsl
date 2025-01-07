@@ -199,16 +199,14 @@ website {
             
             executeQuery "insertEmployee"
             
-            lua {
-                -- Access rows from the input parameter
-                local result = request.rows[1]
-                return {
-                    success = true,
-                    employee = {
-                        id = result.id,
-                        name = result.name,
-                        email = result.email,
-                        team_id = result.team_id
+            jq {
+                {
+                    success: true,
+                    employee: {
+                        id: .rows[0].id,
+                        name: .rows[0].name,
+                        email: .rows[0].email,
+                        team_id: .rows[0].team_id
                     }
                 }
             }
