@@ -1,5 +1,6 @@
 #include "db.h"
 #include "db_pool.h"
+#include "server.h"
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -9,10 +10,12 @@
 #include "server/utils.h"
 #include "routing.h"
 
-extern Database *globalDb;
+static struct ServerContext *ctx = NULL;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wpadded"
+void initDb(struct ServerContext *serverCtx) {
+    ctx = serverCtx;
+}
+
 // Generate unique statement names
 static atomic_ulong stmt_counter = 0;
 
@@ -278,7 +281,7 @@ static json_t *executeAndFormatQuery(Arena *arena, const char *sql,
         return NULL;
     }
 
-    return executeSqlWithParams(globalDb, sql, values, value_count);
+    return executeSqlWithParams(ctx->db, sql, values, value_count);
 }
 
 static json_t* createErrorResponse(const char* message) {

@@ -4,6 +4,7 @@
 #include <microhttpd.h>
 #include <string.h>
 #include "../arena.h"
+#include "server.h"
 
 // Add thread-local storage for JSON arena
 extern _Thread_local Arena* currentJsonArena;
@@ -43,7 +44,7 @@ struct RequestContext {
 };
 
 // Request handling
-enum MHD_Result handleRequest(void *cls,
+enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
                             const char *method,
@@ -53,7 +54,7 @@ enum MHD_Result handleRequest(void *cls,
                             void **con_cls);
 
 // Request cleanup
-void handleRequestCompleted(void *cls,
+void handleRequestCompleted(ServerContext *ctx,
                           struct MHD_Connection *connection,
                           void **con_cls,
                           enum MHD_RequestTerminationCode toe);

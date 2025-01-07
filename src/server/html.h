@@ -4,6 +4,10 @@
 #include <microhttpd.h>
 #include "../ast.h"
 #include "../arena.h"
+#include "server.h"
+
+// Initialize HTML subsystem
+void initHtml(ServerContext *ctx);
 
 // HTML generation
 char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent);

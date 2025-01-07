@@ -3,8 +3,11 @@
 #include "../stringbuilder.h"
 #include <string.h>
 
-extern Arena *serverArena;
-extern WebsiteNode *currentWebsite;
+static ServerContext *ctx = NULL;
+
+void initHtml(ServerContext *serverCtx) {
+    ctx = serverCtx;
+}
 
 char* generateHtmlContent(Arena *arena, const ContentNode *cn, int indent) {
     StringBuilder *sb = StringBuilder_new(arena);
@@ -151,7 +154,7 @@ enum MHD_Result handlePageRequest(struct MHD_Connection *connection, const char 
 }
 
 enum MHD_Result handleCssRequest(struct MHD_Connection *connection, Arena *arena) {
-    char *css = generateCss(arena, currentWebsite->styleHead);
+    char *css = generateCss(arena, ctx->website->styleHead);
     char *css_copy = strdup(css);
     struct MHD_Response *response = MHD_create_response_from_buffer(strlen(css_copy), css_copy,
                                                MHD_RESPMEM_MUST_FREE);

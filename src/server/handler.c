@@ -56,7 +56,7 @@ static enum MHD_Result post_iterator(void *cls,
     return MHD_YES;
 }
 
-enum MHD_Result handleRequest(void *cls,
+enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
                             const char *method,
@@ -64,7 +64,7 @@ enum MHD_Result handleRequest(void *cls,
                             const char *upload_data,
                             size_t *upload_data_size,
                             void **con_cls) {
-    (void)cls; (void)version;
+    (void)version; (void)ctx;
 
     // First call for this connection
     if (*con_cls == NULL) {
@@ -102,10 +102,10 @@ enum MHD_Result handleRequest(void *cls,
             return MHD_YES;
         }
         // For GET requests, create a simple context with an arena
-        struct RequestContext *ctx = arenaAlloc(arena, sizeof(struct RequestContext));
-        ctx->arena = arena;
-        ctx->type = REQUEST_TYPE_GET;
-        *con_cls = ctx;
+        struct RequestContext *reqctx = arenaAlloc(arena, sizeof(struct RequestContext));
+        reqctx->arena = arena;
+        reqctx->type = REQUEST_TYPE_GET;
+        *con_cls = reqctx;
         return MHD_YES;
     }
 
@@ -115,8 +115,8 @@ enum MHD_Result handleRequest(void *cls,
         struct PostContext *post = *con_cls;
         requestArena = post->arena;
     } else {
-        struct RequestContext *ctx = *con_cls;
-        requestArena = ctx->arena;
+        struct RequestContext *reqctx = *con_cls;
+        requestArena = reqctx->arena;
     }
 
     // Initialize JSON arena for this request
@@ -173,29 +173,29 @@ enum MHD_Result handleRequest(void *cls,
     return handlePageRequest(connection, url, requestArena);
 }
 
-void handleRequestCompleted(void *cls,
+void handleRequestCompleted(ServerContext *ctx,
                           struct MHD_Connection *connection,
                           void **con_cls,
                           enum MHD_RequestTerminationCode toe) {
     cleanupRequestJsonArena();
     
-    (void)cls; (void)connection; (void)toe;
+    (void)ctx; (void)connection; (void)toe;
     
     if (*con_cls != NULL) {
-        struct RequestContext *ctx = *con_cls;
-        if (!ctx) {
+        struct RequestContext *reqctx = *con_cls;
+        if (!reqctx) {
             return;
         }
         
-        if (ctx->type == REQUEST_TYPE_POST || ctx->type == REQUEST_TYPE_JSON_POST) {
-            struct PostContext *post = (struct PostContext *)ctx;
+        if (reqctx->type == REQUEST_TYPE_POST || reqctx->type == REQUEST_TYPE_JSON_POST) {
+            struct PostContext *post = (struct PostContext *)reqctx;
             if (post->pp) {
                 MHD_destroy_post_processor(post->pp);
             }
             // No need to free raw_json, data, values, or keys - they're all in the arena
             freeArena(post->arena);
         } else {
-            freeArena(ctx->arena);
+            freeArena(reqctx->arena);
         }
         *con_cls = NULL;
     }

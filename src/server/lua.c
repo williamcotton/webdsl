@@ -122,8 +122,8 @@ static int bytecodeWriter(lua_State *L __attribute__((unused)),
 static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
 
 // Add new function to walk AST and compile Lua steps
-static bool compilePipelineSteps(WebsiteNode* website) {
-    ApiEndpoint* endpoint = website->apiHead;
+static bool compilePipelineSteps(ServerContext *ctx) {
+    ApiEndpoint* endpoint = ctx->website->apiHead;
     while (endpoint) {
         PipelineStepNode* step = endpoint->pipeline;
         while (step) {
@@ -178,7 +178,7 @@ static bool compilePipelineSteps(WebsiteNode* website) {
 }
 
 // Modify initLua to also compile pipeline steps:
-bool initLua(void) {
+bool initLua(ServerContext *ctx) {
     // Keep existing querybuilder initialization
     lua_State *L = luaL_newstate();
     if (!L) return false;
@@ -206,7 +206,7 @@ bool initLua(void) {
     lua_close(L);
 
     // Add pipeline step compilation
-    if (!compilePipelineSteps(currentWebsite)) {
+    if (!compilePipelineSteps(ctx)) {
         cleanupLua();
         return false;
     }

@@ -10,9 +10,10 @@
 #pragma clang diagnostic pop
 #include "../ast.h"
 #include "../arena.h"
+#include "server.h"
 
 // Initialize Lua subsystem
-bool initLua(void);
+bool initLua(ServerContext *ctx);
 
 // Clean up Lua subsystem
 void cleanupLua(void);

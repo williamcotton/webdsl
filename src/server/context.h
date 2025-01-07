@@ -1,9 +1,10 @@
-#ifndef SERVER_H
-#define SERVER_H
+#ifndef SERVER_CONTEXT_H
+#define SERVER_CONTEXT_H
 
 #include "../ast.h"
 #include "../arena.h"
 #include "db.h"
+#include <microhttpd.h>
 
 // Server context structure to hold server-wide state
 typedef struct ServerContext {
@@ -13,8 +14,4 @@ typedef struct ServerContext {
     struct MHD_Daemon *daemon;
 } ServerContext;
 
-// Server operations
-ServerContext* startServer(WebsiteNode *website, Arena *arena);
-void stopServer(void);
-
-#endif // SERVER_H
+#endif // SERVER_CONTEXT_H 

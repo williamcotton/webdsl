@@ -16,6 +16,9 @@
 #define STMT_HASH_SIZE 64
 #define STMT_HASH_MASK (STMT_HASH_SIZE - 1)
 
+// Forward declarations
+struct ServerContext;
+
 // Add prepared statement cache structure
 typedef struct PreparedStmt {
     const char *sql;
@@ -30,6 +33,9 @@ typedef struct Database {
     PreparedStmt *stmt_cache[STMT_HASH_SIZE];  // Array of statement chains
     pthread_mutex_t stmt_lock; // Lock for statement cache
 } Database;
+
+// Initialize database subsystem
+void initDb(struct ServerContext *ctx);
 
 // Initialize database connection using arena for allocations
 // Returns NULL on error
