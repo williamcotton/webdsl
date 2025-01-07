@@ -31,8 +31,8 @@ struct PostContext {
     struct PostData post_data;
     Arena *arena;
     enum RequestType type;
-    char *raw_json;  // Buffer for raw JSON data
     uint32_t : 32;
+    char *raw_json;  // Buffer for raw JSON data
 };
 
 struct RequestContext {

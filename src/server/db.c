@@ -270,7 +270,7 @@ static json_t* executeSqlWithParams(Database *db, const char *sql, const char **
     return jsonData;
 }
 
-static json_t *executeAndFormatQuery(Arena *arena, char *sql,
+static json_t *executeAndFormatQuery(Arena *arena, const char *sql,
                                      const char **values, size_t value_count) {
     (void)arena;
 
@@ -336,9 +336,9 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
         return json_deep_copy(input);
     }
 
-    char *sql;
+    const char *sql;
     if (step->is_dynamic) {
-        sql = (char *)json_string_value(json_object_get(input, "sql"));
+        sql = json_string_value(json_object_get(input, "sql"));
         if (!sql) {
             return createErrorResponse("No SQL query provided");
         }
