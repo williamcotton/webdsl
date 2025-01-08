@@ -24,5 +24,8 @@ int main(void) {
     result |= run_server_css_tests();
     result |= run_server_validation_tests();
     
+    // Run hotreload tests
+    result |= run_website_tests();
+    
     return result;
 }
