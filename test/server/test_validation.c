@@ -4,6 +4,7 @@
 #include "../unity/unity.h"
 #include "../test_runners.h"
 #include <string.h>
+#include <regex.h>
 
 // Function prototype
 int run_server_validation_tests(void);

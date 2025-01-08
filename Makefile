@@ -12,16 +12,33 @@ TIDY = $(shell brew --prefix llvm)/bin/clang-tidy
 FORMAT = $(shell brew --prefix llvm)/bin/clang-format
 SRC_DIR = src
 
-CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ') -DBUILD_ENV=$(BUILD_ENV)
+# Base CFLAGS from compile_flags.txt
+BASE_CFLAGS = $(shell cat compile_flags.txt | tr '\n' ' ')
 
-# Add linker flags separately
-LDFLAGS = -lmicrohttpd -L/opt/homebrew/lib/postgresql@14 -lpq -ljansson -ljq -llua
+# Platform-specific settings
+ifeq ($(PLATFORM),LINUX)
+	LUA_LIB = -llua5.4
+	LUA_INCLUDE = -I/usr/include/lua5.4
+	PG_LIBDIR = /usr/lib/x86_64-linux-gnu
+	PG_INCLUDE = -I/usr/include/postgresql
+	SANITIZE_FLAGS =
+	PLATFORM_LIBS = -lm -lpthread -ldl
+else ifeq ($(PLATFORM),DARWIN)
+	LUA_LIB = -llua
+	LUA_INCLUDE = -I/opt/homebrew/include/lua
+	PG_LIBDIR = /opt/homebrew/lib/postgresql@14
+	PG_INCLUDE = -I/opt/homebrew/include/postgresql@14
+	SANITIZE_FLAGS = -fsanitize=address,undefined,implicit-conversion,float-divide-by-zero,local-bounds,nullability,integer,function
+	PLATFORM_LIBS =
+endif
 
-PG_CFLAGS = -I$(shell pg_config --includedir)
-PG_LDFLAGS = -L$(shell pg_config --libdir) -lpq
-LIBS = -lmicrohttpd $(PG_LDFLAGS) -ljansson -ljq -llua
-DEV_CFLAGS = -g -O0
-# TEST_CFLAGS = -Werror
+# Common library flags
+LIBS = -lmicrohttpd -L$(PG_LIBDIR) -lpq -ljansson -ljq $(LUA_LIB) $(PLATFORM_LIBS)
+
+# Combine all CFLAGS
+CFLAGS = $(BASE_CFLAGS) $(PG_INCLUDE) $(LUA_INCLUDE) -DBUILD_ENV=$(BUILD_ENV)
+DEV_CFLAGS = -g -O0 $(SANITIZE_FLAGS)
+
 PROJECT_SRC = $(wildcard src/*/*.c) $(wildcard src/*.c)
 MAIN_SRC = src/main.c
 LIB_SRC = $(filter-out $(MAIN_SRC),$(PROJECT_SRC))
@@ -33,15 +50,6 @@ ifeq ($(BUILD_ENV),development)
 	TEST_CFLAGS += -DDEV_ENV
 endif
 
-ifeq ($(PLATFORM),LINUX)
-	CFLAGS += -lm -lBlocksRuntime -ldispatch -lbsd -luuid -lpthread -ldl
-	TEST_CFLAGS += -Wl,--wrap=stat -Wl,--wrap=regcomp -Wl,--wrap=accept -Wl,--wrap=socket -Wl,--wrap=epoll_ctl -Wl,--wrap=listen
-	PROD_CFLAGS = -Ofast
-else ifeq ($(PLATFORM),DARWIN)
-	DEV_CFLAGS += -fsanitize=address,undefined,implicit-conversion,float-divide-by-zero,local-bounds,nullability,integer,function
-	PROD_CFLAGS = -Ofast
-endif
-
 .env:
 	cp default.env .env
 
@@ -51,12 +59,12 @@ start: $(BUILD_DIR)/webdsl
 
 $(BUILD_DIR)/webdsl:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LDFLAGS)
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LIBS)
 
 .PHONY: test
 test:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) $(LIBS)
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) $(LIBS)
 	$(BUILD_DIR)/$@ app.webdsl
 
 test-coverage-output:

@@ -1,6 +1,8 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <stdint.h>
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>

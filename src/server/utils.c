@@ -1,4 +1,6 @@
 #include "utils.h"
+#include <stdint.h>
+#include <string.h>
 
 char* generateErrorJson(const char *errorMessage) {
     json_t *root = json_object();
