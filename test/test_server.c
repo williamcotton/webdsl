@@ -21,7 +21,7 @@ static WebsiteNode* createTestWebsite(Arena *arena) {
     
     website->name = arenaDupString(arena, "Test Site");
     website->port = 3000;
-    website->databaseUrl = arenaDupString(arena, "postgresql://localhost/express-test");
+    website->databaseUrl = arenaDupString(arena, "postgresql://localhost/express-test?gssencmode=disable");
     website->base_url = arenaDupString(arena, "http://localhost:3000");
     website->author = arenaDupString(arena, "Test Author");
     website->version = arenaDupString(arena, "1.0.0");
