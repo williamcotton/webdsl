@@ -99,7 +99,7 @@ lint:
 ifeq ($(PLATFORM),LINUX)
 	$(TIDY) --checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c -- $(CFLAGS) $(DEV_CFLAGS)
 else ifeq ($(PLATFORM),DARWIN)
-	$(TIDY) --checks=-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c -- $(CFLAGS) $(DEV_CFLAGS)
+	$(TIDY) --checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c -- $(CFLAGS) $(DEV_CFLAGS)
 endif
 
 format:

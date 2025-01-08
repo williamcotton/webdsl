@@ -7,7 +7,7 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test:
+  test-ubuntu:
     runs-on: ubuntu-latest
 
     services:
@@ -65,3 +65,56 @@ jobs:
         PGUSER: postgres
         PGPASSWORD: postgres
         PGDATABASE: express-test
+
+  test-macos:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install dependencies
+      run: |
+        brew install \
+          llvm \
+          postgresql@14 \
+          libmicrohttpd \
+          jansson \
+          jq \
+          lua \
+          uthash \
+          libbsd \
+          openssl \
+          curl
+
+    - name: Start PostgreSQL
+      run: |
+        brew services start postgresql@14
+        sleep 5
+        /opt/homebrew/opt/postgresql@14/bin/createuser -s postgres
+        /opt/homebrew/opt/postgresql@14/bin/createdb express-test -U postgres
+
+    - name: Run linter
+      run: make lint
+
+    - name: Run test analyze
+      run: make test-analyze
+
+    - name: Run tests
+      run: make test
+      env:
+        PGHOST: localhost
+        PGUSER: postgres
+        PGPASSWORD: postgres
+        PGDATABASE: express-test
+
+    - name: Run test leaks
+      run: make test-leaks
+      env:
+        PGHOST: localhost
+        PGUSER: postgres
+        PGPASSWORD: postgres
+        PGDATABASE: express-test
+
+    - name: Stop PostgreSQL
+      if: always()
+      run: brew services stop postgresql@14
