@@ -141,10 +141,24 @@ jq_state* findOrCreateJQ(const char *filter) {
     
     // Create new entry
     entry = malloc(sizeof(JQHashEntry));
-    entry->filter = filter;
+    if (!entry) {
+        fprintf(stderr, "Failed to allocate memory for JQ hash entry\n");
+        return NULL;
+    }
+
+    // Duplicate the filter string to ensure we own the memory
+    char *filter_copy = strdup(filter);
+    if (!filter_copy) {
+        fprintf(stderr, "Failed to duplicate filter string\n");
+        free(entry);
+        return NULL;
+    }
+    entry->filter = filter_copy;
+
     entry->jq = jq_init();
     
     if (!entry->jq) {
+        free(filter_copy);
         free(entry);
         return NULL;
     }
@@ -159,6 +173,7 @@ jq_state* findOrCreateJQ(const char *filter) {
             jv_free(error);
         }
         jq_teardown(&entry->jq);
+        free(filter_copy);
         free(entry);
         return NULL;
     }
@@ -179,12 +194,24 @@ void cleanupJQCache(void) {
         JQHashEntry *entry = threadJQTable[i];
         while (entry) {
             JQHashEntry *next = entry->next;
+            
             if (entry->jq) {
                 jq_teardown(&entry->jq);
             }
+            
+            if (entry->filter) {
+                union {
+                    const char *in;
+                    void *out;
+                } cast = { .in = entry->filter };
+                entry->filter = NULL;
+                free(cast.out);
+            }
+            
             free(entry);
             entry = next;
         }
+        threadJQTable[i] = NULL;  // Clear the pointer after freeing
     }
     
     free(threadJQTable);

@@ -12,7 +12,12 @@ static jv janssonToJv(json_t *json) {
     const char *key;
     json_t *value;
     json_object_foreach(json, key, value) {
-      obj = jv_object_set(obj, jv_string(key), janssonToJv(value));
+      jv val = janssonToJv(value);
+      if (!jv_is_valid(val)) {
+        jv_free(obj);
+        return val;
+      }
+      obj = jv_object_set(obj, jv_string(key), val);
     }
     return obj;
   }
@@ -21,7 +26,12 @@ static jv janssonToJv(json_t *json) {
     size_t index;
     json_t *value;
     json_array_foreach(json, index, value) {
-      arr = jv_array_append(arr, janssonToJv(value));
+      jv val = janssonToJv(value);
+      if (!jv_is_valid(val)) {
+        jv_free(arr);
+        return val;
+      }
+      arr = jv_array_append(arr, val);
     }
     return arr;
   }
@@ -29,7 +39,6 @@ static jv janssonToJv(json_t *json) {
     return jv_string(json_string_value(json));
   case JSON_INTEGER: {
     json_int_t val = json_integer_value(json);
-    // Use explicit cast to avoid implicit conversion warning
     return jv_number((double)val);
   }
   case JSON_REAL:
@@ -41,77 +50,85 @@ static jv janssonToJv(json_t *json) {
   case JSON_NULL:
     return jv_null();
   default:
-    return jv_null();
+    return jv_invalid();
   }
 }
 
 static json_t *jvToJansson(jv value) {
   if (!jv_is_valid(value)) {
+    jv_free(value);
     return NULL;
   }
 
+  json_t *result = NULL;
   switch (jv_get_kind(value)) {
   case JV_KIND_OBJECT: {
-    json_t *obj = json_object();
+    result = json_object();
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconditional-uninitialized"
-    jv_object_foreach(value, key, val) {
-      const char *key_str = jv_string_value(key);
-      json_t *json_val = jvToJansson(val);
+    jv_object_foreach(value, k, v) {
+      const char *key_str = jv_string_value(k);
+      json_t *json_val = jvToJansson(v);
       if (json_val) {
-        json_object_set_new(obj, key_str, json_val);
+        json_object_set_new(result, key_str, json_val);
       }
+      jv_free(k);
     }
 #pragma clang diagnostic pop
-    return obj;
+    break;
   }
   case JV_KIND_ARRAY: {
-    json_t *arr = json_array();
+    result = json_array();
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wconditional-uninitialized"
-    jv_array_foreach(value, index, val) {
-      json_t *json_val = jvToJansson(val);
+    jv_array_foreach(value, i, v) {
+      json_t *json_val = jvToJansson(v);
       if (json_val) {
-        json_array_append_new(arr, json_val);
+        json_array_append_new(result, json_val);
       }
     }
 #pragma clang diagnostic pop
-    return arr;
+    break;
   }
   case JV_KIND_STRING:
-    return json_string(jv_string_value(value));
+    result = json_string(jv_string_value(value));
+    break;
   case JV_KIND_NUMBER:
-    return json_real(jv_number_value(value));
+    result = json_real(jv_number_value(value));
+    break;
   case JV_KIND_TRUE:
-    return json_true();
+    result = json_true();
+    break;
   case JV_KIND_FALSE:
-    return json_false();
+    result = json_false();
+    break;
   case JV_KIND_NULL:
-    return json_null();
+    result = json_null();
+    break;
   case JV_KIND_INVALID:
-    return NULL;
-  default:
-    return NULL;
+    break;
   }
+  
+  jv_free(value);
+  return result;
 }
 
 static jv processJqFilter(jq_state *jq, json_t *input_json) {
     if (!jq || !input_json) return jv_invalid();
 
-    // Convert to JV format
     jv input = janssonToJv(input_json);
+    
     if (!jv_is_valid(input)) {
         jv jv_error = jv_invalid_get_msg(input);
         if (jv_is_valid(jv_error)) {
             fprintf(stderr, "JSON conversion error: %s\n", jv_string_value(jv_error));
             jv_free(jv_error);
         }
-        jv_free(input);
         return jv_invalid();
     }
 
-    // Process the filter
-    jq_start(jq, input, 0);
+    jq_start(jq, input, 0);  // input is consumed here
+    
     jv filtered_result = jq_next(jq);
 
     if (!jv_is_valid(filtered_result)) {
@@ -120,8 +137,15 @@ static jv processJqFilter(jq_state *jq, json_t *input_json) {
             fprintf(stderr, "JQ execution error: %s\n", jv_string_value(jv_error));
             jv_free(jv_error);
         }
-        return filtered_result; // Already invalid
+        return filtered_result;  // Already invalid and freed
     }
+
+    // Drain any remaining results to prevent memory leaks
+    jv next_result;
+    while (jv_is_valid(next_result = jq_next(jq))) {
+        jv_free(next_result);
+    }
+    jv_free(next_result);  // Free the invalid result that ended the loop
 
     return filtered_result;
 }
@@ -150,8 +174,7 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
         return result;
     }
     
-    json_t *result = jvToJansson(filtered_jv);
-    jv_free(filtered_jv);
+    json_t *result = jvToJansson(filtered_jv);  // This frees filtered_jv
     
     if (!result) {
         json_t *error_result = json_object();
