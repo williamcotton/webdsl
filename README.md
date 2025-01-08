@@ -1,3 +1,5 @@
+![Test Suite](https://github.com/williamcotton/webdsl/workflows/Test%20Suite/badge.svg)
+
 # WebDSL
 
 WebDSL is an experimental domain-specific language and server implementation for building web applications with integrated PostgreSQL database support. It provides a declarative way to define websites with layouts, pages, styles, and API endpoints.
