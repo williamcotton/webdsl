@@ -1,0 +1,184 @@
+#include "../test/unity/unity.h"
+#include "../src/server/server.h"
+#include "../src/server/handler.h"
+#include "../src/server/api.h"
+#include "../src/server/routing.h"
+#include "../src/server/jq.h"
+#include "../src/server/lua.h"
+#include "../src/server/db.h"
+#include "../src/parser.h"
+#include "test_runners.h"
+#include <string.h>
+#include <microhttpd.h>
+
+// Function prototype
+int run_server_tests(void);
+
+// Helper function to create a minimal website node for testing
+static WebsiteNode* createTestWebsite(Arena *arena) {
+    WebsiteNode *website = arenaAlloc(arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));  // Initialize all fields to 0/NULL
+    
+    website->name = arenaDupString(arena, "Test Site");
+    website->port = 3000;
+    website->databaseUrl = arenaDupString(arena, "postgresql://localhost/express-test");
+    website->base_url = arenaDupString(arena, "http://localhost:3000");
+    website->author = arenaDupString(arena, "Test Author");
+    website->version = arenaDupString(arena, "1.0.0");
+    
+    // Create a test API endpoint
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    memset(api, 0, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/test");
+    api->method = arenaDupString(arena, "GET");
+    
+    // Create SQL pipeline step
+    PipelineStepNode *sqlStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(sqlStep, 0, sizeof(PipelineStepNode));
+    sqlStep->type = STEP_SQL;
+    sqlStep->code = arenaDupString(arena, "SELECT 1");
+    
+    // Create Lua pipeline step
+    PipelineStepNode *luaStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(luaStep, 0, sizeof(PipelineStepNode));
+    luaStep->type = STEP_LUA;
+    luaStep->code = arenaDupString(arena, "return { status = 'ok' }");
+    
+    // Link steps together
+    sqlStep->next = luaStep;
+    api->pipeline = sqlStep;
+    
+    // Add API to website
+    website->apiHead = api;
+    
+    return website;
+}
+
+static void test_server_init(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    TEST_ASSERT_NOT_NULL(ctx->website);
+    TEST_ASSERT_NOT_NULL(ctx->arena);
+    TEST_ASSERT_NOT_NULL(ctx->daemon);
+    TEST_ASSERT_NOT_NULL(ctx->db);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_routing(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    // Add a test page
+    PageNode *page = arenaAlloc(arena, sizeof(PageNode));
+    page->route = arenaDupString(arena, "/test");
+    page->identifier = arenaDupString(arena, "test");
+    page->next = NULL;
+    website->pageHead = page;
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    
+    // Test route finding
+    PageNode *found = findPage("/test");
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_EQUAL_STRING("/test", found->route);
+    
+    // Test API route finding
+    ApiEndpoint *api = findApi("/api/test", "GET");
+    TEST_ASSERT_NOT_NULL(api);
+    TEST_ASSERT_EQUAL_STRING("/api/test", api->route);
+    TEST_ASSERT_EQUAL_STRING("GET", api->method);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_api_validation(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    // Add an API endpoint with field validation
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/validate");
+    api->method = arenaDupString(arena, "POST");
+    api->uses_pipeline = true;
+    api->pipeline = NULL;  // Explicitly set pipeline to NULL since we're not using it for this test
+    
+    // Add a required email field
+    ApiField *field = arenaAlloc(arena, sizeof(ApiField));
+    field->name = arenaDupString(arena, "email");
+    field->type = arenaDupString(arena, "string");
+    field->format = arenaDupString(arena, "email");
+    field->required = true;
+    field->next = NULL;
+    api->apiFields = field;
+    
+    api->next = website->apiHead;
+    website->apiHead = api;
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    
+    // Test API endpoint finding
+    ApiEndpoint *found = findApi("/api/validate", "POST");
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_NOT_NULL(found->apiFields);
+    TEST_ASSERT_EQUAL_STRING("email", found->apiFields->name);
+    TEST_ASSERT_TRUE(found->apiFields->required);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_database_connection(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    TEST_ASSERT_NOT_NULL(ctx->db);
+    TEST_ASSERT_NOT_NULL(ctx->db->pool);
+    
+    // Test database connection pool
+    TEST_ASSERT_TRUE(ctx->db->pool->size > 0);
+    TEST_ASSERT_NOT_NULL(ctx->db->pool->connections);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_request_context(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    
+    // Create a test request context
+    struct RequestContext *reqctx = arenaAlloc(arena, sizeof(struct RequestContext));
+    reqctx->arena = arena;
+    reqctx->type = REQUEST_TYPE_GET;
+    
+    // Test request context initialization
+    TEST_ASSERT_NOT_NULL(reqctx);
+    TEST_ASSERT_NOT_NULL(reqctx->arena);
+    TEST_ASSERT_EQUAL(REQUEST_TYPE_GET, reqctx->type);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+int run_server_tests(void) {
+    UNITY_BEGIN();
+    RUN_TEST(test_server_init);
+    RUN_TEST(test_server_routing);
+    RUN_TEST(test_server_api_validation);
+    RUN_TEST(test_server_database_connection);
+    RUN_TEST(test_server_request_context);
+    return UNITY_END();
+}

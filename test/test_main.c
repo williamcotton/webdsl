@@ -19,6 +19,7 @@ int main(void) {
     result |= run_stringbuilder_tests();
     
     // Run server tests
+    result |= run_server_tests();
     result |= run_server_html_tests();
     result |= run_server_css_tests();
     result |= run_server_validation_tests();

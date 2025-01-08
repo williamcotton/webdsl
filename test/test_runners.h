@@ -8,6 +8,7 @@ int run_arena_tests(void);
 int run_stringbuilder_tests(void);
 
 // Server test runners
+int run_server_tests(void);
 int run_server_html_tests(void);
 int run_server_css_tests(void);
 int run_server_validation_tests(void);
