@@ -41,7 +41,8 @@ jobs:
           postgresql-client \
           uthash-dev \
           libbsd-dev \
-          libcurl4-openssl-dev
+          libcurl4-openssl-dev \
+          valgrind
 
     - name: Run tests
       run: make test
@@ -49,4 +50,12 @@ jobs:
         PGHOST: localhost
         PGUSER: postgres
         PGPASSWORD: postgres
-        PGDATABASE: express-test 
+        PGDATABASE: express-test
+
+    - name: Run test leaks
+      run: make test-leaks
+      env:
+        PGHOST: localhost
+        PGUSER: postgres
+        PGPASSWORD: postgres
+        PGDATABASE: express-test

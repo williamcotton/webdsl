@@ -377,6 +377,11 @@ void initLexer(Lexer *lexer, const char *source, struct Parser *parser) {
     lexer->line = 1;
     lexer->parser = parser;
     lexer->inBrackets = 0;
+    
+    // Initialize previous token with a safe default
+    lexer->previous.type = TOKEN_UNKNOWN;
+    lexer->previous.lexeme = "";
+    lexer->previous.line = 0;
 }
 
 Token getNextToken(Lexer *lexer) {
