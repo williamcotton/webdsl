@@ -1,7 +1,10 @@
 #ifndef SERVER_DB_H
 #define SERVER_DB_H
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreserved-identifier"
 #include <libpq-fe.h>
+#pragma clang diagnostic pop
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
