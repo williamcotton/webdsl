@@ -6,10 +6,6 @@ endif
 PLATFORM := $(shell sh -c 'uname -s 2>/dev/null | tr 'a-z' 'A-Z'')
 
 CC = clang
-PROFDATA = $(shell brew --prefix llvm)/bin/llvm-profdata
-COV = $(shell brew --prefix llvm)/bin/llvm-cov
-TIDY = $(shell brew --prefix llvm)/bin/clang-tidy
-FORMAT = $(shell brew --prefix llvm)/bin/clang-format
 SRC_DIR = src
 
 # Base CFLAGS from compile_flags.txt
@@ -23,6 +19,10 @@ ifeq ($(PLATFORM),LINUX)
 	PG_INCLUDE = -I/usr/include/postgresql
 	SANITIZE_FLAGS =
 	PLATFORM_LIBS = -lm -lpthread -ldl
+	PROFDATA = llvm-profdata
+	COV = llvm-cov
+	TIDY = clang-tidy
+	FORMAT = clang-format
 else ifeq ($(PLATFORM),DARWIN)
 	LUA_LIB = -llua
 	LUA_INCLUDE = -I/opt/homebrew/include/lua
@@ -30,6 +30,10 @@ else ifeq ($(PLATFORM),DARWIN)
 	PG_INCLUDE = -I/opt/homebrew/include/postgresql@14
 	SANITIZE_FLAGS = -fsanitize=address,undefined,implicit-conversion,float-divide-by-zero,local-bounds,nullability,integer,function
 	PLATFORM_LIBS =
+	PROFDATA = $(shell brew --prefix llvm)/bin/llvm-profdata
+	COV = $(shell brew --prefix llvm)/bin/llvm-cov
+	TIDY = $(shell brew --prefix llvm)/bin/clang-tidy
+	FORMAT = $(shell brew --prefix llvm)/bin/clang-format
 endif
 
 # Common library flags
@@ -93,9 +97,9 @@ test-coverage:
 
 lint:
 ifeq ($(PLATFORM),LINUX)
-	$(TIDY) --checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c
+	$(TIDY) --checks=-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c -- $(CFLAGS) $(DEV_CFLAGS)
 else ifeq ($(PLATFORM),DARWIN)
-	$(TIDY) --checks=-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c
+	$(TIDY) --checks=-clang-diagnostic-unused-command-line-argument -warnings-as-errors=* src/main.c -- $(CFLAGS) $(DEV_CFLAGS)
 endif
 
 format:
@@ -131,7 +135,7 @@ else ifeq ($(PLATFORM),DARWIN)
 endif
 
 test-analyze:
-	clang --analyze $(SRC) $(shell cat compile_flags.txt | tr '\n' ' ') -I$(shell pg_config --includedir) -Xanalyzer -analyzer-output=text -Xanalyzer -analyzer-checker=core,deadcode,nullability,optin,osx,security,unix,valist -Xanalyzer -analyzer-disable-checker -Xanalyzer security.insecureAPI.DeprecatedOrUnsafeBufferHandling -Werror
+	clang --analyze $(SRC) $(CFLAGS) $(DEV_CFLAGS) -Xanalyzer -analyzer-output=text -Xanalyzer -analyzer-checker=core,deadcode,nullability,optin,osx,security,unix,valist -Xanalyzer -analyzer-disable-checker -Xanalyzer security.insecureAPI.DeprecatedOrUnsafeBufferHandling -Werror
 
 test-threads:
 	mkdir -p $(BUILD_DIR)

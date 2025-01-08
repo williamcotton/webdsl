@@ -44,6 +44,12 @@ jobs:
           libcurl4-openssl-dev \
           valgrind
 
+    - name: Run linter
+      run: make lint
+
+    - name: Run test analyze
+      run: make test-analyze
+
     - name: Run tests
       run: make test
       env:

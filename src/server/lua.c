@@ -147,19 +147,22 @@ static bool compilePipelineSteps(ServerContext *ctx) {
                     entry->bytecode.bytecode_len = 0;
                     
                     lua_State *L = luaL_newstate();
-                    if (!L) return false;
+                    if (!L) {
+                        free(entry);  // Free entry if Lua state creation fails
+                        return false;
+                    }
                     
                     luaL_openlibs(L);
                     
                     if (luaL_loadstring(L, step->code) != 0) {
                         lua_close(L);
-                        free(entry);
+                        free(entry);  // Free entry if loading fails
                         return false;
                     }
                     
                     if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
                         lua_close(L);
-                        free(entry);
+                        free(entry);  // Free entry if bytecode dump fails
                         return false;
                     }
                     
