@@ -176,7 +176,9 @@ static void test_server_request_context(void) {
 static void test_server_pipeline_execution(void) {
     Arena *arena = createArena(1024 * 64);
     WebsiteNode *website = createTestWebsite(arena);
-    
+
+    initRequestJsonArena(arena);
+
     // Create an API endpoint with a complex pipeline
     ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
     memset(api, 0, sizeof(ApiEndpoint));
