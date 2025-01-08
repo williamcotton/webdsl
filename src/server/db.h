@@ -1,23 +1,20 @@
-#ifndef DB_H
-#define DB_H
+#ifndef SERVER_DB_H
+#define SERVER_DB_H
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-identifier"
 #include <libpq-fe.h>
-#pragma clang diagnostic pop
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
 #pragma clang diagnostic pop
-#include "arena.h"
-#include "db_pool.h"
+#include <pthread.h>
+#include "../arena.h"
 #include "../ast.h"
+#include "db_pool.h"
 
 #define STMT_HASH_SIZE 64
 #define STMT_HASH_MASK (STMT_HASH_SIZE - 1)
 
-// Forward declarations
-struct ServerContext;
+struct ServerContext;  // Forward declaration
 
 // Add prepared statement cache structure
 typedef struct PreparedStmt {
@@ -44,6 +41,6 @@ Database* initDatabase(Arena *arena, const char *conninfo);
 void closeDatabase(Database *db);
 
 json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
-                       json_t *requestContext, Arena *arena);
+                       json_t *requestContext, Arena *arena, struct ServerContext *ctx);
 
-#endif // DB_H
+#endif // SERVER_DB_H

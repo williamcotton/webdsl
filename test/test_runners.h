@@ -16,4 +16,7 @@ int run_server_validation_tests(void);
 // Hotreload test runners
 int run_website_tests(void);
 
+// End-to-end test runners
+int run_e2e_tests(void);
+
 #endif // TEST_RUNNERS_H 

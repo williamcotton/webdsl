@@ -12,6 +12,27 @@
 #pragma clang diagnostic pop
 #include "arena.h"
 
+// Forward declare the struct
+struct PipelineStepNode;
+struct ServerContext;
+
+// Add function pointer type for step execution
+typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, struct ServerContext *ctx);
+
+// Node types
+typedef enum {
+    NODE_WEBSITE,
+    NODE_LAYOUT,
+    NODE_PAGE,
+    NODE_CONTENT,
+    NODE_API,
+    NODE_QUERY,
+    NODE_PIPELINE,
+    NODE_PIPELINE_STEP,
+    NODE_FIELD,
+    NODE_FIELD_VALIDATION
+} NodeType;
+
 typedef struct ContentNode {
     char *type;
     char *arg1;
@@ -86,12 +107,6 @@ typedef enum StepType {
     STEP_SQL,
     STEP_DYNAMIC_SQL
 } StepType;
-
-// Forward declare the struct
-struct PipelineStepNode;
-
-// Add function pointer type for step execution
-typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena);
 
 typedef struct PipelineStepNode {
     StepExecutor execute;  // Function pointer for execution (8 bytes)

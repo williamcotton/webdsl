@@ -230,7 +230,7 @@ static void test_server_pipeline_execution(void) {
     json_object_set_new(requestContext, "body", json_object());
     
     // Execute the pipeline
-    char *response = generateApiResponse(arena, api, NULL, requestContext);
+    char *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
     TEST_ASSERT_NOT_NULL(response);
     
     // Parse the response and verify the pipeline execution
@@ -244,7 +244,6 @@ static void test_server_pipeline_execution(void) {
 
     printf("result: %s\n", json_dumps(result_obj, 0));
     
-    // SQL returned 1, Lua added 1, so number should be 2
     TEST_ASSERT_EQUAL(1, json_number_value(json_object_get(result_obj, "number")));
     TEST_ASSERT_EQUAL_STRING("test", json_string_value(json_object_get(result_obj, "string")));
     TEST_ASSERT_TRUE(json_boolean_value(json_object_get(result_obj, "transformed")));
@@ -252,7 +251,14 @@ static void test_server_pipeline_execution(void) {
     json_decref(result);
     json_decref(requestContext);
     
+    // Clean up thread-local JQ states
+    void *table = pthread_getspecific(jq_key);
+    if (table) {
+        jq_thread_cleanup(table);
+    }
+    
     stopServer();
+    cleanupRequestJsonArena();
     freeArena(arena);
 }
 

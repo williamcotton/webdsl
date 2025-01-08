@@ -19,6 +19,6 @@ bool initLua(ServerContext *ctx);
 void cleanupLua(void);
 
 // Execute a Lua pipeline step
-json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena);
+json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx);
 
 #endif

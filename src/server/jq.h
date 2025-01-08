@@ -8,8 +8,9 @@
 #pragma clang diagnostic pop
 #include "../arena.h"
 #include "../ast.h"
+#include "server.h"
 
 // Execute a JQ pipeline step
-json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena);
+json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx);
 
 #endif // SERVER_JQ_H

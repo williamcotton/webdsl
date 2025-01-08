@@ -43,19 +43,19 @@ void setupStepExecutor(PipelineStepNode *step) {
 }
 
 // Simplified executePipelineStep that just uses the function pointer
-static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx) {
     if (!step || !step->execute) {
         return NULL;
     }
-    return step->execute(step, input, requestContext, arena);
+    return step->execute(step, input, requestContext, arena, ctx);
 }
 
-static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Arena *arena) {
+static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Arena *arena, ServerContext *ctx) {
     json_t *current = requestContext;
     PipelineStepNode *step = endpoint->pipeline;
     
     while (step) {
-        json_t *result = executePipelineStep(step, current, requestContext, arena);
+        json_t *result = executePipelineStep(step, current, requestContext, arena, ctx);
         if (current != requestContext) {
             json_decref(current);
         }
@@ -245,7 +245,7 @@ static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls
 }
 
 char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
-                          json_t *requestContext) {
+                          json_t *requestContext, ServerContext *ctx) {
     // For POST requests, validate fields if specified
     if (endpoint->apiFields && strcmp(endpoint->method, "POST") == 0) {
         char *validation_error = validatePostFields(arena, endpoint, con_cls);
@@ -272,7 +272,7 @@ char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 
     if (endpoint->uses_pipeline) {
         // Execute pipeline with validated request context
-        json_t *result = executePipeline(endpoint, requestContext, arena);
+        json_t *result = executePipeline(endpoint, requestContext, arena, ctx);
         if (!result) {
             return generateErrorJson("Pipeline execution failed");
         }
@@ -295,7 +295,8 @@ char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                  ApiEndpoint *api, const char *method,
                                  const char *url, const char *version,
-                                 void *con_cls, Arena *arena) {
+                                 void *con_cls, Arena *arena,
+                                 ServerContext *ctx) {
   // Handle OPTIONS requests for CORS
   if (strcmp(method, "OPTIONS") == 0) {
     struct MHD_Response *response =
@@ -330,7 +331,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   // printf("Request context: %s\n", request_context);
 
   // Generate API response with request context
-  char *json = generateApiResponse(arena, api, con_cls, request_context);
+  char *json = generateApiResponse(arena, api, con_cls, request_context, ctx);
   if (!json) {
     const char *error_msg =
         "{ \"error\": \"Internal server error processing pipeline\" }";
@@ -356,5 +357,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   MHD_add_response_header(response, "Access-Control-Allow-Headers",
                           "Content-Type");
 
-  return MHD_queue_response(connection, MHD_HTTP_OK, response);
+  enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return ret;
 }

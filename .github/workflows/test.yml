@@ -40,7 +40,8 @@ jobs:
           liblua5.4-dev \
           postgresql-client \
           uthash-dev \
-          libbsd-dev
+          libbsd-dev \
+          libcurl4-openssl-dev
 
     - name: Run tests
       run: make test

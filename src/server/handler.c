@@ -158,7 +158,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Check for API endpoint first
     ApiEndpoint *api = findApi(url, method);
     if (api) {
-        return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena);
+        return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena, ctx);
     }
 
     // Handle regular pages and CSS

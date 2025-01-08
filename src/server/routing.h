@@ -3,6 +3,8 @@
 
 #include "../ast.h"
 #include "../arena.h"
+#include <jq.h>
+#include <pthread.h>
 
 #define HASH_TABLE_SIZE 64  // Should be power of 2
 #define HASH_MASK (HASH_TABLE_SIZE - 1)
@@ -38,12 +40,16 @@ typedef struct JQHashEntry {
     struct JQHashEntry *next;
 } JQHashEntry;
 
+// Thread cleanup function for JQ states
+extern pthread_key_t jq_key;
+void jq_thread_cleanup(void *ptr);
+
 void buildRouteMaps(WebsiteNode *website, Arena *arena);
 PageNode* findPage(const char *url);
 LayoutNode* findLayout(const char *identifier);
 ApiEndpoint* findApi(const char *url, const char *method);
 QueryNode* findQuery(const char *name);
-jq_state* findOrCreateJQ(const char *filter);
+jq_state* findOrCreateJQ(const char *filter, Arena *arena);
 void cleanupJQCache(void);
 
 #endif // SERVER_ROUTING_H

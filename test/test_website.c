@@ -84,6 +84,7 @@ static void test_config_parsing(void) {
     
     // Final cleanup
     stopServer();
+    freeArena(parser.arena);
     remove(TEST_FILE);
 }
 

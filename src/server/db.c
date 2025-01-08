@@ -330,8 +330,9 @@ static void extractJsonParams(json_t *input, Arena *arena, const char ***values,
 }
 
 json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
-                              json_t *requestContext, Arena *arena) {
+                              json_t *requestContext, Arena *arena, ServerContext *serverCtx) {
     (void)requestContext;
+    (void)serverCtx;
 
     // Check for existing error
     json_t *error = json_object_get(input, "error");

@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <jq.h>
+#include <pthread.h>
 
 static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
 static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
@@ -12,12 +13,41 @@ static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
 static JQHashEntry *jqTable[HASH_TABLE_SIZE];
 static __thread JQHashEntry **threadJQTable = NULL;
+pthread_key_t jq_key;
+static pthread_once_t jq_key_once = PTHREAD_ONCE_INIT;
 
-static JQHashEntry** getThreadJQTable(void) {
-    if (!threadJQTable) {
-        threadJQTable = calloc(HASH_TABLE_SIZE, sizeof(JQHashEntry*));
+void jq_thread_cleanup(void *ptr) {
+    JQHashEntry **table = (JQHashEntry **)ptr;
+    if (!table) return;
+    
+    for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+        JQHashEntry *entry = table[i];
+        while (entry) {
+            JQHashEntry *next = entry->next;
+            if (entry->jq) {
+                jq_teardown(&entry->jq);
+            }
+            entry = next;
+        }
+        table[i] = NULL;
     }
-    return threadJQTable;
+    pthread_setspecific(jq_key, NULL);
+}
+
+static void jq_key_create(void) {
+    pthread_key_create(&jq_key, jq_thread_cleanup);
+}
+
+static JQHashEntry** getThreadJQTable(Arena *arena) {
+    pthread_once(&jq_key_once, jq_key_create);
+    
+    JQHashEntry **table = pthread_getspecific(jq_key);
+    if (!table) {
+        table = arenaAlloc(arena, HASH_TABLE_SIZE * sizeof(JQHashEntry*));
+        memset(table, 0, HASH_TABLE_SIZE * sizeof(JQHashEntry*));
+        pthread_setspecific(jq_key, table);
+    }
+    return table;
 }
 
 void buildRouteMaps(WebsiteNode *website, Arena *arena) {
@@ -126,8 +156,8 @@ QueryNode* findQuery(const char *name) {
     return NULL;
 }
 
-jq_state* findOrCreateJQ(const char *filter) {
-    JQHashEntry **table = getThreadJQTable();
+jq_state* findOrCreateJQ(const char *filter, Arena *arena) {
+    JQHashEntry **table = getThreadJQTable(arena);
     uint32_t hash = hashString(filter) & HASH_MASK;
     JQHashEntry *entry = table[hash];
     
@@ -140,17 +170,16 @@ jq_state* findOrCreateJQ(const char *filter) {
     }
     
     // Create new entry
-    entry = malloc(sizeof(JQHashEntry));
+    entry = arenaAlloc(arena, sizeof(JQHashEntry));
     if (!entry) {
         fprintf(stderr, "Failed to allocate memory for JQ hash entry\n");
         return NULL;
     }
 
     // Duplicate the filter string to ensure we own the memory
-    char *filter_copy = strdup(filter);
+    char *filter_copy = arenaDupString(arena, filter);
     if (!filter_copy) {
         fprintf(stderr, "Failed to duplicate filter string\n");
-        free(entry);
         return NULL;
     }
     entry->filter = filter_copy;
@@ -158,8 +187,6 @@ jq_state* findOrCreateJQ(const char *filter) {
     entry->jq = jq_init();
     
     if (!entry->jq) {
-        free(filter_copy);
-        free(entry);
         return NULL;
     }
 
@@ -173,8 +200,6 @@ jq_state* findOrCreateJQ(const char *filter) {
             jv_free(error);
         }
         jq_teardown(&entry->jq);
-        free(filter_copy);
-        free(entry);
         return NULL;
     }
 
@@ -199,21 +224,8 @@ void cleanupJQCache(void) {
                 jq_teardown(&entry->jq);
             }
             
-            if (entry->filter) {
-                union {
-                    const char *in;
-                    void *out;
-                } cast = { .in = entry->filter };
-                entry->filter = NULL;
-                free(cast.out);
-            }
-            
-            free(entry);
             entry = next;
         }
-        threadJQTable[i] = NULL;  // Clear the pointer after freeing
+        threadJQTable[i] = NULL;
     }
-    
-    free(threadJQTable);
-    threadJQTable = NULL;
 }

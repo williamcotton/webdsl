@@ -150,7 +150,7 @@ static jv processJqFilter(jq_state *jq, json_t *input_json) {
     return filtered_result;
 }
 
-json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena) {
+json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx) {
     (void)requestContext;
     (void)arena;
     
@@ -160,7 +160,7 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
         return json_deep_copy(input);
     }
     
-    jq_state *jq = findOrCreateJQ(step->code);
+    jq_state *jq = findOrCreateJQ(step->code, ctx->arena);
     if (!jq) {
         json_t *result = json_object();
         json_object_set_new(result, "error", json_string("Failed to create JQ state"));

@@ -27,5 +27,8 @@ int main(void) {
     // Run hotreload tests
     result |= run_website_tests();
     
+    // Run end-to-end tests
+    result |= run_e2e_tests();
+    
     return result;
 }

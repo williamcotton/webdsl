@@ -10,6 +10,7 @@
 #include <jq.h>
 #include <microhttpd.h>
 #include <pthread.h>
+#include "server.h"
 
 // API request handling
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
@@ -18,13 +19,15 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                const char *url,
                                const char *version,
                                void *con_cls,
-                               Arena *arena);
+                               Arena *arena,
+                               ServerContext *ctx);
 
 // API response generation
 char* generateApiResponse(Arena *arena, 
                         ApiEndpoint *endpoint, 
                         void *con_cls,
-                        json_t *requestContext);
+                        json_t *requestContext,
+                        ServerContext *ctx);
 
 // Pipeline step executor setup
 void setupStepExecutor(PipelineStepNode *step);
