@@ -173,6 +173,87 @@ static void test_server_request_context(void) {
     freeArena(arena);
 }
 
+static void test_server_pipeline_execution(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    // Create an API endpoint with a complex pipeline
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    memset(api, 0, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/test/pipeline");
+    api->method = arenaDupString(arena, "GET");
+    api->uses_pipeline = true;
+    
+    // Create SQL pipeline step
+    PipelineStepNode *sqlStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(sqlStep, 0, sizeof(PipelineStepNode));
+    sqlStep->type = STEP_SQL;
+    sqlStep->code = arenaDupString(arena, "SELECT 1 as num, 'test' as str");
+    setupStepExecutor(sqlStep);
+    
+    // Create Lua pipeline step
+    PipelineStepNode *luaStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(luaStep, 0, sizeof(PipelineStepNode));
+    luaStep->type = STEP_LUA;
+    luaStep->code = arenaDupString(arena, "request.transformed = true\nreturn request");
+    setupStepExecutor(luaStep);
+    
+    // Create JQ pipeline step
+    PipelineStepNode *jqStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(jqStep, 0, sizeof(PipelineStepNode));
+    jqStep->type = STEP_JQ;
+    jqStep->code = arenaDupString(arena, "{ result: { number: (.rows[0].num | tonumber), string: .rows[0].str, transformed: .transformed } }");
+    setupStepExecutor(jqStep);
+    
+    // Link steps together
+    sqlStep->next = luaStep;
+    luaStep->next = jqStep;
+    api->pipeline = sqlStep;
+    
+    // Add API to website
+    api->next = website->apiHead;
+    website->apiHead = api;
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    
+    // Create a test request context
+    json_t *requestContext = json_object();
+    json_object_set_new(requestContext, "method", json_string("GET"));
+    json_object_set_new(requestContext, "url", json_string("/api/test/pipeline"));
+    json_object_set_new(requestContext, "version", json_string("HTTP/1.1"));
+    json_object_set_new(requestContext, "query", json_object());
+    json_object_set_new(requestContext, "headers", json_object());
+    json_object_set_new(requestContext, "cookies", json_object());
+    json_object_set_new(requestContext, "body", json_object());
+    
+    // Execute the pipeline
+    char *response = generateApiResponse(arena, api, NULL, requestContext);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Parse the response and verify the pipeline execution
+    json_error_t error;
+    json_t *result = json_loads(response, 0, &error);
+    TEST_ASSERT_NOT_NULL(result);
+    
+    // Verify the pipeline transformations
+    json_t *result_obj = json_object_get(result, "result");
+    TEST_ASSERT_NOT_NULL(result_obj);
+
+    printf("result: %s\n", json_dumps(result_obj, 0));
+    
+    // SQL returned 1, Lua added 1, so number should be 2
+    TEST_ASSERT_EQUAL(1, json_number_value(json_object_get(result_obj, "number")));
+    TEST_ASSERT_EQUAL_STRING("test", json_string_value(json_object_get(result_obj, "string")));
+    TEST_ASSERT_TRUE(json_boolean_value(json_object_get(result_obj, "transformed")));
+    
+    json_decref(result);
+    json_decref(requestContext);
+    
+    stopServer();
+    freeArena(arena);
+}
+
 int run_server_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_server_init);
@@ -180,5 +261,6 @@ int run_server_tests(void) {
     RUN_TEST(test_server_api_validation);
     RUN_TEST(test_server_database_connection);
     RUN_TEST(test_server_request_context);
+    RUN_TEST(test_server_pipeline_execution);
     return UNITY_END();
 }
