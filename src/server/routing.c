@@ -7,10 +7,24 @@
 #include <jq.h>
 #include <pthread.h>
 
+typedef struct TransformHashEntry {
+    const char *name;
+    TransformNode *transform;
+    struct TransformHashEntry *next;
+} TransformHashEntry;
+
+typedef struct ScriptHashEntry {
+    const char *name;
+    ScriptNode *script;
+    struct ScriptHashEntry *next;
+} ScriptHashEntry;
+
 static RouteHashEntry *routeTable[HASH_TABLE_SIZE];
 static LayoutHashEntry *layoutTable[HASH_TABLE_SIZE];
 static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
+static TransformHashEntry *transformTable[HASH_TABLE_SIZE];
+static ScriptHashEntry *scriptTable[HASH_TABLE_SIZE];
 static JQHashEntry *jqTable[HASH_TABLE_SIZE];
 static __thread JQHashEntry **threadJQTable = NULL;
 pthread_key_t jq_key;
@@ -55,6 +69,8 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     memset(layoutTable, 0, sizeof(layoutTable));
     memset(apiTable, 0, sizeof(apiTable));
     memset(queryTable, 0, sizeof(queryTable));
+    memset(transformTable, 0, sizeof(transformTable));
+    memset(scriptTable, 0, sizeof(scriptTable));
     memset(jqTable, 0, sizeof(jqTable));
 
     // Build page routes
@@ -99,6 +115,26 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
         entry->query = query;
         entry->next = queryTable[hash];
         queryTable[hash] = entry;
+    }
+
+    // Build transform routes
+    for (TransformNode *transform = website->transformHead; transform; transform = transform->next) {
+        uint32_t hash = hashString(transform->name) & HASH_MASK;
+        TransformHashEntry *entry = arenaAlloc(arena, sizeof(TransformHashEntry));
+        entry->name = transform->name;
+        entry->transform = transform;
+        entry->next = transformTable[hash];
+        transformTable[hash] = entry;
+    }
+    
+    // Build script routes
+    for (ScriptNode *script = website->scriptHead; script; script = script->next) {
+        uint32_t hash = hashString(script->name) & HASH_MASK;
+        ScriptHashEntry *entry = arenaAlloc(arena, sizeof(ScriptHashEntry));
+        entry->name = script->name;
+        entry->script = script;
+        entry->next = scriptTable[hash];
+        scriptTable[hash] = entry;
     }
 }
 
@@ -150,6 +186,32 @@ QueryNode* findQuery(const char *name) {
     while (entry) {
         if (strcmp(entry->name, name) == 0) {
             return entry->query;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+TransformNode* findTransform(const char *name) {
+    uint32_t hash = hashString(name) & HASH_MASK;
+    TransformHashEntry *entry = transformTable[hash];
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry->transform;
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+ScriptNode* findScript(const char *name) {
+    uint32_t hash = hashString(name) & HASH_MASK;
+    ScriptHashEntry *entry = scriptTable[hash];
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry->script;
         }
         entry = entry->next;
     }

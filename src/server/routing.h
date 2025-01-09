@@ -52,4 +52,10 @@ QueryNode* findQuery(const char *name);
 jq_state* findOrCreateJQ(const char *filter, Arena *arena);
 void cleanupJQCache(void);
 
+// Find a named transform by name
+TransformNode* findTransform(const char *name);
+
+// Find a named script by name
+ScriptNode* findScript(const char *name);
+
 #endif // SERVER_ROUTING_H
