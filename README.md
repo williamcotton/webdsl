@@ -39,12 +39,33 @@ WebDSL is an experimental domain-specific language and server implementation for
 
 #### macOS
 ```bash
-brew install libmicrohttpd postgresql@14 jq jansson lua
+brew install \
+  llvm \
+  postgresql@14 \
+  libmicrohttpd \
+  jansson \
+  jq \
+  lua \
+  uthash \
+  libbsd \
+  openssl \
+  curl
 ```
 
 #### Linux
 ```bash
-sudo apt-get install libmicrohttpd-dev libpq-dev libjq-dev libjansson-dev liblua5.4-dev
+sudo apt-get install -y \
+  clang \
+  libmicrohttpd-dev \
+  libpq-dev \
+  libjansson-dev \
+  libjq-dev \
+  liblua5.4-dev \
+  postgresql-client \
+  uthash-dev \
+  libbsd-dev \
+  libcurl4-openssl-dev \
+  valgrind
 ```
 
 ### Building
