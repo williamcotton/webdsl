@@ -4,34 +4,33 @@
 
 WebDSL is an experimental domain-specific language and server implementation for building web applications with integrated PostgreSQL database support. It provides a declarative way to define websites with layouts, pages, styles, and API endpoints.
 
+```webdsl
+website {
+    port 3123
+    database "postgresql://localhost/test"
+    api {
+        route "/api/v1/team"
+        method "GET"
+        pipeline {
+            jq { { params: [.query.id] } }
+            sql { SELECT * FROM teams WHERE id = $1 }
+            jq { { data: (.rows | map({id: .id, name: .name})) } }
+        }
+    }
+}
+```
+
 ## Features
 
-### Web Framework
 - Declarative configuration for routes, layouts, and pages
-- Component-based templating with content placeholders
-- Built-in CSS styling with raw and structured syntax
-- Hot reloading for rapid development
-
-### API Development
-- REST endpoint definition with field validation
-- Pipeline-based request processing
-- JQ and Lua transformation steps
-- Dynamic query building
-- Automatic JSON response formatting
-
-### Database Integration
-- Native PostgreSQL support with connection pooling
-- Prepared statement caching for performance
-- Query parameterization and validation
-- Automatic pagination support
-- Health checks and connection management
-
-### Developer Experience
-- Memory-safe arena allocation
-- Thread-safe request handling
-- Comprehensive validation rules
-- Detailed error messages
-- Live configuration reloading
+- Component-based templating with content placeholders and hot reloading
+- Built-in CSS styling with both raw and structured syntax support
+- REST API endpoints with field validation and pipeline-based processing
+- JQ and Lua transformation steps for request/response handling
+- Native PostgreSQL integration with connection pooling and prepared statement caching
+- Memory-safe arena allocation and thread-safe request handling
+- Comprehensive validation rules with detailed error messages
+- Live configuration reloading for rapid development
 
 ## Quick Start
 
