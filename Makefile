@@ -23,7 +23,9 @@ ifeq ($(PLATFORM),LINUX)
 	COV = llvm-cov
 	TIDY = clang-tidy
 	FORMAT = clang-format
+	IGNORE_PATTERN = "/deps|demo|test|/usr/include"
 else ifeq ($(PLATFORM),DARWIN)
+	CC = $(shell brew --prefix llvm)/bin/clang
 	LUA_LIB = -llua
 	LUA_INCLUDE = -I/opt/homebrew/include/lua
 	PG_LIBDIR = /opt/homebrew/lib/postgresql@14
@@ -34,6 +36,7 @@ else ifeq ($(PLATFORM),DARWIN)
 	COV = $(shell brew --prefix llvm)/bin/llvm-cov
 	TIDY = $(shell brew --prefix llvm)/bin/clang-tidy
 	FORMAT = $(shell brew --prefix llvm)/bin/clang-format
+	IGNORE_PATTERN = "/deps|demo|test|/opt/homebrew/include"
 endif
 
 # Common library flags
@@ -77,7 +80,7 @@ test-coverage-output:
 	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
-	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/"
+	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex=$(IGNORE_PATTERN)
 
 test-coverage-html:
 	mkdir -p $(BUILD_DIR)
@@ -85,7 +88,7 @@ test-coverage-html:
 	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
-	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/" -format=html > $(BUILD_DIR)/code-coverage.html
+	$(COV) show $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex=$(IGNORE_PATTERN) -format=html > $(BUILD_DIR)/code-coverage.html
 
 test-coverage:
 	mkdir -p $(BUILD_DIR)
@@ -93,7 +96,7 @@ test-coverage:
 	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(PG_CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) -fprofile-instr-generate -fcoverage-mapping $(LIBS)
 	LLVM_PROFILE_FILE="build/test.profraw" $(BUILD_DIR)/$@
 	$(PROFDATA) merge -sparse build/test.profraw -o build/test.profdata
-	$(COV) report $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex="/deps|demo|test/"
+	$(COV) report $(BUILD_DIR)/$@ -instr-profile=$(BUILD_DIR)/test.profdata -ignore-filename-regex=$(IGNORE_PATTERN)
 
 lint:
 ifeq ($(PLATFORM),LINUX)
