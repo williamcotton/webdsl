@@ -10,9 +10,6 @@
 #include <curl/curl.h>
 #include <jansson.h>
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
-
 // Function prototype
 int run_e2e_tests(void);
 
@@ -129,8 +126,10 @@ static size_t writeCallback(void *contents, size_t size, size_t nmemb, void *use
     return realsize;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 // Helper to make HTTP requests
-static json_t* makeRequest(const char *url, const char *method, const char *data) {
+static json_t* makeRequest(const char *url, const char *method, const char *data, char **headers_out) {
     CURL *curl = curl_easy_init();
     if (!curl) return NULL;
     
@@ -138,9 +137,19 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
     response.data = malloc(1);
     response.size = 0;
     
+    ResponseBuffer header_response = {0};
+    header_response.data = malloc(1);
+    header_response.size = 0;
+    
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    // If headers are requested, capture them
+    if (headers_out) {
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, writeCallback);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&header_response);
+    }
     
     if (strcmp(method, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
@@ -152,7 +161,14 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
     
     if (res != CURLE_OK) {
         free(response.data);
+        free(header_response.data);
         return NULL;
+    }
+    
+    if (headers_out) {
+        *headers_out = header_response.data;
+    } else {
+        free(header_response.data);
     }
     
     json_error_t error;
@@ -166,6 +182,7 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
     
     return json;
 }
+#pragma clang diagnostic pop
 
 static void writeConfig(const char *config) {
     FILE *f = fopen(TEST_FILE, "w");
@@ -194,7 +211,7 @@ static void test_full_website_lifecycle(void) {
     sleep(1);
     
     // Test basic GET request to pipeline endpoint
-    json_t *response = makeRequest("http://localhost:3456/api/test/pipeline", "GET", NULL);
+    json_t *response = makeRequest("http://localhost:3456/api/test/pipeline", "GET", NULL, NULL);
     TEST_ASSERT_NOT_NULL(response);
     
     // Verify the pipeline transformations
@@ -236,7 +253,7 @@ static void test_database_integration(void) {
         char url[100];
         snprintf(url, sizeof(url), "http://localhost:3456/api/test/query?id=%d", i);
         
-        json_t *response = makeRequest(url, "GET", NULL);
+        json_t *response = makeRequest(url, "GET", NULL, NULL);
         TEST_ASSERT_NOT_NULL(response);
         
         TEST_ASSERT_EQUAL(i, json_number_value(json_object_get(response, "result")));
@@ -270,6 +287,7 @@ static void test_pipeline_processing(void) {
     json_t *response = makeRequest(
         "http://localhost:3456/api/test/pipeline?param1=value1&param2=value2", 
         "GET", 
+        NULL,
         NULL
     );
     TEST_ASSERT_NOT_NULL(response);
@@ -307,39 +325,19 @@ static void test_api_features(void) {
     sleep(1);
     
     // Test CORS headers
-    CURL *curl = curl_easy_init();
-    TEST_ASSERT_NOT_NULL(curl);
+    char *headers = NULL;
+    struct curl_slist *request_headers = NULL;
+    request_headers = curl_slist_append(request_headers, "Origin: http://example.com");
     
-    struct curl_slist *headers = NULL;
-    headers = curl_slist_append(headers, "Origin: http://example.com");
-    
-    ResponseBuffer response = {0};
-    response.data = malloc(1);
-    response.size = 0;
-    
-    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:3456/api/test/pipeline");
-    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    
-    // Get response headers
-    ResponseBuffer header_response = {0};
-    header_response.data = malloc(1);
-    header_response.size = 0;
-    
-    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, writeCallback);
-    curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&header_response);
-    
-    CURLcode res = curl_easy_perform(curl);
-    TEST_ASSERT_EQUAL(CURLE_OK, res);
+    json_t *response = makeRequest("http://localhost:3456/api/test/pipeline", "GET", NULL, &headers);
+    TEST_ASSERT_NOT_NULL(response);
     
     // Verify CORS headers
-    TEST_ASSERT_NOT_NULL(strstr(header_response.data, "Access-Control-Allow-Origin"));
+    TEST_ASSERT_NOT_NULL(strstr(headers, "Access-Control-Allow-Origin"));
     
-    curl_slist_free_all(headers);
-    curl_easy_cleanup(curl);
-    free(response.data);
-    free(header_response.data);
+    curl_slist_free_all(request_headers);
+    json_decref(response);
+    free(headers);
     
     // Clean up
     stopServer();
@@ -356,4 +354,3 @@ int run_e2e_tests(void) {
     RUN_TEST(test_api_features);
     return UNITY_END();
 }
-#pragma clang diagnostic pop
