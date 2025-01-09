@@ -23,6 +23,8 @@ static ApiField *parseApiFields(Parser *parser);
 static QueryParam *parseQueryParams(Parser *parser);
 static PipelineStepNode* parsePipelineStep(Parser *parser);
 static PipelineStepNode* parsePipeline(Parser *parser);
+static TransformNode* parseTransform(Parser *parser);
+static ScriptNode* parseScript(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -518,6 +520,32 @@ static PipelineStepNode* parsePipelineStep(Parser *parser) {
             }
             break;
 
+        case TOKEN_EXECUTE_TRANSFORM:
+            step->type = STEP_JQ;
+            step->is_dynamic = false;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_STRING) {
+                step->name = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected transform name after executeTransform\n", stderr);
+            }
+            break;
+
+        case TOKEN_EXECUTE_SCRIPT:
+            step->type = STEP_LUA;
+            step->is_dynamic = false;
+            advanceParser(parser);
+            if (parser->current.type == TOKEN_STRING) {
+                step->name = copyString(parser, parser->current.lexeme);
+                advanceParser(parser);
+            } else {
+                parser->hadError = 1;
+                fputs("Expected script name after executeScript\n", stderr);
+            }
+            break;
+
         case TOKEN_SQL:
             step->type = STEP_SQL;
             step->is_dynamic = false;
@@ -533,7 +561,7 @@ static PipelineStepNode* parsePipelineStep(Parser *parser) {
             
         default:
             parser->hadError = 1;
-            fputs("Expected pipeline step (jq, lua, or executeQuery)\n", stderr);
+            fputs("Expected pipeline step (jq, lua, executeQuery, executeTransform, executeScript)\n", stderr);
             break;
     }
     #pragma clang diagnostic pop
@@ -800,6 +828,98 @@ static QueryNode *parseQuery(Parser *parser) {
     return query;
 }
 
+static TransformNode* parseTransform(Parser *parser) {
+    TransformNode *transform = arenaAlloc(parser->arena, sizeof(TransformNode));
+    memset(transform, 0, sizeof(TransformNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'transform'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                transform->name = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_JQ: {
+                advanceParser(parser);
+                transform->type = FILTER_JQ;
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    transform->code = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);
+                } else {
+                    parser->hadError = 1;
+                    fputs("Expected JQ code block\n", stderr);
+                }
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Parse error at line %d: Unexpected token in transform.\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after transform block");
+    return transform;
+}
+
+static ScriptNode* parseScript(Parser *parser) {
+    ScriptNode *script = arenaAlloc(parser->arena, sizeof(ScriptNode));
+    memset(script, 0, sizeof(ScriptNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'script'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                script->name = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_LUA: {
+                advanceParser(parser);
+                script->type = FILTER_LUA;
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    script->code = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);
+                } else {
+                    parser->hadError = 1;
+                    fputs("Expected Lua code block\n", stderr);
+                }
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Parse error at line %d: Unexpected token in script.\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after script block");
+    return script;
+}
+
 WebsiteNode *parseProgram(Parser *parser) {
     WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
     memset(website, 0, sizeof(WebsiteNode));
@@ -895,6 +1015,36 @@ WebsiteNode *parseProgram(Parser *parser) {
                         current = current->next;
                     }
                     current->next = query;
+                }
+                break;
+            }
+            case TOKEN_TRANSFORM: {
+                advanceParser(parser);
+                TransformNode *transform = parseTransform(parser);
+                if (!website->transformHead) {
+                    website->transformHead = transform;
+                } else {
+                    // Add to end of list
+                    TransformNode *current = website->transformHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = transform;
+                }
+                break;
+            }
+            case TOKEN_SCRIPT: {
+                advanceParser(parser);
+                ScriptNode *script = parseScript(parser);
+                if (!website->scriptHead) {
+                    website->scriptHead = script;
+                } else {
+                    // Add to end of list
+                    ScriptNode *current = website->scriptHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = script;
                 }
                 break;
             }

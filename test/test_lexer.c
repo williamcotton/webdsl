@@ -490,6 +490,83 @@ static void test_lexer_filter_keywords(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_transform_and_script(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = 
+        "transform {\n"
+        "    name \"formatEmployee\"\n"
+        "    jq {\n"
+        "        .rows | map({ id, name })\n"
+        "    }\n"
+        "}\n"
+        "script {\n"
+        "    name \"validateInput\"\n"
+        "    lua {\n"
+        "        if not input then return false end\n"
+        "        return true\n"
+        "    }\n"
+        "}\n"
+        "executeTransform \"formatEmployee\"\n"
+        "executeScript \"validateInput\"";
+    
+    initLexer(&lexer, input, &parser);
+    
+    // Test transform definition
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_TRANSFORM, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_OPEN_BRACE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_NAME, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", token.lexeme);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_JQ, token.type);
+    
+    // Test script definition
+    while (token.type != TOKEN_SCRIPT) {
+        token = getNextToken(&lexer);
+    }
+    TEST_ASSERT_EQUAL(TOKEN_SCRIPT, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_OPEN_BRACE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_NAME, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
+    TEST_ASSERT_EQUAL_STRING("validateInput", token.lexeme);
+    
+    // Test execute commands
+    while (token.type != TOKEN_EXECUTE_TRANSFORM) {
+        token = getNextToken(&lexer);
+    }
+    TEST_ASSERT_EQUAL(TOKEN_EXECUTE_TRANSFORM, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", token.lexeme);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EXECUTE_SCRIPT, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_STRING, token.type);
+    TEST_ASSERT_EQUAL_STRING("validateInput", token.lexeme);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -508,5 +585,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_jq_block);
     RUN_TEST(test_lexer_lua_block);
     RUN_TEST(test_lexer_filter_keywords);
+    RUN_TEST(test_lexer_transform_and_script);
     return UNITY_END();
 }

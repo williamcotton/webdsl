@@ -30,7 +30,9 @@ typedef enum {
     NODE_PIPELINE,
     NODE_PIPELINE_STEP,
     NODE_FIELD,
-    NODE_FIELD_VALIDATION
+    NODE_FIELD_VALIDATION,
+    NODE_TRANSFORM,
+    NODE_SCRIPT
 } NodeType;
 
 typedef struct ContentNode {
@@ -153,6 +155,22 @@ typedef struct LayoutMap {
     struct LayoutMap *next;
 } LayoutMap;
 
+typedef struct TransformNode {
+    char *name;
+    char *code;
+    FilterType type;  // Will be FILTER_JQ
+    uint8_t _padding[4];
+    struct TransformNode *next;
+} TransformNode;
+
+typedef struct ScriptNode {
+    char *name;
+    char *code;
+    FilterType type;  // Will be FILTER_LUA
+    uint8_t _padding[4];
+    struct ScriptNode *next;
+} ScriptNode;
+
 typedef struct WebsiteNode {
     char *name;
     char *author;
@@ -166,6 +184,8 @@ typedef struct WebsiteNode {
     LayoutNode *layoutHead;
     ApiEndpoint *apiHead;
     QueryNode *queryHead;
+    TransformNode *transformHead;
+    ScriptNode *scriptHead;
     RouteMap *routeMap;
     LayoutMap *layoutMap;
 } WebsiteNode;

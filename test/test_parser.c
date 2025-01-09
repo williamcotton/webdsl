@@ -590,6 +590,74 @@ static void test_parse_query_with_named_params(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_transform_and_script(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "    transform {\n"
+        "        name \"formatEmployee\"\n"
+        "        jq {\n"
+        "            .rows | map({ id, name })\n"
+        "        }\n"
+        "    }\n"
+        "    script {\n"
+        "        name \"validateInput\"\n"
+        "        lua {\n"
+        "            if not input then return false end\n"
+        "            return true\n"
+        "        }\n"
+        "    }\n"
+        "    api {\n"
+        "        route \"/api/employees\"\n"
+        "        method \"GET\"\n"
+        "        pipeline {\n"
+        "            executeTransform \"formatEmployee\"\n"
+        "            executeScript \"validateInput\"\n"
+        "        }\n"
+        "    }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check transform
+    TEST_ASSERT_NOT_NULL(website->transformHead);
+    TransformNode *transform = website->transformHead;
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", transform->name);
+    TEST_ASSERT_EQUAL(FILTER_JQ, transform->type);
+    TEST_ASSERT_NOT_NULL(transform->code);
+    TEST_ASSERT_NOT_NULL(strstr(transform->code, ".rows | map"));
+    
+    // Check script
+    TEST_ASSERT_NOT_NULL(website->scriptHead);
+    ScriptNode *script = website->scriptHead;
+    TEST_ASSERT_EQUAL_STRING("validateInput", script->name);
+    TEST_ASSERT_EQUAL(FILTER_LUA, script->type);
+    TEST_ASSERT_NOT_NULL(script->code);
+    TEST_ASSERT_NOT_NULL(strstr(script->code, "if not input"));
+    
+    // Check pipeline steps
+    TEST_ASSERT_NOT_NULL(website->apiHead);
+    ApiEndpoint *api = website->apiHead;
+    TEST_ASSERT_NOT_NULL(api->pipeline);
+    
+    PipelineStepNode *step = api->pipeline;
+    TEST_ASSERT_EQUAL(STEP_JQ, step->type);
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", step->name);
+    TEST_ASSERT_FALSE(step->is_dynamic);
+    
+    step = step->next;
+    TEST_ASSERT_NOT_NULL(step);
+    TEST_ASSERT_EQUAL(STEP_LUA, step->type);
+    TEST_ASSERT_EQUAL_STRING("validateInput", step->name);
+    TEST_ASSERT_FALSE(step->is_dynamic);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -610,5 +678,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_raw_css_block);
     RUN_TEST(test_parse_nested_css_block);
     RUN_TEST(test_parse_query_with_named_params);
+    RUN_TEST(test_parse_transform_and_script);
     return UNITY_END();
 }

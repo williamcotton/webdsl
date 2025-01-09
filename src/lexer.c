@@ -150,6 +150,10 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("pipeline", TOKEN_PIPELINE)
     KW_MATCH("dynamic", TOKEN_DYNAMIC)
     KW_MATCH("params", TOKEN_PARAMS)
+    KW_MATCH("transform", TOKEN_TRANSFORM)
+    KW_MATCH("script", TOKEN_SCRIPT)
+    KW_MATCH("executeTransform", TOKEN_EXECUTE_TRANSFORM)
+    KW_MATCH("executeScript", TOKEN_EXECUTE_SCRIPT)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -367,6 +371,10 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_PARAMS: return "PARAMS";
         case TOKEN_PIPELINE: return "PIPELINE";
         case TOKEN_DYNAMIC: return "DYNAMIC";
+        case TOKEN_TRANSFORM: return "TRANSFORM";
+        case TOKEN_SCRIPT: return "SCRIPT";
+        case TOKEN_EXECUTE_TRANSFORM: return "EXECUTE_TRANSFORM";
+        case TOKEN_EXECUTE_SCRIPT: return "EXECUTE_SCRIPT";
     }
     return "INVALID";
 }

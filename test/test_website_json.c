@@ -410,6 +410,155 @@ static void test_website_to_json_with_database(void) {
     freeArena(arena);
 }
 
+static void test_website_to_json_with_transforms_and_scripts(void) {
+    Arena *arena = createArena(1024 * 64);
+    
+    // Create a transform
+    TransformNode *transform = arenaAlloc(arena, sizeof(TransformNode));
+    memset(transform, 0, sizeof(TransformNode));
+    transform->name = arenaDupString(arena, "formatEmployee");
+    transform->type = FILTER_JQ;
+    transform->code = arenaDupString(arena, ".rows | map({ id, name })");
+    
+    // Create a script
+    ScriptNode *script = arenaAlloc(arena, sizeof(ScriptNode));
+    memset(script, 0, sizeof(ScriptNode));
+    script->name = arenaDupString(arena, "validateInput");
+    script->type = FILTER_LUA;
+    script->code = arenaDupString(arena, "if not input then return false end\nreturn true");
+    
+    // Create website with transform and script
+    WebsiteNode *website = arenaAlloc(arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));
+    website->name = arenaDupString(arena, "Test Site");
+    website->transformHead = transform;
+    website->scriptHead = script;
+    
+    json_t *json = websiteToJson(website);
+    TEST_ASSERT_NOT_NULL(json);
+    
+    // Test transforms
+    json_t *transforms = json_object_get(json, "transforms");
+    TEST_ASSERT_NOT_NULL(transforms);
+    TEST_ASSERT_TRUE(json_is_array(transforms));
+    TEST_ASSERT_EQUAL_INT(1, json_array_size(transforms));
+    
+    json_t *transform_json = json_array_get(transforms, 0);
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", json_string_value(json_object_get(transform_json, "name")));
+    TEST_ASSERT_EQUAL_STRING("jq", json_string_value(json_object_get(transform_json, "type")));
+    TEST_ASSERT_EQUAL_STRING(".rows | map({ id, name })", json_string_value(json_object_get(transform_json, "code")));
+    
+    // Test scripts
+    json_t *scripts = json_object_get(json, "scripts");
+    TEST_ASSERT_NOT_NULL(scripts);
+    TEST_ASSERT_TRUE(json_is_array(scripts));
+    TEST_ASSERT_EQUAL_INT(1, json_array_size(scripts));
+    
+    json_t *script_json = json_array_get(scripts, 0);
+    TEST_ASSERT_EQUAL_STRING("validateInput", json_string_value(json_object_get(script_json, "name")));
+    TEST_ASSERT_EQUAL_STRING("lua", json_string_value(json_object_get(script_json, "type")));
+    TEST_ASSERT_EQUAL_STRING("if not input then return false end\nreturn true", json_string_value(json_object_get(script_json, "code")));
+    
+    json_decref(json);
+    freeArena(arena);
+}
+
+static void test_website_to_json_with_pipeline_steps(void) {
+    Arena *arena = createArena(1024 * 64);
+    
+    // Create transform and script nodes that will be referenced
+    TransformNode *transform = arenaAlloc(arena, sizeof(TransformNode));
+    memset(transform, 0, sizeof(TransformNode));
+    transform->name = arenaDupString(arena, "formatEmployee");
+    transform->type = FILTER_JQ;
+    transform->code = arenaDupString(arena, ".rows | map({ id, name })");
+    
+    ScriptNode *script = arenaAlloc(arena, sizeof(ScriptNode));
+    memset(script, 0, sizeof(ScriptNode));
+    script->name = arenaDupString(arena, "validateInput");
+    script->type = FILTER_LUA;
+    script->code = arenaDupString(arena, "if not input then return false end\nreturn true");
+
+    QueryNode *query = arenaAlloc(arena, sizeof(QueryNode));
+    memset(query, 0, sizeof(QueryNode));
+    query->name = arenaDupString(arena, "getEmployees");
+    query->sql = arenaDupString(arena, "SELECT * FROM employees");
+    
+    // Create pipeline steps
+    PipelineStepNode *step1 = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(step1, 0, sizeof(PipelineStepNode));
+    step1->type = STEP_SQL;
+    step1->name = arenaDupString(arena, "getEmployees");
+    step1->is_dynamic = false;
+    
+    PipelineStepNode *step2 = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(step2, 0, sizeof(PipelineStepNode));
+    step2->type = STEP_JQ;
+    step2->name = arenaDupString(arena, "formatEmployee");
+    step2->is_dynamic = false;
+    step1->next = step2;
+    
+    PipelineStepNode *step3 = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(step3, 0, sizeof(PipelineStepNode));
+    step3->type = STEP_LUA;
+    step3->name = arenaDupString(arena, "validateInput");
+    step3->is_dynamic = false;
+    step2->next = step3;
+    
+    // Create API endpoint with pipeline
+    ApiEndpoint *endpoint = arenaAlloc(arena, sizeof(ApiEndpoint));
+    memset(endpoint, 0, sizeof(ApiEndpoint));
+    endpoint->route = arenaDupString(arena, "/api/employees");
+    endpoint->method = arenaDupString(arena, "GET");
+    endpoint->pipeline = step1;
+    endpoint->uses_pipeline = true;
+    
+    // Create website with everything
+    WebsiteNode *website = arenaAlloc(arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));
+    website->name = arenaDupString(arena, "Test Site");
+    website->transformHead = transform;
+    website->scriptHead = script;
+    website->queryHead = query;
+    website->apiHead = endpoint;
+    
+    json_t *json = websiteToJson(website);
+    TEST_ASSERT_NOT_NULL(json);
+    
+    // Test API endpoint pipeline
+    json_t *api = json_object_get(json, "api");
+    TEST_ASSERT_NOT_NULL(api);
+    TEST_ASSERT_TRUE(json_is_array(api));
+    TEST_ASSERT_EQUAL_INT(1, json_array_size(api));
+    
+    json_t *endpoint_json = json_array_get(api, 0);
+    json_t *pipeline = json_object_get(endpoint_json, "pipeline");
+    TEST_ASSERT_NOT_NULL(pipeline);
+    TEST_ASSERT_TRUE(json_is_array(pipeline));
+    TEST_ASSERT_EQUAL_INT(3, json_array_size(pipeline));
+    
+    // Test executeQuery step
+    json_t *step1_json = json_array_get(pipeline, 0);
+    TEST_ASSERT_EQUAL_STRING("sql", json_string_value(json_object_get(step1_json, "type")));
+    TEST_ASSERT_EQUAL_STRING("getEmployees", json_string_value(json_object_get(step1_json, "name")));
+    TEST_ASSERT_FALSE(json_boolean_value(json_object_get(step1_json, "is_dynamic")));
+    
+    // Test executeTransform step
+    json_t *step2_json = json_array_get(pipeline, 1);
+    TEST_ASSERT_EQUAL_STRING("jq", json_string_value(json_object_get(step2_json, "type")));
+    TEST_ASSERT_EQUAL_STRING("formatEmployee", json_string_value(json_object_get(step2_json, "name")));
+    TEST_ASSERT_FALSE(json_boolean_value(json_object_get(step2_json, "is_dynamic")));
+    
+    // Test executeScript step
+    json_t *step3_json = json_array_get(pipeline, 2);
+    TEST_ASSERT_EQUAL_STRING("lua", json_string_value(json_object_get(step3_json, "type")));
+    TEST_ASSERT_EQUAL_STRING("validateInput", json_string_value(json_object_get(step3_json, "name")));
+    TEST_ASSERT_FALSE(json_boolean_value(json_object_get(step3_json, "is_dynamic")));
+    
+    json_decref(json);
+    freeArena(arena);
+}
+
 int run_website_json_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_website_to_json_minimal);
@@ -420,5 +569,7 @@ int run_website_json_tests(void) {
     RUN_TEST(test_website_to_json_with_layouts_and_queries);
     RUN_TEST(test_website_to_json_with_dynamic_pipeline);
     RUN_TEST(test_website_to_json_with_database);
+    RUN_TEST(test_website_to_json_with_transforms_and_scripts);
+    RUN_TEST(test_website_to_json_with_pipeline_steps);
     return UNITY_END();
 }

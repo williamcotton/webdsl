@@ -200,6 +200,42 @@ static json_t* apiEndpointsToJson(const ApiEndpoint* endpoints) {
     return endpoints_array;
 }
 
+static json_t* transformsToJson(const TransformNode* transforms) {
+    if (!transforms) return NULL;
+    
+    json_t* transforms_array = json_array();
+    const TransformNode* current = transforms;
+    
+    while (current) {
+        json_t* transform = json_object();
+        if (current->name) json_object_set_new(transform, "name", json_string(current->name));
+        if (current->code) json_object_set_new(transform, "code", json_string(current->code));
+        json_object_set_new(transform, "type", json_string("jq"));
+        json_array_append_new(transforms_array, transform);
+        current = current->next;
+    }
+    
+    return transforms_array;
+}
+
+static json_t* scriptsToJson(const ScriptNode* scripts) {
+    if (!scripts) return NULL;
+    
+    json_t* scripts_array = json_array();
+    const ScriptNode* current = scripts;
+    
+    while (current) {
+        json_t* script = json_object();
+        if (current->name) json_object_set_new(script, "name", json_string(current->name));
+        if (current->code) json_object_set_new(script, "code", json_string(current->code));
+        json_object_set_new(script, "type", json_string("lua"));
+        json_array_append_new(scripts_array, script);
+        current = current->next;
+    }
+    
+    return scripts_array;
+}
+
 json_t* websiteToJson(const WebsiteNode* website) {
     if (!website) return NULL;
     
@@ -224,13 +260,21 @@ json_t* websiteToJson(const WebsiteNode* website) {
     json_t* layouts = layoutsToJson(website->layoutHead);
     if (layouts) json_object_set_new(root, "layouts", layouts);
     
+    // Add API endpoints
+    json_t* api = apiEndpointsToJson(website->apiHead);
+    if (api) json_object_set_new(root, "api", api);
+    
     // Add queries
     json_t* queries = queriesToJson(website->queryHead);
     if (queries) json_object_set_new(root, "queries", queries);
     
-    // Add API endpoints
-    json_t* api = apiEndpointsToJson(website->apiHead);
-    if (api) json_object_set_new(root, "api", api);
+    // Add transforms
+    json_t* transforms = transformsToJson(website->transformHead);
+    if (transforms) json_object_set_new(root, "transforms", transforms);
+    
+    // Add scripts
+    json_t* scripts = scriptsToJson(website->scriptHead);
+    if (scripts) json_object_set_new(root, "scripts", scripts);
     
     return root;
 }
