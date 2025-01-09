@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "server/server.h"
 #include "file_utils.h"
+#include "website_json.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,10 +9,11 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <getopt.h>
+#include <jansson.h>
 #include "website.h"
 
 #define MAX_PATH_LENGTH 4096
-#define ERROR_MSG_SIZE 256
 
 static volatile int keepRunning = 1;
 
@@ -28,36 +30,85 @@ static time_t getFileModTime(const char* path) {
     return 0;
 }
 
+static void printUsage(const char* program) {
+    fprintf(stderr, "Usage: %s [options] [path to .webdsl file]\n", program);
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  --json    Parse the .webdsl file and output AST as JSON\n");
+    fprintf(stderr, "  --help    Show this help message\n");
+}
+
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        char error_msg[ERROR_MSG_SIZE];
-        int written = snprintf(error_msg, ERROR_MSG_SIZE, 
-            "Usage: %s [path to .webdsl file]\n", argv[0]);
-        if (written > 0 && written < ERROR_MSG_SIZE) {
-            fputs(error_msg, stderr);
+    static struct option long_options[] = {
+        {"json", no_argument, 0, 'j'},
+        {"help", no_argument, 0, 'h'},
+        {0, 0, 0, 0}
+    };
+
+    bool json_output = false;
+    int option_index = 0;
+    int c;
+
+    while ((c = getopt_long(argc, argv, "jh", long_options, &option_index)) != -1) {
+        switch (c) {
+            case 'j':
+                json_output = true;
+                break;
+            case 'h':
+                printUsage(argv[0]);
+                return 0;
+            case '?':
+                return 64;
+            default:
+                break;
         }
+    }
+
+    if (optind >= argc) {
+        printUsage(argv[0]);
         return 64;
     }
 
+    // Get the .webdsl file path from remaining args
+    const char* webdsl_path = argv[optind];
+
     // Validate path length
-    if (strlen(argv[1]) >= MAX_PATH_LENGTH) {
+    if (strlen(webdsl_path) >= MAX_PATH_LENGTH) {
         fputs("Error: File path too long\n", stderr);
         return 64;
     }
 
-    // Set up signal handler for clean shutdown
-    signal(SIGINT, intHandler);
-
     Parser parser = {0};  // Zero initialize all fields
     WebsiteNode* website = NULL;
+
+    // If JSON output mode, just parse and output
+    if (json_output) {
+        website = parseWebsite(&parser, webdsl_path);
+        if (website != NULL) {
+            json_t* json = websiteToJson(website);
+            char* json_str = json_dumps(json, JSON_INDENT(2));
+            if (json_str) {
+                printf("%s\n", json_str);
+                free(json_str);
+            }
+            json_decref(json);
+            freeArena(parser.arena);
+            return 0;
+        }
+        freeArena(parser.arena);
+        return 1;
+    }
+
+    // Set up signal handler for clean shutdown
+    signal(SIGINT, intHandler);
+    
     time_t lastMod = 0;
 
     while (keepRunning) {
-        time_t currentMod = getFileModTime(argv[1]);
+        time_t currentMod = getFileModTime(webdsl_path);
         
         if (currentMod > lastMod) {
             printf("\nReloading website configuration...\n");
-            website = reloadWebsite(&parser, website, argv[1]);
+            website = reloadWebsite(&parser, website, webdsl_path);
             if (website != NULL) {
                 lastMod = currentMod;
             }

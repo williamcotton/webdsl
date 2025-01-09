@@ -3,13 +3,7 @@
 #include "file_utils.h"
 #include <stdio.h>
 
-WebsiteNode* reloadWebsite(Parser *parser, WebsiteNode *website, const char *filename) {
-    // Stop current server if running
-    if (website != NULL) {
-        stopServer();
-        website = NULL;
-    }
-
+WebsiteNode* parseWebsite(Parser *parser, const char *filename) {
     // Free old arena if it exists
     if (parser->arena != NULL) {
         freeArena(parser->arena);
@@ -25,16 +19,32 @@ WebsiteNode* reloadWebsite(Parser *parser, WebsiteNode *website, const char *fil
 
     // Initialize parser with new source
     initParser(parser, source);
-    website = parseProgram(parser);
+    WebsiteNode* website = parseProgram(parser);
     free(source);  // Free the source after parsing
 
     if (website != NULL && !parser->hadError) {
+        return website;
+    } else {
+        fputs("Parsing failed\n", stderr);
+        return NULL;
+    }
+}
+
+WebsiteNode* reloadWebsite(Parser *parser, WebsiteNode *website, const char *filename) {
+    // Stop current server if running
+    if (website != NULL) {
+        stopServer();
+        website = NULL;
+    }
+
+    website = parseWebsite(parser, filename);
+    if (website != NULL) {
         // Handle successful parse
         startServer(website, parser->arena);
         printf("Website reloaded successfully!\n");
         return website;
     } else {
-        fputs("Parsing failed, keeping previous configuration\n", stderr);
+        fputs("Keeping previous configuration\n", stderr);
         return NULL;
     }
 }

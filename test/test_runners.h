@@ -6,6 +6,7 @@ int run_lexer_tests(void);
 int run_parser_tests(void);
 int run_arena_tests(void);
 int run_stringbuilder_tests(void);
+int run_website_json_tests(void);
 
 // Server test runners
 int run_server_tests(void);

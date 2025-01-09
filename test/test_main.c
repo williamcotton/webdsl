@@ -17,6 +17,7 @@ int main(void) {
     result |= run_parser_tests();
     result |= run_arena_tests();
     result |= run_stringbuilder_tests();
+    result |= run_website_json_tests();
     
     // Run server tests
     result |= run_server_tests();
