@@ -6,6 +6,7 @@
 #include "../ast.h"
 #include "utils.h"
 #include "server.h"
+#include "routing.h"
 
 #define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
 #define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
@@ -123,17 +124,85 @@ static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
 
 // Add new function to walk AST and compile Lua steps
 static bool compilePipelineSteps(ServerContext *ctx) {
+    // First compile all named scripts
+    ScriptNode* script = ctx->website->scriptHead;
+    while (script) {
+        if (script->type == FILTER_LUA) {
+            uint32_t hash = hashString(script->code) & LUA_HASH_MASK;
+            
+            // Check if already cached
+            LuaChunkEntry* entry = chunkTable[hash];
+            while (entry) {
+                if (strcmp(entry->code, script->code) == 0) {
+                    break;
+                }
+                entry = entry->next;
+            }
+            
+            if (!entry) {
+                // New chunk - compile and cache it
+                entry = malloc(sizeof(LuaChunkEntry));
+                if (!entry) return false;
+                
+                entry->code = script->code;
+                entry->bytecode.bytecode = NULL;
+                entry->bytecode.bytecode_len = 0;
+                
+                lua_State *L = luaL_newstate();
+                if (!L) {
+                    free(entry);
+                    return false;
+                }
+                
+                luaL_openlibs(L);
+                
+                if (luaL_loadstring(L, script->code) != 0) {
+                    lua_close(L);
+                    free(entry);
+                    return false;
+                }
+                
+                if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
+                    lua_close(L);
+                    free(entry);
+                    return false;
+                }
+                
+                lua_close(L);
+                
+                // Add to hash table
+                entry->next = chunkTable[hash];
+                chunkTable[hash] = entry;
+            }
+        }
+        script = script->next;
+    }
+
+    // Then compile pipeline steps (existing)
     ApiEndpoint* endpoint = ctx->website->apiHead;
     while (endpoint) {
         PipelineStepNode* step = endpoint->pipeline;
         while (step) {
             if (step->type == STEP_LUA) {
-                uint32_t hash = hashString(step->code) & LUA_HASH_MASK;
+                const char* code = step->code;
+                if (step->name) {
+                    // For named scripts, get code from script block
+                    ScriptNode* namedScript = findScript(step->name);
+                    if (!namedScript) {
+                        fprintf(stderr, "Script not found: %s\n", step->name);
+                        return false;
+                    }
+                    code = namedScript->code;
+                }
+                
+                if (!code) continue;
+                
+                uint32_t hash = hashString(code) & LUA_HASH_MASK;
                 
                 // Check if already cached
                 LuaChunkEntry* entry = chunkTable[hash];
                 while (entry) {
-                    if (strcmp(entry->code, step->code) == 0) {
+                    if (strcmp(entry->code, code) == 0) {
                         break;
                     }
                     entry = entry->next;
@@ -142,27 +211,29 @@ static bool compilePipelineSteps(ServerContext *ctx) {
                 if (!entry) {
                     // New chunk - compile and cache it
                     entry = malloc(sizeof(LuaChunkEntry));
-                    entry->code = step->code;
+                    if (!entry) return false;
+                    
+                    entry->code = code;
                     entry->bytecode.bytecode = NULL;
                     entry->bytecode.bytecode_len = 0;
                     
                     lua_State *L = luaL_newstate();
                     if (!L) {
-                        free(entry);  // Free entry if Lua state creation fails
+                        free(entry);
                         return false;
                     }
                     
                     luaL_openlibs(L);
                     
-                    if (luaL_loadstring(L, step->code) != 0) {
+                    if (luaL_loadstring(L, code) != 0) {
                         lua_close(L);
-                        free(entry);  // Free entry if loading fails
+                        free(entry);
                         return false;
                     }
                     
                     if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
                         lua_close(L);
-                        free(entry);  // Free entry if bytecode dump fails
+                        free(entry);
                         return false;
                     }
                     
@@ -321,7 +392,7 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
     }
     lua_setglobal(L, "body");
     
-    // Load query builder if needed
+    // Always load querybuilder for scripts that need it
     if (loadQueryBuilder) {
         if (!loadLuaFile(L, "src/server/querybuilder.lua")) {
             lua_close(L);
@@ -453,7 +524,28 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
         return json_deep_copy(input);
     }
 
-    lua_State *L = createLuaState(input, arena, step->is_dynamic);
+    // Get code from named script if specified
+    const char* code = step->code;
+    if (step->name) {
+        ScriptNode* namedScript = findScript(step->name);
+        if (!namedScript) {
+            json_t *result = json_object();
+            json_object_set_new(result, "error", json_string("Script not found"));
+            return result;
+        }
+        code = namedScript->code;
+    }
+
+    if (!code) {
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("No script code found"));
+        return result;
+    }
+
+    // Check if script needs querybuilder
+    bool needs_querybuilder = strstr(code, "querybuilder") != NULL;
+    
+    lua_State *L = createLuaState(input, arena, needs_querybuilder);
     if (!L) {
         json_t *result = json_object();
         json_object_set_new(result, "error", json_string("Failed to create Lua state"));
@@ -498,11 +590,11 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     }
     lua_setglobal(L, "headers");
     
-    // Find cached bytecode
-    uint32_t hash = hashString(step->code) & LUA_HASH_MASK;
+    // Find cached bytecode using the actual code
+    uint32_t hash = hashString(code) & LUA_HASH_MASK;
     LuaChunkEntry* entry = chunkTable[hash];
     while (entry) {
-        if (strcmp(entry->code, step->code) == 0) {
+        if (strcmp(entry->code, code) == 0) {
             break;
         }
         entry = entry->next;

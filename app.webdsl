@@ -259,4 +259,59 @@ website {
             }
         }
     }
+
+    api {
+        route "/api/v2/employees"
+        method "GET"
+
+        pipeline {
+            executeScript "employeesScript"
+            executeQuery dynamic
+            executeTransform "employeesTransform"
+        }
+    }
+
+    script {
+        name "employeesScript"
+        lua {
+            if not querybuilder then
+                error("querybuilder module not loaded")
+            end
+            local qb = querybuilder.new()
+            if not qb then
+                error("failed to create query builder")
+            end
+
+            local result = qb
+                :select("id", "team_id", "name", "email")
+                :from("employees")
+                :where_if(query.team_id, "team_id = ?", query.team_id)
+                :order_by("id")
+                :limit(query.limit or 20)
+                :offset(query.offset or 0)
+                :with_metadata()
+                :build()
+            return result
+        }
+    }
+
+    transform {
+        name "employeesTransform"
+        jq {
+            {
+                data: (.rows | map(select(.type == "data")) | map({
+                    name: .name,
+                    email: .email,
+                    team_id: .team_id
+                })),
+                metadata: {
+                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
+                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
+                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
+                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+                },
+                request: .
+            }
+        }
+    }
 }

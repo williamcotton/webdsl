@@ -159,8 +159,26 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
     if (error) {
         return json_deep_copy(input);
     }
+
+    // Get code from named transform if specified
+    const char* code = step->code;
+    if (step->name) {
+        TransformNode* namedTransform = findTransform(step->name);
+        if (!namedTransform) {
+            json_t *result = json_object();
+            json_object_set_new(result, "error", json_string("Transform not found"));
+            return result;
+        }
+        code = namedTransform->code;
+    }
+
+    if (!code) {
+        json_t *result = json_object();
+        json_object_set_new(result, "error", json_string("No transform code found"));
+        return result;
+    }
     
-    jq_state *jq = findOrCreateJQ(step->code, ctx->arena);
+    jq_state *jq = findOrCreateJQ(code, ctx->arena);
     if (!jq) {
         json_t *result = json_object();
         json_object_set_new(result, "error", json_string("Failed to create JQ state"));
