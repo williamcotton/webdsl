@@ -115,8 +115,10 @@ test-watch:
 
 build-test-trace:
 	mkdir -p $(BUILD_DIR)
+ifeq ($(PLATFORM),LINUX)
+	$(CC) -o $(BUILD_DIR)/test $(TEST_SRC) $(SRC) $(TEST_CFLAGS) $(CFLAGS) $(PG_CFLAGS) -g -O0 -gdwarf-4 -DUSE_VALGRIND $(LIBS)
+else
 	$(CC) -o $(BUILD_DIR)/test $(TEST_SRC) $(SRC) $(TEST_CFLAGS) $(CFLAGS) $(PG_CFLAGS) -g -O0 -gdwarf-4 $(LIBS)
-ifeq ($(PLATFORM),DARWIN)
 	codesign -s - -v -f --entitlements debug.plist $(BUILD_DIR)/test
 endif
 

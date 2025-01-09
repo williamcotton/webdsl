@@ -3,6 +3,18 @@
 
 #include <stddef.h>
 
+#ifdef USE_VALGRIND
+#include <valgrind/memcheck.h>
+#else
+#define VALGRIND_CREATE_MEMPOOL(pool, rzB, is_zeroed) ((void)0)
+#define VALGRIND_DESTROY_MEMPOOL(pool) ((void)0)
+#define VALGRIND_MEMPOOL_ALLOC(pool, addr, size) ((void)0)
+#define VALGRIND_MEMPOOL_FREE(pool, addr) ((void)0)
+#define VALGRIND_MAKE_MEM_NOACCESS(addr, size) ((void)0)
+#define VALGRIND_MAKE_MEM_UNDEFINED(addr, size) ((void)0)
+#define VALGRIND_MAKE_MEM_DEFINED(addr, size) ((void)0)
+#endif
+
 typedef struct {
     char *buffer;
     size_t size;
