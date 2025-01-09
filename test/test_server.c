@@ -262,6 +262,78 @@ static void test_server_pipeline_execution(void) {
     freeArena(arena);
 }
 
+static void test_server_post_request(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+
+    initRequestJsonArena(arena);
+
+    // Create an API endpoint that echoes back POST data
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    memset(api, 0, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/test/echo");
+    api->method = arenaDupString(arena, "POST");
+    api->uses_pipeline = true;
+
+    // Create JQ pipeline step that echoes back the request body
+    PipelineStepNode *jqStep = arenaAlloc(arena, sizeof(PipelineStepNode));
+    memset(jqStep, 0, sizeof(PipelineStepNode));
+    jqStep->type = STEP_JQ;
+    jqStep->code = arenaDupString(arena, "{ echo: .body }");
+    setupStepExecutor(jqStep);
+
+    api->pipeline = jqStep;
+    api->next = website->apiHead;
+    website->apiHead = api;
+
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+
+    // Create a test request context with POST body
+    json_t *requestContext = json_object();
+    json_object_set_new(requestContext, "method", json_string("POST"));
+    json_object_set_new(requestContext, "url", json_string("/api/test/echo"));
+    json_object_set_new(requestContext, "version", json_string("HTTP/1.1"));
+    json_object_set_new(requestContext, "query", json_object());
+    json_object_set_new(requestContext, "headers", json_object());
+    json_object_set_new(requestContext, "cookies", json_object());
+
+    // Create a test POST body
+    json_t *body = json_object();
+    json_object_set_new(body, "message", json_string("Hello, World!"));
+    json_object_set_new(body, "number", json_integer(42));
+    json_object_set_new(requestContext, "body", body);
+
+    // Execute the pipeline
+    char *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
+    TEST_ASSERT_NOT_NULL(response);
+
+    // Parse the response and verify it echoes the body
+    json_error_t error;
+    json_t *result = json_loads(response, 0, &error);
+    TEST_ASSERT_NOT_NULL(result);
+
+    json_t *echo = json_object_get(result, "echo");
+    TEST_ASSERT_NOT_NULL(echo);
+
+    // Verify the echoed data matches our input
+    TEST_ASSERT_EQUAL_STRING("Hello, World!", json_string_value(json_object_get(echo, "message")));
+    TEST_ASSERT_EQUAL_INT(42, json_number_value(json_object_get(echo, "number")));
+
+    json_decref(result);
+    json_decref(requestContext);
+
+    // Clean up thread-local JQ states
+    void *table = pthread_getspecific(jq_key);
+    if (table) {
+        jq_thread_cleanup(table);
+    }
+
+    stopServer();
+    cleanupRequestJsonArena();
+    freeArena(arena);
+}
+
 int run_server_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_server_init);
@@ -270,5 +342,6 @@ int run_server_tests(void) {
     RUN_TEST(test_server_database_connection);
     RUN_TEST(test_server_request_context);
     RUN_TEST(test_server_pipeline_execution);
+    RUN_TEST(test_server_post_request);
     return UNITY_END();
 }
