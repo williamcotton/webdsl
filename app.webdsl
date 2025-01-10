@@ -39,7 +39,7 @@ website {
         content {
             h1 "Welcome!"
             p {
-                link "/about" "Learn more about our site"
+                link "/blog" "Read our blog"
             }
             p "This is a regular paragraph."
         }
@@ -103,6 +103,12 @@ website {
         route "/api/v1/teams"
         method "GET"
         pipeline {
+            jq {
+                {
+                    error: "test",
+                    statusCode: 401
+                }
+            }
             executeQuery "teams"
             jq {
                 {
@@ -125,14 +131,6 @@ website {
         
         pipeline {
             lua {
-                if not querybuilder then
-                    error("querybuilder module not loaded")
-                end
-                local qb = querybuilder.new()
-                if not qb then
-                    error("failed to create query builder")
-                end
-                
                 local result = qb
                     :select("id", "team_id", "name", "email")
                     :from("employees")
@@ -142,6 +140,7 @@ website {
                     :offset(query.offset or 0)
                     :with_metadata()
                     :build()
+
                 return result
             }
             

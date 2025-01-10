@@ -8,6 +8,7 @@
 #include <jansson.h>
 #include <pthread.h>
 #include <uthash.h>
+#include <math.h>
 #include "lua.h"
 #include "utils.h"
 #include "jq.h"
@@ -145,7 +146,7 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     return context;
 }
 
-static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
+static json_t* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_cls) {
     struct PostContext *post_ctx = con_cls;
     json_t *errors_obj = json_object();
     json_t *error_fields = json_object();
@@ -197,9 +198,7 @@ static char* validatePostFields(Arena *arena, ApiEndpoint *endpoint, void *con_c
 
     if (has_errors) {
         json_object_set_new(errors_obj, "errors", error_fields);
-        char *json_str = json_dumps(errors_obj, JSON_INDENT(2));
-        json_decref(errors_obj);
-        return json_str;
+        return errors_obj;
     }
 
     json_decref(errors_obj);
@@ -251,11 +250,11 @@ static void extractPostValues(Arena *arena, ApiEndpoint *endpoint, void *con_cls
     }
 }
 
-char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
+json_t *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
                           json_t *requestContext, ServerContext *ctx) {
     // For POST requests, validate fields if specified
     if (endpoint->apiFields && strcmp(endpoint->method, "POST") == 0) {
-        char *validation_error = validatePostFields(arena, endpoint, con_cls);
+        json_t *validation_error = validatePostFields(arena, endpoint, con_cls);
         if (validation_error) {
             return validation_error;
         }
@@ -286,14 +285,15 @@ char *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 
         json_t *error = json_object_get(result, "error");
         if (error) {
-            // Extract just the error into a new object
+            // Extract just the error and statusCode
             json_t *error_response = json_object();
+            json_t *statusCode = json_object_get(result, "statusCode");
             json_object_set(error_response, "error", error);
-            char *response = json_dumps(error_response, JSON_COMPACT);
-            return response;
+            json_object_set(error_response, "statusCode", statusCode);
+            return error_response;
         }
 
-        return json_dumps(result, JSON_COMPACT);
+        return result;
     } else {
         return generateErrorJson("No pipeline found");
     }
@@ -338,8 +338,8 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   // printf("Request context: %s\n", request_context);
 
   // Generate API response with request context
-  char *json = generateApiResponse(arena, api, con_cls, request_context, ctx);
-  if (!json) {
+  json_t *apiResponse = generateApiResponse(arena, api, con_cls, request_context, ctx);
+  if (!apiResponse) {
     const char *error_msg =
         "{ \"error\": \"Internal server error processing pipeline\" }";
     struct MHD_Response *response =
@@ -349,6 +349,26 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     MHD_destroy_response(response);
     return ret;
   }
+
+  // check if apiResponse is an error
+  json_t *error = json_object_get(apiResponse, "error");
+  if (error) {
+    json_t *statusCodeJson = json_object_get(apiResponse, "statusCode");
+    unsigned int statusCode = MHD_HTTP_BAD_REQUEST;
+    if (json_is_number(statusCodeJson)) {
+        statusCode = (unsigned int)llrint(json_number_value(statusCodeJson));
+    }
+    json_object_del(apiResponse, "statusCode");
+    char *error_str = json_dumps(apiResponse, 0);
+    struct MHD_Response *response = MHD_create_response_from_buffer(strlen(error_str), error_str, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Content-Type", "application/json");
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
+    enum MHD_Result ret = MHD_queue_response(connection, statusCode, response);
+    MHD_destroy_response(response);
+    return ret;
+  }
+
+  char *json = json_dumps(apiResponse, 0);
 
   // Use arena to allocate the response copy
   size_t json_len = strlen(json);

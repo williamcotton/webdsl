@@ -23,7 +23,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                ServerContext *ctx);
 
 // API response generation
-char* generateApiResponse(Arena *arena, 
+json_t* generateApiResponse(Arena *arena, 
                         ApiEndpoint *endpoint, 
                         void *con_cls,
                         json_t *requestContext,

@@ -230,12 +230,15 @@ static void test_server_pipeline_execution(void) {
     json_object_set_new(requestContext, "body", json_object());
     
     // Execute the pipeline
-    char *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
+    json_t *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
     TEST_ASSERT_NOT_NULL(response);
+
+    char *response_str = json_dumps(response, 0);
+    printf("response: %s\n", response_str);
     
     // Parse the response and verify the pipeline execution
     json_error_t error;
-    json_t *result = json_loads(response, 0, &error);
+    json_t *result = json_loads(response_str, 0, &error);
     TEST_ASSERT_NOT_NULL(result);
     
     // Verify the pipeline transformations
@@ -305,12 +308,14 @@ static void test_server_post_request(void) {
     json_object_set_new(requestContext, "body", body);
 
     // Execute the pipeline
-    char *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
+    json_t *response = generateApiResponse(arena, api, NULL, requestContext, ctx);
     TEST_ASSERT_NOT_NULL(response);
 
     // Parse the response and verify it echoes the body
     json_error_t error;
-    json_t *result = json_loads(response, 0, &error);
+    char *response_str = json_dumps(response, 0);
+    printf("response: %s\n", response_str);
+    json_t *result = json_loads(response_str, 0, &error);
     TEST_ASSERT_NOT_NULL(result);
 
     json_t *echo = json_object_get(result, "echo");

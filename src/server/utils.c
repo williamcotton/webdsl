@@ -2,12 +2,10 @@
 #include <stdint.h>
 #include <string.h>
 
-char* generateErrorJson(const char *errorMessage) {
+json_t* generateErrorJson(const char *errorMessage) {
     json_t *root = json_object();
     json_object_set_new(root, "error", json_string(errorMessage));
-    
-    char *jsonStr = json_dumps(root, JSON_COMPACT);
-    return jsonStr;
+    return root;
 }
 
 uint32_t hashString(const char *str) __attribute__((no_sanitize("unsigned-integer-overflow"))) {
