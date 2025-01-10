@@ -145,6 +145,8 @@ website {
         
         pipeline {
             lua {
+                local qb = querybuilder.new()
+                
                 local result = qb
                     :select("id", "team_id", "name", "email")
                     :from("employees")
