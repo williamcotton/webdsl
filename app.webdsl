@@ -67,11 +67,67 @@ website {
         name "mustache-test"
         route "/mustache-test"
         layout "blog"
+        pipeline {
+            jq {
+                {
+                    title: "My Title",
+                    message: "My Message",
+                    items: [
+                        { name: "Wired up Item 1" },
+                        { name: "Wired up Item 2" },
+                        { name: "Wired up Item 3" }
+                    ],
+                    url: .url,
+                    version: .version,
+                    method: .method
+                }
+            }
+        }
         mustache {
-            <article>
-                <h1>Mustache Test</h1>
-                <p>This is a test of the mustache template engine.</p>
-            </article>
+            <h1>{{title}}</h1>
+            <p>{{message}}</p>
+            <p>URL: {{url}}</p>
+            <p>Version: {{version}}</p>
+            <p>Method: {{method}}</p>
+            <ul>
+                {{#items}}
+                <li>{{name}}</li>
+                {{/items}}
+            </ul>
+        }
+    }
+
+
+
+    page {
+        name "employeesPage"
+        route "/employees"
+        layout "main"
+        pipeline {
+            sql {
+                SELECT * FROM employees
+            }
+            jq {
+                {
+                    employees: .rows,
+                    team_id: .query.team_id,
+                    query: (.query | to_entries)
+                }
+            }
+        }
+        mustache {
+            <h1>Employees</h1>
+            <p>Team ID: {{team_id}}</p>
+            <ul>
+                {{#query}}
+                <li>{{key}}: {{value}}</li>
+                {{/query}}
+            </ul>
+            <ul>
+                {{#employees}}
+                <li>{{name}}</li>
+                {{/employees}}
+            </ul>
         }
     }
 
@@ -226,7 +282,8 @@ website {
                         name: .rows[0].name,
                         email: .rows[0].email,
                         team_id: .rows[0].team_id
-                    }
+                    },
+                    request: .
                 }
             }
         }

@@ -4,6 +4,7 @@
 #include "db.h"
 #include "lua.h"
 #include "html.h"
+#include "mustache.h"
 #include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,6 +47,7 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
     // Initialize subsystems
     initDb(serverCtx);
     initHtml(serverCtx);
+    initMustache(serverCtx);
 
     // Initialize Lua subsystem
     if (!initLua(serverCtx)) {

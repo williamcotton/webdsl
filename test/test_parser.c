@@ -699,6 +699,74 @@ static void test_parse_mustache_content(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_page_with_pipeline(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"home\"\n"
+        "    route \"/\"\n"
+        "    layout \"main\"\n"
+        "    pipeline {\n"
+        "      lua {\n"
+        "        local data = {}\n"
+        "        data.title = \"Welcome\"\n"
+        "        data.items = {\"one\", \"two\", \"three\"}\n"
+        "        return data\n"
+        "      }\n"
+        "      jq {\n"
+        "        . + {count: (.items | length)}\n"
+        "      }\n"
+        "    }\n"
+        "    mustache {\n"
+        "      <h1>{{title}}</h1>\n"
+        "      <p>Items ({{count}}):</p>\n"
+        "      {{#items}}\n"
+        "        <li>{{.}}</li>\n"
+        "      {{/items}}\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    
+    PageNode *page = website->pageHead;
+    TEST_ASSERT_EQUAL_STRING("home", page->identifier);
+    TEST_ASSERT_EQUAL_STRING("/", page->route);
+    TEST_ASSERT_EQUAL_STRING("main", page->layout);
+    
+    // Check pipeline
+    TEST_ASSERT_NOT_NULL(page->pipeline);
+    
+    // Check first step (Lua)
+    PipelineStepNode *step = page->pipeline;
+    TEST_ASSERT_EQUAL(STEP_LUA, step->type);
+    TEST_ASSERT_NOT_NULL(step->code);
+    TEST_ASSERT_TRUE(strstr(step->code, "data.title = \"Welcome\"") != NULL);
+    
+    // Check second step (JQ)
+    step = step->next;
+    TEST_ASSERT_NOT_NULL(step);
+    TEST_ASSERT_EQUAL(STEP_JQ, step->type);
+    TEST_ASSERT_NOT_NULL(step->code);
+    TEST_ASSERT_TRUE(strstr(step->code, ". + {count: (.items | length)}") != NULL);
+    
+    // Check mustache template
+    TEST_ASSERT_NOT_NULL(page->contentHead);
+    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->contentHead->type);
+    TEST_ASSERT_NOT_NULL(page->contentHead->arg1);
+    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{title}}") != NULL);
+    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{count}}") != NULL);
+    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{#items}}") != NULL);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -721,5 +789,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_query_with_named_params);
     RUN_TEST(test_parse_transform_and_script);
     RUN_TEST(test_parse_mustache_content);
+    RUN_TEST(test_parse_page_with_pipeline);
     return UNITY_END();
 }

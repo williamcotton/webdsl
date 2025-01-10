@@ -71,7 +71,7 @@ $(BUILD_DIR)/webdsl:
 .PHONY: test
 test:
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(LIB_SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) $(LIBS)
+	$(CC) -o $(BUILD_DIR)/$@ $(TEST_SRC) $(SRC) $(CFLAGS) $(TEST_CFLAGS) $(DEV_CFLAGS) $(LIBS)
 	$(BUILD_DIR)/$@ app.webdsl
 
 test-coverage-output:

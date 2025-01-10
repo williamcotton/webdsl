@@ -201,6 +201,11 @@ static PageNode *parsePage(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_PIPELINE: {
+                advanceParser(parser);
+                page->pipeline = parsePipeline(parser);
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
@@ -486,7 +491,8 @@ static PipelineStepNode* parsePipelineStep(Parser *parser) {
             step->type = STEP_SQL;
             step->is_dynamic = false;
             advanceParser(parser);
-            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+            if (parser->current.type == TOKEN_RAW_BLOCK || 
+                parser->current.type == TOKEN_STRING) {
                 step->code = copyString(parser, parser->current.lexeme);
                 advanceParser(parser);
             } else {

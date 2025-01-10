@@ -2,6 +2,7 @@
 #include "handler.h"
 #include "db.h"
 #include "validation.h"
+#include "pipeline_executor.h"
 #include <jq.h>
 #include <string.h>
 #include <stdio.h>
@@ -43,40 +44,6 @@ void setupStepExecutor(PipelineStepNode *step) {
     }
 }
 
-// Simplified executePipelineStep that just uses the function pointer
-static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx) {
-    if (!step || !step->execute) {
-        return NULL;
-    }
-
-    // Check for existing error here instead of in each executor
-    json_t *error = json_object_get(input, "error");
-    if (error) {
-        return json_deep_copy(input);
-    }
-
-    return step->execute(step, input, requestContext, arena, ctx);
-}
-
-static json_t* executePipeline(ApiEndpoint *endpoint, json_t *requestContext, Arena *arena, ServerContext *ctx) {
-    json_t *current = requestContext;
-    PipelineStepNode *step = endpoint->pipeline;
-    
-    while (step) {
-        json_t *result = executePipelineStep(step, current, requestContext, arena, ctx);
-        if (current != requestContext) {
-            json_decref(current);
-        }
-        if (!result) {
-            return NULL;
-        }
-        current = result;
-        step = step->next;
-    }
-    
-    return current;
-}
-
 // Helper callback for MHD_get_connection_values
 static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
                                       const char *key, const char *value) {
@@ -86,7 +53,7 @@ static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
   return MHD_YES;
 }
 
-static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
+json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version) {
     (void)arena; // Suppress unused parameter warning
@@ -278,7 +245,7 @@ json_t *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 
     if (endpoint->uses_pipeline) {
         // Execute pipeline with validated request context
-        json_t *result = executePipeline(endpoint, requestContext, arena, ctx);
+        json_t *result = executePipeline(ctx, endpoint->pipeline, requestContext, arena);
         if (!result) {
             return generateErrorJson("Pipeline execution failed");
         }
@@ -332,13 +299,13 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     return ret;
   }
 
-  json_t *request_context =
+  json_t *requestContext =
       buildRequestContextJson(connection, arena, con_cls, method, url, version);
 
   // printf("Request context: %s\n", request_context);
 
   // Generate API response with request context
-  json_t *apiResponse = generateApiResponse(arena, api, con_cls, request_context, ctx);
+  json_t *apiResponse = generateApiResponse(arena, api, con_cls, requestContext, ctx);
   if (!apiResponse) {
     const char *error_msg =
         "{ \"error\": \"Internal server error processing pipeline\" }";

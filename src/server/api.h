@@ -32,9 +32,8 @@ json_t* generateApiResponse(Arena *arena,
 // Pipeline step executor setup
 void setupStepExecutor(PipelineStepNode *step);
 
-// Internal functions (if needed by tests)
-#ifdef TESTING
-char* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena);
-#endif
+json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena,
+                                void *con_cls, const char *method,
+                                const char *url, const char *version);
 
 #endif // SERVER_API_H
