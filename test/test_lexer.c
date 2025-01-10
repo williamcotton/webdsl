@@ -28,7 +28,7 @@ static void test_lexer_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "website pages page styles route layout content name author version alt layouts port api method executeQuery query sql css";
+    const char *input = "website pages page styles route layout content name author version alt layouts port api method executeQuery query sql css mustache";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
@@ -50,7 +50,8 @@ static void test_lexer_keywords(void) {
         TOKEN_EXECUTE_QUERY,
         TOKEN_QUERY,
         TOKEN_SQL,
-        TOKEN_CSS
+        TOKEN_CSS,
+        TOKEN_MUSTACHE
     };
     
     for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
@@ -638,6 +639,39 @@ static void test_lexer_comments(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_mustache_block(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = 
+        "mustache {\n"
+        "    <div>{{name}}</div>\n"
+        "    <p>{{description}}</p>\n"
+        "}";
+    
+    initLexer(&lexer, input, &parser);
+    
+    // Should get MUSTACHE token first
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_MUSTACHE, token.type);
+    
+    // Then get raw block containing the mustache content
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(token.lexeme);
+    
+    // Verify the raw block contains the mustache template
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "<div>{{name}}</div>"));
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "<p>{{description}}</p>"));
+    
+    // Should get EOF
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -658,5 +692,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_filter_keywords);
     RUN_TEST(test_lexer_transform_and_script);
     RUN_TEST(test_lexer_comments);
+    RUN_TEST(test_lexer_mustache_block);
     return UNITY_END();
 }

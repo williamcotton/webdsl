@@ -647,6 +647,58 @@ static void test_parse_transform_and_script(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_mustache_content(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  layout {\n"
+        "    name \"main\"\n"
+        "    mustache {\n"
+        "      <div>{{name}}</div>\n"
+        "      <p>{{description}}</p>\n"
+        "    }\n"
+        "  }\n"
+        "  page {\n"
+        "    name \"home\"\n"
+        "    route \"/\"\n"
+        "    layout \"main\"\n"
+        "    mustache {\n"
+        "      <h1>{{title}}</h1>\n"
+        "      <p>{{content}}</p>\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check layout mustache template
+    TEST_ASSERT_NOT_NULL(website->layoutHead);
+    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyContent);
+    TEST_ASSERT_EQUAL_STRING("raw_mustache", website->layoutHead->bodyContent->type);
+    
+    const char* layoutTemplate = website->layoutHead->bodyContent->arg1;
+    TEST_ASSERT_NOT_NULL(layoutTemplate);
+    TEST_ASSERT_TRUE(strstr(layoutTemplate, "<div>{{name}}</div>") != NULL);
+    TEST_ASSERT_TRUE(strstr(layoutTemplate, "<p>{{description}}</p>") != NULL);
+    
+    // Check page mustache template
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
+    TEST_ASSERT_EQUAL_STRING("raw_mustache", website->pageHead->contentHead->type);
+    
+    const char* pageTemplate = website->pageHead->contentHead->arg1;
+    TEST_ASSERT_NOT_NULL(pageTemplate);
+    TEST_ASSERT_TRUE(strstr(pageTemplate, "<h1>{{title}}</h1>") != NULL);
+    TEST_ASSERT_TRUE(strstr(pageTemplate, "<p>{{content}}</p>") != NULL);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -668,5 +720,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_nested_css_block);
     RUN_TEST(test_parse_query_with_named_params);
     RUN_TEST(test_parse_transform_and_script);
+    RUN_TEST(test_parse_mustache_content);
     return UNITY_END();
 }
