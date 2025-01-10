@@ -160,6 +160,36 @@ static void test_lexer_error_handling(void) {
     token = getNextToken(&lexer);
     TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
     TEST_ASSERT_EQUAL_STRING("Unterminated string.", token.lexeme);
+
+    // Test unterminated triple-quoted string
+    const char *unterminated_triple = "html \"\"\"\nsome content";
+    initLexer(&lexer, unterminated_triple, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_HTML, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
+    TEST_ASSERT_EQUAL_STRING("Unterminated triple-quoted string.", token.lexeme);
+
+    // Test invalid range syntax
+    const char *invalid_range = "1..";
+    initLexer(&lexer, invalid_range, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
+    TEST_ASSERT_EQUAL_STRING("Expected number after '..' in range.", token.lexeme);
+
+    // Test invalid decimal number
+    const char *invalid_decimal = "port 123.";
+    initLexer(&lexer, invalid_decimal, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_PORT, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_UNKNOWN, token.type);
+    TEST_ASSERT_EQUAL_STRING("Expected digit after decimal point.", token.lexeme);
     
     freeArena(parser.arena);
 }
@@ -567,6 +597,47 @@ static void test_lexer_transform_and_script(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_comments(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test single line comments
+    const char *input = "website // This is a comment\nname";
+    initLexer(&lexer, input, &parser);
+    
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_WEBSITE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_NAME, token.type);
+    
+    // Test comment at end of file
+    input = "website // Final comment";
+    initLexer(&lexer, input, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_WEBSITE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    // Test multiple comments
+    input = "website // Comment 1\nname // Comment 2\nauthor";
+    initLexer(&lexer, input, &parser);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_WEBSITE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_NAME, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_AUTHOR, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -586,5 +657,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_lua_block);
     RUN_TEST(test_lexer_filter_keywords);
     RUN_TEST(test_lexer_transform_and_script);
+    RUN_TEST(test_lexer_comments);
     return UNITY_END();
 }
