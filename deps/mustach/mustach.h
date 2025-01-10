@@ -1,3 +1,10 @@
+#include <stdio.h>
+#include <stddef.h>
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
+#pragma clang diagnostic ignored "-Wpadded"
+
 /*
  Author: José Bollo <jobol@nonadev.net>
 
@@ -331,5 +338,7 @@ DEPRECATED_MUSTACH(extern int mustach(const char *template,
                                       const struct mustach_itf *itf,
                                       void *closure, char **result,
                                       size_t *size));
+
+#pragma clang diagnostic pop
 
 #endif

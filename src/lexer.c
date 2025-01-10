@@ -376,6 +376,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_SCRIPT: return "SCRIPT";
         case TOKEN_EXECUTE_TRANSFORM: return "EXECUTE_TRANSFORM";
         case TOKEN_EXECUTE_SCRIPT: return "EXECUTE_SCRIPT";
+        case TOKEN_MUSTACHE: return "MUSTACHE";
     }
     return "INVALID";
 }

@@ -1,3 +1,11 @@
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#pragma clang diagnostic ignored "-Wvla"
+#pragma clang diagnostic ignored "-Wswitch-enum"
+#pragma clang diagnostic ignored "-Wconditional-uninitialized"
+#pragma clang diagnostic ignored "-Wunused-macros"
+
 /*
  Author: José Bollo <jobol@nonadev.net>
 
@@ -455,3 +463,5 @@ int mustach_wrap_emit(const char *template, size_t length,
   return mustach_file(template, length, &mustach_wrap_itf, &w, flags,
                       emitclosure);
 }
+
+#pragma clang diagnostic pop

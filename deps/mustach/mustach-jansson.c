@@ -1,3 +1,9 @@
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wswitch-enum"
+#pragma clang diagnostic ignored "-Wconditional-uninitialized"
+#pragma clang diagnostic ignored "-Wunused-macros"
+
 /*
  Author: José Bollo <jobol@nonadev.net>
 
@@ -246,3 +252,5 @@ int mustach_jansson_emit(const char *template, size_t length, json_t *root,
   return mustach_wrap_emit(template, length, &mustach_jansson_wrap_itf, &e,
                            flags, emitcb, closure);
 }
+
+#pragma clang diagnostic pop

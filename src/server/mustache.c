@@ -7,10 +7,10 @@
 #include "../deps/mustach/mustach-jansson.h"
 #include "api.h"
 
-static ServerContext *ctx = NULL;
+static ServerContext *serverCtx = NULL;
 
-void initMustache(ServerContext *serverCtx) {
-    ctx = serverCtx;
+void initMustache(ServerContext *_serverCtx) {
+    serverCtx = _serverCtx;
 }
 
 char* generateMustacheContent(Arena *arena, const ContentNode *cn, int indent) {
@@ -66,6 +66,7 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
                                const char *url, const char *version,
                                void *con_cls, Arena *arena, ServerContext *ctx,
                                PageNode *page, LayoutNode *layout) {
+  (void)api;                                
   StringBuilder *sb = StringBuilder_new(arena);
 
   // Create the base HTML structure

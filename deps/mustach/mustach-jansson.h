@@ -6,6 +6,9 @@
  SPDX-License-Identifier: ISC
 */
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
+
 #ifndef _mustach_jansson_h_included_
 #define _mustach_jansson_h_included_
 
@@ -107,3 +110,5 @@ extern int mustach_jansson_emit(const char *template, size_t length,
                                 mustach_emit_cb_t *emitcb, void *closure);
 
 #endif
+
+#pragma clang diagnostic pop

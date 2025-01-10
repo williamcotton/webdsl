@@ -1,3 +1,11 @@
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wpadded"
+#pragma clang diagnostic ignored "-Wcomma"
+#pragma clang diagnostic ignored "-Wimplicit-fallthrough"
+#pragma clang diagnostic ignored "-Wunused-macros"
+#pragma clang diagnostic ignored "-Wshadow"
+#pragma clang diagnostic ignored "-Wunused-parameter"
+
 /*
  Author: José Bollo <jobol@nonadev.net>
 
@@ -555,3 +563,5 @@ int mustach(const char *template, const struct mustach_itf *itf, void *closure,
   return mustach_mem(template, 0, itf, closure, Mustach_With_AllExtensions,
                      result, size);
 }
+
+#pragma clang diagnostic pop

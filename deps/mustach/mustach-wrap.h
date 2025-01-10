@@ -1,3 +1,5 @@
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdocumentation-unknown-command"
 /*
  Author: José Bollo <jobol@nonadev.net>
 
