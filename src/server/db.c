@@ -334,12 +334,6 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     (void)requestContext;
     (void)serverCtx;
 
-    // Check for existing error
-    json_t *error = json_object_get(input, "error");
-    if (error) {
-        return json_deep_copy(input);
-    }
-
     const char *sql;
     if (step->is_dynamic) {
         sql = json_string_value(json_object_get(input, "sql"));

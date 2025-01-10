@@ -47,6 +47,13 @@ static json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t
     if (!step || !step->execute) {
         return NULL;
     }
+
+    // Check for existing error here instead of in each executor
+    json_t *error = json_object_get(input, "error");
+    if (error) {
+        return json_deep_copy(input);
+    }
+
     return step->execute(step, input, requestContext, arena, ctx);
 }
 

@@ -154,12 +154,6 @@ json_t* executeJqStep(PipelineStepNode *step, json_t *input, json_t *requestCont
     (void)requestContext;
     (void)arena;
     
-    // Check for existing error
-    json_t *error = json_object_get(input, "error");
-    if (error) {
-        return json_deep_copy(input);
-    }
-
     // Get code from named transform if specified
     const char* code = step->code;
     if (step->name) {
