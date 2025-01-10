@@ -5,80 +5,84 @@ website {
     port 3123
     database "postgresql://localhost/express-test"
 
-    layouts {
-        "main" {
-            content {
-                h1 "Site Header"
-                p "Welcome to our website"
-                "content"
-                p "Footer text"
-            }
-        }
-        "blog" {
-            html {
-                <header>
-                    <h1>Blog Layout</h1>
-                    <nav>
-                        <a href="/">Home</a> |
-                        <a href="/blog">Blog</a>
-                    </nav>
-                </header>
-                <!-- content -->
-                <footer>
-                    <p>Blog footer - Copyright 2024</p>
-                </footer>
-            }
+    layout {
+        name "main"
+        content {
+            h1 "Site Header"
+            p "Welcome to our website"
+            "content"
+            p "Footer text"
         }
     }
 
-    pages {
-        page "home" {
-            route "/"
-            layout "main"
-            content {
-                h1 "Welcome!"
-                p {
-                    link "/about" "Learn more about our site"
-                }
-                p "This is a regular paragraph."
-            }
+    layout {
+        name "blog"
+        html {
+            <header>
+                <h1>Blog Layout</h1>
+                <nav>
+                    <a href="/">Home</a> |
+                    <a href="/blog">Blog</a>
+                </nav>
+            </header>
+            <!-- content -->
+            <footer>
+                <p>Blog footer - Copyright 2024</p>
+            </footer>
         }
-        page "blog" {
-            route "/blog"
-            layout "blog"
+    }
+
+    page {
+        name "home"
+        route "/"
+        layout "main"
+        content {
+            h1 "Welcome!"
+            p {
+                link "/about" "Learn more about our site"
+            }
+            p "This is a regular paragraph."
+        }
+    }
+
+    page {
+        name "blog"
+        route "/blog"
+        layout "blog"
+        html {
+            <article>
+                <h1>Latest Posts</h1>
+                <p>Check out our latest blog posts!</p>
+                <div class="post">
+                    <h2>First Post</h2>
+                    <p>This is our first blog post using raw HTML.</p>
+                </div>
+            </article>
+        }
+    }
+
+    page {
+        name "employeeForm"
+        route "/employee/new"
+        layout "main"
+        content {
+            h1 "Add New Employee"
             html {
-                <article>
-                    <h1>Latest Posts</h1>
-                    <p>Check out our latest blog posts!</p>
-                    <div class="post">
-                        <h2>First Post</h2>
-                        <p>This is our first blog post using raw HTML.</p>
+                <form action="/api/v1/employees" method="POST">
+                    <div class="form-group">
+                        <label for="name">Name:</label>
+                        <input type="text" id="name" name="name" required>
                     </div>
-                </article>
-            }
-        }
-        page "employeeForm" {
-            route "/employee/new"
-            layout "main"
-            content {
-                h1 "Add New Employee"
-                html {
-                    <form action="/api/v1/employees" method="POST">
-                        <div class="form-group">
-                            <label for="name">Name:</label>
-                            <input type="text" id="name" name="name" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="email">Email:</label>
-                            <input type="email" id="email" name="email" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="team_id">Team ID:</label>
-                            <input type="number" id="team_id" name="team_id">
-                        </div>
-                        <button type="submit">Add Employee</button>
-                    </form>
-                }
+                    <div class="form-group">
+                        <label for="email">Email:</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="team_id">Team ID:</label>
+                        <input type="number" id="team_id" name="team_id">
+                    </div>
+                    <button type="submit">Add Employee</button>
+                </form>
             }
         }
     }
@@ -329,5 +333,4 @@ website {
             }
         }
     }
-
 }

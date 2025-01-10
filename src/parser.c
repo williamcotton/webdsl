@@ -7,13 +7,10 @@
 // Forward declarations
 static void advanceParser(Parser *parser);
 static void consume(Parser *parser, TokenType type, const char *errorMsg);
-static PageNode *parsePages(Parser *parser);
 static PageNode *parsePage(Parser *parser);
 static ContentNode *parseContent(Parser *parser);
-static StyleBlockNode *parseStyles(Parser *parser);
 static StyleBlockNode *parseStyleBlock(Parser *parser);
 static StylePropNode *parseStyleProps(Parser *parser);
-static LayoutNode *parseLayouts(Parser *parser);
 static LayoutNode *parseLayout(Parser *parser);
 static char *copyString(Parser *parser, const char *source);
 static bool parsePort(const char* str, int* result);
@@ -62,16 +59,19 @@ static LayoutNode *parseLayout(Parser *parser) {
     LayoutNode *layout = arenaAlloc(parser->arena, sizeof(LayoutNode));
     memset(layout, 0, sizeof(LayoutNode));
 
-    consume(parser, TOKEN_STRING, "Expected string for layout identifier.");
-    layout->identifier = copyString(parser, parser->previous.lexeme);
-
-    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after layout identifier.");
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'layout'.");
 
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                layout->identifier = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             case TOKEN_HTML: {
                 advanceParser(parser);  // consume HTML token
                 
@@ -114,40 +114,23 @@ static LayoutNode *parseLayout(Parser *parser) {
     return layout;
 }
 
-static LayoutNode *parseLayouts(Parser *parser) {
-    LayoutNode *head = NULL;
-    LayoutNode *tail = NULL;
-
-    while (parser->current.type == TOKEN_STRING && !parser->hadError) {
-        LayoutNode *layout = parseLayout(parser);
-        if (!head) {
-            head = layout;
-            tail = layout;
-        } else {
-            tail->next = layout;
-            tail = layout;
-        }
-    }
-
-    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of layouts block.");
-    return head;
-}
-
 static PageNode *parsePage(Parser *parser) {
     PageNode *page = arenaAlloc(parser->arena, sizeof(PageNode));
     memset(page, 0, sizeof(PageNode));
     
-    advanceParser(parser); // consume 'page'
-    consume(parser, TOKEN_STRING, "Expected string for page identifier.");
-    page->identifier = copyString(parser, parser->previous.lexeme);
-
-    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after page identifier.");
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'page'.");
 
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                page->identifier = copyString(parser, parser->previous.lexeme);
+                break;
+            }
             case TOKEN_ROUTE: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'route'.");
@@ -200,25 +183,6 @@ static PageNode *parsePage(Parser *parser) {
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after page block.");
     return page;
-}
-
-static PageNode *parsePages(Parser *parser) {
-    PageNode *head = NULL;
-    PageNode *tail = NULL;
-
-    while (parser->current.type == TOKEN_PAGE && !parser->hadError) {
-        PageNode *page = parsePage(parser);
-        if (!head) {
-            head = page;
-            tail = page;
-        } else {
-            tail->next = page;
-            tail = page;
-        }
-    }
-
-    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of pages block.");
-    return head;
 }
 
 static ContentNode *parseContent(Parser *parser) {
@@ -385,73 +349,6 @@ static StylePropNode *parseStyleProps(Parser *parser) {
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of style block.");
-    return head;
-}
-
-static StyleBlockNode *parseStyles(Parser *parser) {
-    StyleBlockNode *head = NULL;
-    StyleBlockNode *tail = NULL;
-
-    while (!parser->hadError) {
-        if (parser->current.type == TOKEN_CLOSE_BRACE) {
-            advanceParser(parser);  // Consume the closing brace
-            break;
-        } else if (parser->current.type == TOKEN_CSS || parser->current.type == TOKEN_RAW_BLOCK) {
-            StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
-            memset(block, 0, sizeof(StyleBlockNode));
-            
-            // Create a single property node to hold the raw CSS
-            StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
-            memset(prop, 0, sizeof(StylePropNode));
-            prop->property = "raw_css";
-            
-            if (parser->current.type == TOKEN_CSS) {
-                advanceParser(parser);  // consume 'css'
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'css'");
-            }
-            
-            prop->value = copyString(parser, parser->current.lexeme);
-            block->propHead = prop;
-            
-            advanceParser(parser);  // consume the CSS content
-            
-            if (!head) {
-                head = block;
-                tail = block;
-            } else {
-                tail->next = block;
-                tail = block;
-            }
-        } else if (parser->current.type == TOKEN_STRING) {
-            StyleBlockNode *block = parseStyleBlock(parser);
-            if (block) {
-                if (!head) {
-                    head = block;
-                    tail = block;
-                } else {
-                    tail->next = block;
-                    tail = block;
-                }
-            }
-        } else if (parser->current.type == TOKEN_EOF) {
-            char buffer[256];
-            snprintf(buffer, sizeof(buffer), 
-                    "Unexpected end of file in styles block at line %d\n",
-                    parser->current.line);
-            fputs(buffer, stderr);
-            parser->hadError = 1;
-            break;
-        } else {
-            char buffer[256];
-            snprintf(buffer, sizeof(buffer), 
-                    "Expected style selector or '}' at line %d\n",
-                    parser->current.line);
-            fputs(buffer, stderr);
-            parser->hadError = 1;
-            break;
-        }
-    }
-
     return head;
 }
 
@@ -951,25 +848,97 @@ WebsiteNode *parseProgram(Parser *parser) {
                 website->version = copyString(parser, parser->previous.lexeme);
                 break;
             }
-            case TOKEN_PAGES: {
+            case TOKEN_PAGE: {
                 advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'pages'.");
-                PageNode *pagesHead = parsePages(parser);
-                website->pageHead = pagesHead;
+                PageNode *page = parsePage(parser);
+                if (!website->pageHead) {
+                    website->pageHead = page;
+                } else {
+                    // Add to end of list
+                    PageNode *current = website->pageHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = page;
+                }
+                break;
+            }
+            case TOKEN_LAYOUT: {
+                advanceParser(parser);
+                LayoutNode *layout = parseLayout(parser);
+                if (!website->layoutHead) {
+                    website->layoutHead = layout;
+                } else {
+                    // Add to end of list
+                    LayoutNode *current = website->layoutHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = layout;
+                }
                 break;
             }
             case TOKEN_STYLES: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'styles'.");
-                StyleBlockNode *styleHead = parseStyles(parser);
-                website->styleHead = styleHead;
-                break;
-            }
-            case TOKEN_LAYOUTS: {
-                advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'layouts'.");
-                LayoutNode *layoutHead = parseLayouts(parser);
-                website->layoutHead = layoutHead;
+                
+                while (parser->current.type != TOKEN_CLOSE_BRACE && 
+                       parser->current.type != TOKEN_EOF && 
+                       !parser->hadError) {
+                    
+                    if (parser->current.type == TOKEN_CSS || parser->current.type == TOKEN_RAW_BLOCK) {
+                        StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
+                        memset(block, 0, sizeof(StyleBlockNode));
+                        
+                        // Create a single property node to hold the raw CSS
+                        StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
+                        memset(prop, 0, sizeof(StylePropNode));
+                        prop->property = "raw_css";
+                        
+                        if (parser->current.type == TOKEN_CSS) {
+                            advanceParser(parser);  // consume 'css'
+                            consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'css'");
+                        }
+                        
+                        prop->value = copyString(parser, parser->current.lexeme);
+                        block->propHead = prop;
+                        
+                        advanceParser(parser);  // consume the CSS content
+                        
+                        if (!website->styleHead) {
+                            website->styleHead = block;
+                        } else {
+                            StyleBlockNode *current = website->styleHead;
+                            while (current->next) {
+                                current = current->next;
+                            }
+                            current->next = block;
+                        }
+                    } else if (parser->current.type == TOKEN_STRING) {
+                        StyleBlockNode *block = parseStyleBlock(parser);
+                        if (block) {
+                            if (!website->styleHead) {
+                                website->styleHead = block;
+                            } else {
+                                StyleBlockNode *current = website->styleHead;
+                                while (current->next) {
+                                    current = current->next;
+                                }
+                                current->next = block;
+                            }
+                        }
+                    } else {
+                        char buffer[256];
+                        snprintf(buffer, sizeof(buffer),
+                                "Expected style selector or CSS block at line %d\n",
+                                parser->current.line);
+                        fputs(buffer, stderr);
+                        parser->hadError = 1;
+                        break;
+                    }
+                }
+                
+                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after styles block");
                 break;
             }
             case TOKEN_PORT: {
