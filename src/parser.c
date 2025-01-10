@@ -91,6 +91,26 @@ static LayoutNode *parseLayout(Parser *parser) {
                 }
                 break;
             }
+            // same as html
+            case TOKEN_MUSTACHE: {
+                advanceParser(parser);
+                 
+                 if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(layout->bodyContent, 0, sizeof(ContentNode));
+                    layout->bodyContent->type = "raw_mustache";
+                    layout->bodyContent->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected mustache block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
@@ -156,6 +176,25 @@ static PageNode *parsePage(Parser *parser) {
                     char buffer[256];
                     snprintf(buffer, sizeof(buffer),
                             "Expected HTML block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                break;
+            }
+            case TOKEN_MUSTACHE: {
+                advanceParser(parser);
+
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(page->contentHead, 0, sizeof(ContentNode));
+                    page->contentHead->type = "raw_mustache";
+                    page->contentHead->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected mustache block at line %d\n",
                             parser->current.line);
                     fputs(buffer, stderr);
                     parser->hadError = 1;

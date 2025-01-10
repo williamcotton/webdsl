@@ -7,11 +7,13 @@ website {
 
     layout {
         name "main"
-        content {
-            h1 "Site Header"
-            p "Welcome to our website"
-            "content"
-            p "Footer text"
+        html {
+            <div>
+                <h1>Site Header</h1>
+                <p>Welcome to our website</p>
+                <!-- content -->
+                <p>Footer text</p>
+            </div>
         }
     }
 
@@ -36,12 +38,12 @@ website {
         name "home"
         route "/"
         layout "main"
-        content {
-            h1 "Welcome!"
-            p {
-                link "/blog" "Read our blog"
-            }
-            p "This is a regular paragraph."
+        html {
+            <h1>Welcome!</h1>
+            <p>
+                <a href="/blog">Read our blog</a>
+            </p>
+            <p>This is a regular paragraph.</p>
         }
     }
 
@@ -57,6 +59,18 @@ website {
                     <h2>First Post</h2>
                     <p>This is our first blog post using raw HTML.</p>
                 </div>
+            </article>
+        }
+    }
+
+    page {
+        name "mustache-test"
+        route "/mustache-test"
+        layout "blog"
+        mustache {
+            <article>
+                <h1>Mustache Test</h1>
+                <p>This is a test of the mustache template engine.</p>
             </article>
         }
     }
@@ -292,23 +306,17 @@ website {
     script {
         name "employeesScript"
         lua {
-            if not querybuilder then
-                error("querybuilder module not loaded")
-            end
             local qb = querybuilder.new()
-            if not qb then
-                error("failed to create query builder")
-            end
-
+            
             local result = qb
-                :select("id", "team_id", "name", "email")
+                :select("*")
                 :from("employees")
                 :where_if(query.team_id, "team_id = ?", query.team_id)
-                :order_by("id")
                 :limit(query.limit or 20)
                 :offset(query.offset or 0)
                 :with_metadata()
                 :build()
+                
             return result
         }
     }

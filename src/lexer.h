@@ -49,7 +49,8 @@ typedef enum {
     TOKEN_COMMA,
     TOKEN_FIELDS,
     TOKEN_RANGE,
-    TOKEN_PARAMS
+    TOKEN_PARAMS,
+    TOKEN_MUSTACHE,
 } TokenType;
 
 typedef struct {

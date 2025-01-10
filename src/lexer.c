@@ -154,6 +154,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("script", TOKEN_SCRIPT)
     KW_MATCH("executeTransform", TOKEN_EXECUTE_TRANSFORM)
     KW_MATCH("executeScript", TOKEN_EXECUTE_SCRIPT)
+    KW_MATCH("mustache", TOKEN_MUSTACHE)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -176,7 +177,7 @@ static Token identifierOrKeyword(Lexer *lexer) {
 
     // Special handling for raw block keywords
     if (type == TOKEN_HTML || type == TOKEN_SQL || 
-        type == TOKEN_JQ || type == TOKEN_LUA) {
+        type == TOKEN_JQ || type == TOKEN_LUA || type == TOKEN_MUSTACHE) {
         skipWhitespace(lexer);
         if (peek(lexer) == '{') {
             Token token = makeToken(lexer, type);
@@ -413,7 +414,8 @@ Token getNextToken(Lexer *lexer) {
             if (lexer->previous.type == TOKEN_JQ || 
                 lexer->previous.type == TOKEN_HTML ||
                 lexer->previous.type == TOKEN_SQL ||
-                lexer->previous.type == TOKEN_LUA) {
+                lexer->previous.type == TOKEN_LUA ||
+                lexer->previous.type == TOKEN_MUSTACHE) {
                 // Back up to include the opening brace
                 lexer->current--;
                 return rawBlock(lexer);
