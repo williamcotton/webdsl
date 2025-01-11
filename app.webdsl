@@ -104,30 +104,53 @@ website {
         route "/employees"
         layout "main"
         pipeline {
+            jq {
+                . + {
+                    params: [(.query.limit // 20), (.query.offset // 0)]
+                }
+            }
             sql {
                 SELECT * FROM employees
+                LIMIT $1
+                OFFSET $2
             }
             jq {
                 {
-                    employees: .rows,
-                    team_id: .query.team_id,
-                    query: (.query | to_entries)
+                    employees: (.rows // []),
+                    query: ((.query // {}) | to_entries),
+                    nextPage: ((((.query.offset // 0) | tonumber) + ((.query.limit // 0) | tonumber)) | tostring),
+                    previousPage: ((((.query.offset // 0) | tonumber) - ((.query.limit // 0) | tonumber)) | tostring),
+                    hasEmployees: ((.rows | length) > 0),
+                    hasPreviousPage: (((.query.offset // 0) | tonumber) > 0),
+                    hasNextPage: ((.rows | length) >= ((.query.limit // 0) | tonumber))
                 }
             }
         }
         mustache {
-            <h1>Employees</h1>
-            <p>Team ID: {{team_id}}</p>
+            <h2>Employees</h2>
+            {{#query.length}}
             <ul>
                 {{#query}}
                 <li>{{key}}: {{value}}</li>
                 {{/query}}
             </ul>
+            {{/query.length}}
+            {{#hasEmployees}}
             <ul>
                 {{#employees}}
                 <li>{{name}}</li>
                 {{/employees}}
             </ul>
+            {{#hasPreviousPage}}
+            <a href="/employees?limit=10&offset={{previousPage}}">Previous Page</a>
+            {{/hasPreviousPage}}
+            {{#hasNextPage}}
+            <a href="/employees?limit=10&offset={{nextPage}}">Next Page</a>
+            {{/hasNextPage}}
+            {{/hasEmployees}}
+            {{^hasEmployees}}
+            <p>No employees found.</p>
+            {{/hasEmployees}}
         }
     }
 
