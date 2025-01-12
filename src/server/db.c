@@ -116,7 +116,7 @@ static PGresult* executePreparedStatement(Database *db, const char *sql,
     // Execute prepared statement
     PGresult *result = PQexecPrepared(conn.conn, stmt->name, (int)(value_count & INT_MAX), 
                                      values, NULL, NULL, 0);
-    
+
     releaseConnection(&conn);
     return result;
 }
@@ -200,39 +200,16 @@ void closeDatabase(Database *db) {
     closeConnectionPool(db->pool);
 }
 
-static json_t* resultToJson(PGresult *result) {
+static json_t* resultToJson(PGresult *result, const char *sql) {
     if (!result) return NULL;
     
-    // printf("\n=== SQL Result ===\n");
     int rowCount = PQntuples(result);
     int colCount = PQnfields(result);
-    
-    // // Print column names
-    // printf("Columns: ");
-    // for (int i = 0; i < colCount; i++) {
-    //     printf("%s%s", PQfname(result, i), i < colCount - 1 ? ", " : "\n");
-    // }
-    
-    // // Print first few rows
-    // printf("First 3 rows:\n");
-    // for (int i = 0; i < rowCount && i < 3; i++) {
-    //     printf("Row %d: ", i);
-    //     for (int j = 0; j < colCount; j++) {
-    //         if (PQgetisnull(result, i, j)) {
-    //             printf("NULL%s", j < colCount - 1 ? ", " : "\n");
-    //         } else {
-    //             printf("%s%s", PQgetvalue(result, i, j), j < colCount - 1 ? ", " : "\n");
-    //         }
-    //     }
-    // }
-    // if (rowCount > 3) {
-    //     printf("... and %d more rows\n", rowCount - 3);
-    // }
-    // printf("================\n");
     
     json_t *root = json_object();
     json_t *rows = json_array();
     json_object_set_new(root, "rows", rows);
+    json_object_set_new(root, "query", json_string(sql));
     
     // For each row
     for (int i = 0; i < rowCount; i++) {
@@ -268,7 +245,7 @@ static json_t* executeSqlWithParams(Database *db, const char *sql, const char **
         return NULL;
     }
 
-    json_t *jsonData = resultToJson(result);
+    json_t *jsonData = resultToJson(result, sql);
     freeResult(result);
     return jsonData;
 }
@@ -353,12 +330,15 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
 
     const char **values = NULL;
     size_t value_count = 0;
+    json_t *params = NULL;
     
     if (input) {
         extractJsonParams(input, arena, &values, &value_count);
         if (!values && value_count > 0) {
             return createErrorResponse("Failed to allocate memory for parameters");
         }
+        // Store the params for including in result
+        params = json_object_get(input, "params");
     }
 
     json_t *jsonData = executeAndFormatQuery(arena, sql, values, value_count);
@@ -366,10 +346,30 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
         return createErrorResponse("Failed to execute SQL query");
     }
 
-    // Merge input properties into jsonData
+    // Create new result object
+    json_t *result;
     if (input) {
-        json_object_update(jsonData, input);
+        result = json_deep_copy(input);
+        // Clear params after execution
+        json_object_set_new(result, "params", json_array());
+    } else {
+        result = json_object();
     }
 
-    return jsonData;
+    // Get or create data array
+    json_t *data = json_object_get(result, "data");
+    if (!data) {
+        data = json_array();
+        json_object_set_new(result, "data", data);
+    }
+
+    // If we had params, include them in the result data
+    if (params && json_array_size(params) > 0) {
+        json_object_set(jsonData, "params", params);
+    }
+
+    // Add new result to data array
+    json_array_append_new(data, jsonData);
+
+    return result;
 }

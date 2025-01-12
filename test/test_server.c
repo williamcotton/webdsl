@@ -204,7 +204,7 @@ static void test_server_pipeline_execution(void) {
     PipelineStepNode *jqStep = arenaAlloc(arena, sizeof(PipelineStepNode));
     memset(jqStep, 0, sizeof(PipelineStepNode));
     jqStep->type = STEP_JQ;
-    jqStep->code = arenaDupString(arena, "{ result: { number: (.rows[0].num | tonumber), string: .rows[0].str, transformed: .transformed } }");
+    jqStep->code = arenaDupString(arena, "{ result: { number: (.data[0].rows[0].num), string: .data[0].rows[0].str, transformed: .transformed } }");
     setupStepExecutor(jqStep);
     
     // Link steps together
@@ -245,9 +245,11 @@ static void test_server_pipeline_execution(void) {
     json_t *result_obj = json_object_get(result, "result");
     TEST_ASSERT_NOT_NULL(result_obj);
 
-    printf("result: %s\n", json_dumps(result_obj, 0));
+    json_t *number = json_object_get(result_obj, "number");
+    TEST_ASSERT_NOT_NULL(number);
+    TEST_ASSERT_TRUE(json_is_string(number));
+    TEST_ASSERT_EQUAL_STRING("1", json_string_value(number));
     
-    TEST_ASSERT_EQUAL(1, json_number_value(json_object_get(result_obj, "number")));
     TEST_ASSERT_EQUAL_STRING("test", json_string_value(json_object_get(result_obj, "string")));
     TEST_ASSERT_TRUE(json_boolean_value(json_object_get(result_obj, "transformed")));
     

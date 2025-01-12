@@ -114,20 +114,29 @@ website {
                 LIMIT $1
                 OFFSET $2
             }
+            sql {
+                SELECT COUNT(*) FROM employees
+            }
             jq {
+                . as $root |
                 {
-                    employees: (.rows // []),
-                    query: ((.query // {}) | to_entries),
-                    nextPage: ((((.query.offset // 0) | tonumber) + ((.query.limit // 0) | tonumber)) | tostring),
-                    previousPage: ((((.query.offset // 0) | tonumber) - ((.query.limit // 0) | tonumber)) | tostring),
-                    hasEmployees: ((.rows | length) > 0),
-                    hasPreviousPage: (((.query.offset // 0) | tonumber) > 0),
-                    hasNextPage: ((.rows | length) >= ((.query.limit // 0) | tonumber))
+                    employees: $root.data[0].rows,
+                    totalCount: $root.data[1].rows[0].count,
+                    query: [
+                        {key: "limit", value: $root.query.limit},
+                        {key: "offset", value: $root.query.offset}
+                    ],
+                    nextPage: ((($root.query.offset // "0" | tonumber) + ($root.query.limit // "10" | tonumber)) | tostring),
+                    previousPage: (([0, (($root.query.offset // "0" | tonumber) - ($root.query.limit // "10" | tonumber))] | max) | tostring),
+                    hasEmployees: ($root.data[0].rows | length > 0),
+                    hasPreviousPage: ($root.query.offset // "0" | tonumber > 0),
+                    hasNextPage: ($root.data[0].rows | length >= ($root.query.limit // "10" | tonumber))
                 }
             }
         }
         mustache {
             <h2>Employees</h2>
+            <p>Total Employees: {{totalCount}}</p>
             {{#query.length}}
             <ul>
                 {{#query}}
@@ -205,7 +214,7 @@ website {
             executeQuery "teams"
             jq {
                 {
-                    data: (.rows | map({id: .id, name: .name})),
+                    data: (.data[0].rows | map({id: .id, name: .name})),
                 }
             }
         }
@@ -243,16 +252,16 @@ website {
             
             jq {
                 {
-                    data: (.rows | map(select(.type == "data")) | map({
+                    data: (.data[0].rows | map(select(.type == "data")) | map({
                         name: .name,
                         email: .email,
                         team_id: .team_id
                     })),
                     metadata: {
-                        total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
-                        offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
-                        limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
-                        has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+                        total: (.data[0].rows | map(select(.type == "metadata")) | .[0].total_count),
+                        offset: (.data[0].rows | map(select(.type == "metadata")) | .[0].offset),
+                        limit: (.data[0].rows | map(select(.type == "metadata")) | .[0].limit),
+                        has_more: (.data[0].rows | map(select(.type == "metadata")) | .[0].has_more)
                     },
                     request: .
                 }
@@ -301,10 +310,10 @@ website {
                 {
                     success: true,
                     employee: {
-                        id: .rows[0].id,
-                        name: .rows[0].name,
-                        email: .rows[0].email,
-                        team_id: .rows[0].team_id
+                        id: .data[0].rows[0].id,
+                        name: .data[0].rows[0].name,
+                        email: .data[0].rows[0].email,
+                        team_id: .data[0].rows[0].team_id
                     },
                     request: .
                 }
@@ -359,7 +368,7 @@ website {
         name "formatTeam"
         jq {
             {
-                data: (.rows | map({id: .id, name: .name}))
+                data: (.data[0].rows | map({id: .id, name: .name}))
             }
         }
     }
@@ -407,16 +416,16 @@ website {
         name "employeesTransform"
         jq {
             {
-                data: (.rows | map(select(.type == "data")) | map({
+                data: (.data[0].rows | map(select(.type == "data")) | map({
                     name: .name,
                     email: .email,
                     team_id: .team_id
                 })),
                 metadata: {
-                    total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
-                    offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
-                    limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
-                    has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+                    total: (.data[0].rows | map(select(.type == "metadata")) | .[0].total_count),
+                    offset: (.data[0].rows | map(select(.type == "metadata")) | .[0].offset),
+                    limit: (.data[0].rows | map(select(.type == "metadata")) | .[0].limit),
+                    has_more: (.data[0].rows | map(select(.type == "metadata")) | .[0].has_more)
                 },
                 request: .
             }
