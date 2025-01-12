@@ -1070,6 +1070,8 @@ WebsiteNode *parseProgram(Parser *parser) {
 
     while (parser->current.type != TOKEN_CLOSE_BRACE &&
            parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"    
         switch (parser->current.type) {
             case TOKEN_NAME: {
                 advanceParser(parser);
@@ -1133,6 +1135,7 @@ WebsiteNode *parseProgram(Parser *parser) {
                 parseWebsiteNode(parser, website);
                 break;
         }
+        #pragma clang diagnostic pop
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of website block.");

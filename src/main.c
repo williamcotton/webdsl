@@ -14,6 +14,18 @@
 #include "website.h"
 
 #define MAX_PATH_LENGTH 4096
+#define MAX_INCLUDES 100  // Maximum number of files to track
+
+typedef struct {
+    char filepath[MAX_PATH_LENGTH];
+    time_t last_mod_time;
+} FileModInfo;
+
+typedef struct {
+    FileModInfo files[MAX_INCLUDES];
+    int count;
+    uint64_t : 32;  // 3 bytes of padding (24 bits)
+} ModificationTracker;
 
 static volatile int keepRunning = 1;
 
@@ -28,6 +40,41 @@ static time_t getFileModTime(const char* path) {
         return attr.st_mtime;
     }
     return 0;
+}
+
+static void initModTracker(ModificationTracker* tracker, const char* main_file) {
+    tracker->count = 1;
+    strncpy(tracker->files[0].filepath, main_file, MAX_PATH_LENGTH - 1);
+    tracker->files[0].filepath[MAX_PATH_LENGTH - 1] = '\0';
+    tracker->files[0].last_mod_time = 0;  // Initialize to 0 to force first load
+}
+
+static void updateModTrackerFromWebsite(ModificationTracker* tracker, WebsiteNode* website) {
+    // Start at index 1 since main file is at index 0
+    tracker->count = 1;
+    
+    // Add all included files to the tracker
+    IncludeNode* current = website->includeHead;
+    while (current != NULL && tracker->count < MAX_INCLUDES) {
+        strncpy(tracker->files[tracker->count].filepath, current->filepath, MAX_PATH_LENGTH - 1);
+        tracker->files[tracker->count].filepath[MAX_PATH_LENGTH - 1] = '\0';
+        tracker->files[tracker->count].last_mod_time = getFileModTime(current->filepath);
+        tracker->count++;
+        current = current->next;
+    }
+}
+
+static bool checkModifications(ModificationTracker* tracker) {
+    bool modified = false;
+    for (int i = 0; i < tracker->count; i++) {
+        time_t current_mod = getFileModTime(tracker->files[i].filepath);
+        if (current_mod > tracker->files[i].last_mod_time) {
+            printf("\nFile modified: %s\n", tracker->files[i].filepath);
+            tracker->files[i].last_mod_time = current_mod;
+            modified = true;
+        }
+    }
+    return modified;
 }
 
 static void printUsage(const char* program) {
@@ -79,6 +126,7 @@ int main(int argc, char* argv[]) {
 
     Parser parser = {0};  // Zero initialize all fields
     WebsiteNode* website = NULL;
+    ModificationTracker mod_tracker = {0};
 
     // If JSON output mode, just parse and output
     if (json_output) {
@@ -101,16 +149,16 @@ int main(int argc, char* argv[]) {
     // Set up signal handler for clean shutdown
     signal(SIGINT, intHandler);
     
-    time_t lastMod = 0;
+    // Initialize the modification tracker with the main file
+    initModTracker(&mod_tracker, webdsl_path);
 
     while (keepRunning) {
-        time_t currentMod = getFileModTime(webdsl_path);
-        
-        if (currentMod > lastMod) {
+        if (checkModifications(&mod_tracker)) {
             printf("\nReloading website configuration...\n");
             website = reloadWebsite(&parser, website, webdsl_path);
             if (website != NULL) {
-                lastMod = currentMod;
+                // Update tracker with any new includes from the website
+                updateModTrackerFromWebsite(&mod_tracker, website);
             }
         }
         

@@ -1,0 +1,195 @@
+layout {
+    name "main"
+    html {
+        <div>
+            <h1>Site Header</h1>
+            <p>Welcome to our website</p>
+            <!-- content -->
+            <p>Footer text</p>
+        </div>
+    }
+}
+
+layout {
+    name "blog"
+    html {
+        <header>
+            <h1>Blog Layout</h1>
+            <nav>
+                <a href="/">Home</a> |
+                <a href="/blog">Blog</a>
+            </nav>
+        </header>
+        <!-- content -->
+        <footer>
+            <p>Blog footer - Copyright 2024</p>
+        </footer>
+    }
+}
+
+page {
+    name "home"
+    route "/"
+    layout "main"
+    html {
+        <h1>Welcome!</h1>
+        <p>
+            <a href="/blog">Read our blog</a>
+        </p>
+        <p>This is a regular paragraph.</p>
+    }
+}
+
+page {
+    name "blog"
+    route "/blog"
+    layout "blog"
+    html {
+        <article>
+            <h1>Latest Posts</h1>
+            <p>Check out our latest blog posts!</p>
+            <div class="post">
+                <h2>First Post</h2>
+                <p>This is our first blog post using raw HTML.</p>
+            </div>
+        </article>
+    }
+}
+
+page {
+    name "mustache-test"
+    route "/mustache-test"
+    layout "blog"
+    pipeline {
+        jq {
+            {
+                title: "My Title",
+                message: "My Message",
+                items: [
+                    { name: "Wired up Item 1" },
+                    { name: "Wired up Item 2" },
+                    { name: "Wired up Item 3" }
+                ],
+                url: .url,
+                version: .version,
+                method: .method
+            }
+        }
+    }
+    mustache {
+        <h1>{{title}}</h1>
+        <p>{{message}}</p>
+        <p>URL: {{url}}</p>
+        <p>Version: {{version}}</p>
+        <p>Method: {{method}}</p>
+        <ul>
+            {{#items}}
+            <li>{{name}}</li>
+            {{/items}}
+        </ul>
+    }
+}
+
+
+
+page {
+    name "employeesPage"
+    route "/employees"
+    layout "main"
+    pipeline {
+        jq {
+            . + {
+                params: [(.query.limit // 20), (.query.offset // 0)]
+            }
+        }
+        sql {
+            SELECT * FROM employees
+            LIMIT $1
+            OFFSET $2
+        }
+        sql {
+            SELECT COUNT(*) FROM employees
+        }
+        jq {
+            . as $root |
+            {
+                employees: $root.data[0].rows,
+                totalCount: $root.data[1].rows[0].count,
+                query: [
+                    {key: "limit", value: $root.query.limit},
+                    {key: "offset", value: $root.query.offset}
+                ],
+                nextPage: ((($root.query.offset // "0" | tonumber) + ($root.query.limit // "10" | tonumber)) | tostring),
+                previousPage: (([0, (($root.query.offset // "0" | tonumber) - ($root.query.limit // "10" | tonumber))] | max) | tostring),
+                hasEmployees: ($root.data[0].rows | length > 0),
+                hasPreviousPage: ($root.query.offset // "0" | tonumber > 0),
+                hasNextPage: ($root.data[0].rows | length >= ($root.query.limit // "10" | tonumber))
+            }
+        }
+    }
+    mustache {
+        <h2>Employees</h2>
+        <p>Total Employees: {{totalCount}}</p>
+        {{#query.length}}
+        <ul>
+            {{#query}}
+            <li>{{key}}: {{value}}</li>
+            {{/query}}
+        </ul>
+        {{/query.length}}
+        {{#hasEmployees}}
+        <ul>
+            {{#employees}}
+            <li>{{name}}</li>
+            {{/employees}}
+        </ul>
+        {{#hasPreviousPage}}
+        <a href="/employees?limit=10&offset={{previousPage}}">Previous Page</a>
+        {{/hasPreviousPage}}
+        {{#hasNextPage}}
+        <a href="/employees?limit=10&offset={{nextPage}}">Next Page</a>
+        {{/hasNextPage}}
+        {{/hasEmployees}}
+        {{^hasEmployees}}
+        <p>No employees found.</p>
+        {{/hasEmployees}}
+    }
+}
+
+page {
+    name "employeeForm"
+    route "/employee/new"
+    layout "main"
+    content {
+        h1 "Add New Employee"
+        html {
+            <form action="/api/v1/employees" method="POST">
+                <div class="form-group">
+                    <label for="name">Name:</label>
+                    <input type="text" id="name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label for="email">Email:</label>
+                    <input type="email" id="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label for="team_id">Team ID:</label>
+                    <input type="number" id="team_id" name="team_id">
+                </div>
+                <button type="submit">Add Employee</button>
+            </form>
+        }
+    }
+}
+
+styles {
+    css {
+        body {
+            background: #ffffff;
+            color: #333;
+        }
+        h1 {
+            color: #ff6600;
+        }
+    }
+}

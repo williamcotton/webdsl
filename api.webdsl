@@ -1,0 +1,231 @@
+script {
+    name "teamParamsScript"
+    lua {
+        return {
+            params = {query.id}
+        }
+    }
+}
+
+query {
+    name "getTeam"
+    sql {
+        SELECT * FROM teams
+        WHERE id = $1
+    }
+}
+
+transform {
+    name "formatTeam"
+    jq {
+        {
+            data: (.data[0].rows | map({id: .id, name: .name})),
+            result: "success"
+        }
+    }
+}
+
+api {
+    route "/api/v1/team"
+    method "GET"
+    pipeline {
+        executeScript "teamParamsScript"
+        executeQuery "getTeam"
+        executeTransform "formatTeam"
+    }
+}
+
+api {
+    route "/api/v1/teams"
+    method "GET"
+    pipeline {
+        jq {
+            {
+                error: "test",
+                statusCode: 401
+            }
+        }
+        executeQuery "teams"
+        jq {
+            {
+                data: (.data[0].rows | map({id: .id, name: .name})),
+            }
+        }
+    }
+}
+
+query {
+    name "teams"
+    sql {
+        SELECT * FROM teams
+    }
+}
+
+api {
+    route "/api/v1/employees"
+    method "GET"
+    
+    pipeline {
+        lua {
+            local qb = querybuilder.new()
+            
+            local result = qb
+                :select("id", "team_id", "name", "email")
+                :from("employees")
+                :where_if(query.team_id, "team_id = ?", query.team_id)
+                :order_by("id")
+                :limit(query.limit or 20)
+                :offset(query.offset or 0)
+                :with_metadata()
+                :build()
+
+            return result
+        }
+        
+        executeQuery dynamic
+        
+        jq {
+            {
+                data: (.data[0].rows | map(select(.type == "data")) | map({
+                    name: .name,
+                    email: .email,
+                    team_id: .team_id
+                })),
+                metadata: {
+                    total: (.data[0].rows | map(select(.type == "metadata")) | .[0].total_count),
+                    offset: (.data[0].rows | map(select(.type == "metadata")) | .[0].offset),
+                    limit: (.data[0].rows | map(select(.type == "metadata")) | .[0].limit),
+                    has_more: (.data[0].rows | map(select(.type == "metadata")) | .[0].has_more)
+                },
+                request: .
+            }
+        }
+    }
+}
+
+api {
+    route "/api/v1/employees"
+    method "POST"
+    fields {
+        "name" {
+            type "string"
+            required true
+            length 10..100
+        }
+        "email" {
+            type "string"
+            required true
+            format "email"
+        }
+        "team_id" {
+            type "number"
+            required false
+        }
+    }
+    pipeline {
+        lua {
+            local name = body.name
+            local email = body.email
+            local team_id = body.team_id
+            
+            if team_id then
+                team_id = tonumber(team_id)
+            end
+            
+            -- Return params array for SQL step
+            return {
+                params = {name, email, team_id}
+            }
+        }
+        
+        executeQuery "insertEmployee"
+        
+        jq {
+            {
+                success: true,
+                employee: {
+                    id: .data[0].rows[0].id,
+                    name: .data[0].rows[0].name,
+                    email: .data[0].rows[0].email,
+                    team_id: .data[0].rows[0].team_id
+                },
+                request: .
+            }
+        }
+    }
+}
+
+query {
+    name "insertEmployee"
+    sql {
+        INSERT INTO employees (name, email, team_id) 
+        VALUES ($1, $2, $3)
+        RETURNING id, team_id, name, email
+    }
+}
+
+api {
+    route "/api/v1/queryecho"
+    method "GET"
+    pipeline {
+        jq {
+            . + { test0: "test0" }
+        }
+        jq {
+            . + { test1: "test1" }
+        }
+        lua {
+            request.test2 = "test2"
+            return request
+        }
+    }
+}
+
+api {
+    route "/api/v2/employees"
+    method "GET"
+
+    pipeline {
+        executeScript "employeesScript"
+        executeQuery dynamic
+        executeTransform "employeesTransform"
+    }
+}
+
+script {
+    name "employeesScript"
+    lua {
+        local qb = querybuilder.new()
+        
+        local result = qb
+            :select("*")
+            :from("employees")
+            :where_if(query.team_id, "team_id = ?", query.team_id)
+            :limit(query.limit or 20)
+            :offset(query.offset or 0)
+            :with_metadata()
+            :build()
+            
+        return result
+    }
+}
+
+transform {
+    name "employeesTransform"
+    jq {
+        {
+            data: (.data[0].rows | map(select(.type == "data")) | map({
+                name: .name,
+                email: .email,
+                team_id: .team_id
+            })),
+            metadata: {
+                total: (.data[0].rows | map(select(.type == "metadata")) | .[0].total_count),
+                offset: (.data[0].rows | map(select(.type == "metadata")) | .[0].offset),
+                limit: (.data[0].rows | map(select(.type == "metadata")) | .[0].limit),
+                has_more: (.data[0].rows | map(select(.type == "metadata")) | .[0].has_more)
+            },
+            request: .
+        }
+    }
+}
