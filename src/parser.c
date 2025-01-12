@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "include.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -22,6 +23,7 @@ static PipelineStepNode* parsePipelineStep(Parser *parser);
 static PipelineStepNode* parsePipeline(Parser *parser);
 static TransformNode* parseTransform(Parser *parser);
 static ScriptNode* parseScript(Parser *parser);
+static IncludeNode* parseInclude(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -862,10 +864,28 @@ static ScriptNode* parseScript(Parser *parser) {
     return script;
 }
 
+static IncludeNode* parseInclude(Parser *parser) {
+    IncludeNode *include = arenaAlloc(parser->arena, sizeof(IncludeNode));
+    memset(include, 0, sizeof(IncludeNode));
+    
+    // Store the line number for error reporting
+    include->line = parser->current.line;
+    
+    // Expect and consume the filepath string
+    consume(parser, TOKEN_STRING, "Expected file path after 'include'");
+    include->filepath = copyString(parser, parser->previous.lexeme);
+    
+    return include;
+}
+
 WebsiteNode *parseProgram(Parser *parser) {
     WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
     memset(website, 0, sizeof(WebsiteNode));
     advanceParser(parser); // read the first token
+
+    // Initialize include state
+    IncludeState includeState;
+    initIncludeState(&includeState);
 
     consume(parser, TOKEN_WEBSITE, "Expected 'website' at start.");
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'website'.");
@@ -891,6 +911,24 @@ WebsiteNode *parseProgram(Parser *parser) {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'version'.");
                 website->version = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_INCLUDE: {
+                advanceParser(parser);
+                IncludeNode *include = parseInclude(parser);
+                if (!processInclude(parser, website, include->filepath, &includeState)) {
+                    parser->hadError = 1;
+                }
+                if (!website->includeHead) {
+                    website->includeHead = include;
+                } else {
+                    // Add to end of list
+                    IncludeNode *current = website->includeHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = include;
+                }
                 break;
             }
             case TOKEN_PAGE: {
@@ -1082,5 +1120,12 @@ WebsiteNode *parseProgram(Parser *parser) {
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of website block.");
+
+    // Free include state
+    for (int i = 0; i < includeState.num_included; i++) {
+        free(includeState.included_files[i]);
+    }
+    free(includeState.included_files);
+
     return website;
 }

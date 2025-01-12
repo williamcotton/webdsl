@@ -155,6 +155,7 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("executeTransform", TOKEN_EXECUTE_TRANSFORM)
     KW_MATCH("executeScript", TOKEN_EXECUTE_SCRIPT)
     KW_MATCH("mustache", TOKEN_MUSTACHE)
+    KW_MATCH("include", TOKEN_INCLUDE)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -377,6 +378,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_EXECUTE_TRANSFORM: return "EXECUTE_TRANSFORM";
         case TOKEN_EXECUTE_SCRIPT: return "EXECUTE_SCRIPT";
         case TOKEN_MUSTACHE: return "MUSTACHE";
+        case TOKEN_INCLUDE: return "INCLUDE";
     }
     return "INVALID";
 }

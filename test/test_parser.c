@@ -3,6 +3,9 @@
 #include "../src/ast.h"
 #include "test_runners.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 // Function prototype
 int run_parser_tests(void);
@@ -767,6 +770,103 @@ static void test_parse_page_with_pipeline(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_website_with_includes(void) {
+    Parser parser;
+    char temp_dir[] = "/tmp/webdsl_test_XXXXXX";
+    char *dir_path = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir_path);
+    
+    // Create paths for temporary files
+    char header_path[256], footer_path[256], nav_path[256];
+    snprintf(header_path, sizeof(header_path), "%s/test_header.webdsl", dir_path);
+    snprintf(footer_path, sizeof(footer_path), "%s/test_footer.webdsl", dir_path);
+    snprintf(nav_path, sizeof(nav_path), "%s/test_nav.webdsl", dir_path);
+    
+    // Create temporary files
+    FILE *header = fopen(header_path, "w");
+    TEST_ASSERT_NOT_NULL(header);
+    fprintf(header, "page { name \"header\" route \"/header\" content { \"header content\" } }");
+    fclose(header);
+    
+    FILE *footer = fopen(footer_path, "w");
+    TEST_ASSERT_NOT_NULL(footer);
+    fprintf(footer, "page { name \"footer\" route \"/footer\" content { \"footer content\" } }");
+    fclose(footer);
+    
+    FILE *nav = fopen(nav_path, "w");
+    TEST_ASSERT_NOT_NULL(nav);
+    fprintf(nav, "page { name \"nav\" route \"/nav\" content { \"nav content\" } }");
+    fclose(nav);
+    
+    char input[1024];
+    snprintf(input, sizeof(input),
+        "website {\n"
+        "    include \"%s\"\n"
+        "    name \"Test Site\"\n"
+        "    include \"%s\"\n"
+        "    include \"%s\"\n"
+        "}", header_path, footer_path, nav_path);
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_EQUAL_STRING("Test Site", website->name);
+    
+    // Check includes
+    TEST_ASSERT_NOT_NULL(website->includeHead);
+    
+    IncludeNode *include = website->includeHead;
+    TEST_ASSERT_EQUAL_STRING(header_path, include->filepath);
+    
+    include = include->next;
+    TEST_ASSERT_NOT_NULL(include);
+    TEST_ASSERT_EQUAL_STRING(footer_path, include->filepath);
+    
+    include = include->next;
+    TEST_ASSERT_NOT_NULL(include);
+    TEST_ASSERT_EQUAL_STRING(nav_path, include->filepath);
+    
+    TEST_ASSERT_NULL(include->next);
+    
+    // Clean up temporary files
+    remove(header_path);
+    remove(footer_path);
+    remove(nav_path);
+    rmdir(dir_path);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_include_errors(void) {
+    Parser parser;
+    
+    // Test missing filepath
+    const char *input1 = 
+        "website {\n"
+        "    include\n"
+        "}";
+    
+    initParser(&parser, input1);
+    WebsiteNode *website = parseProgram(&parser);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(1, parser.hadError);
+    freeArena(parser.arena);
+    
+    // Test invalid filepath (not a string)
+    const char *input2 = 
+        "website {\n"
+        "    include 123\n"
+        "}";
+    
+    initParser(&parser, input2);
+    website = parseProgram(&parser);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(1, parser.hadError);
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -790,5 +890,7 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_transform_and_script);
     RUN_TEST(test_parse_mustache_content);
     RUN_TEST(test_parse_page_with_pipeline);
+    RUN_TEST(test_parse_website_with_includes);
+    RUN_TEST(test_parse_include_errors);
     return UNITY_END();
 }

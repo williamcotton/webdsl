@@ -32,7 +32,8 @@ typedef enum {
     NODE_FIELD,
     NODE_FIELD_VALIDATION,
     NODE_TRANSFORM,
-    NODE_SCRIPT
+    NODE_SCRIPT,
+    NODE_INCLUDE
 } NodeType;
 
 typedef struct ContentNode {
@@ -172,6 +173,13 @@ typedef struct ScriptNode {
     struct ScriptNode *next;
 } ScriptNode;
 
+typedef struct IncludeNode {
+    char *filepath;
+    int line;
+    uint64_t : 32;
+    struct IncludeNode *next;
+} IncludeNode;
+
 typedef struct WebsiteNode {
     char *name;
     char *author;
@@ -189,6 +197,7 @@ typedef struct WebsiteNode {
     ScriptNode *scriptHead;
     RouteMap *routeMap;
     LayoutMap *layoutMap;
+    IncludeNode *includeHead;
 } WebsiteNode;
 
 #endif // AST_H
