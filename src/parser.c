@@ -889,66 +889,19 @@ static IncludeNode* parseInclude(Parser *parser) {
     return include;
 }
 
-WebsiteNode *parseProgram(Parser *parser) {
-    WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
-    memset(website, 0, sizeof(WebsiteNode));
-    advanceParser(parser); // read the first token
-
-    // Initialize include state
-    IncludeState includeState;
-    initIncludeState(&includeState);
-
-    consume(parser, TOKEN_WEBSITE, "Expected 'website' at start.");
-    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'website'.");
-
-    while (parser->current.type != TOKEN_CLOSE_BRACE &&
-           parser->current.type != TOKEN_EOF && !parser->hadError) {
+static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
+    while (parser->current.type != TOKEN_EOF && 
+           parser->current.type != TOKEN_CLOSE_BRACE && 
+           !parser->hadError) {
         #pragma clang diagnostic push
         #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
-            case TOKEN_NAME: {
-                advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
-                website->name = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_AUTHOR: {
-                advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'author'.");
-                website->author = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_VERSION: {
-                advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'version'.");
-                website->version = copyString(parser, parser->previous.lexeme);
-                break;
-            }
-            case TOKEN_INCLUDE: {
-                advanceParser(parser);
-                IncludeNode *include = parseInclude(parser);
-                if (!processInclude(parser, website, include->filepath, &includeState)) {
-                    parser->hadError = 1;
-                }
-                if (!website->includeHead) {
-                    website->includeHead = include;
-                } else {
-                    // Add to end of list
-                    IncludeNode *current = website->includeHead;
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = include;
-                }
-                break;
-            }
             case TOKEN_PAGE: {
                 advanceParser(parser);
                 PageNode *page = parsePage(parser);
                 if (!website->pageHead) {
                     website->pageHead = page;
                 } else {
-                    // Add to end of list
                     PageNode *current = website->pageHead;
                     while (current->next) {
                         current = current->next;
@@ -963,7 +916,6 @@ WebsiteNode *parseProgram(Parser *parser) {
                 if (!website->layoutHead) {
                     website->layoutHead = layout;
                 } else {
-                    // Add to end of list
                     LayoutNode *current = website->layoutHead;
                     while (current->next) {
                         current = current->next;
@@ -984,20 +936,19 @@ WebsiteNode *parseProgram(Parser *parser) {
                         StyleBlockNode *block = arenaAlloc(parser->arena, sizeof(StyleBlockNode));
                         memset(block, 0, sizeof(StyleBlockNode));
                         
-                        // Create a single property node to hold the raw CSS
                         StylePropNode *prop = arenaAlloc(parser->arena, sizeof(StylePropNode));
                         memset(prop, 0, sizeof(StylePropNode));
                         prop->property = "raw_css";
                         
                         if (parser->current.type == TOKEN_CSS) {
-                            advanceParser(parser);  // consume 'css'
+                            advanceParser(parser);
                             consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'css'");
                         }
                         
                         prop->value = copyString(parser, parser->current.lexeme);
                         block->propHead = prop;
                         
-                        advanceParser(parser);  // consume the CSS content
+                        advanceParser(parser);
                         
                         if (!website->styleHead) {
                             website->styleHead = block;
@@ -1035,6 +986,126 @@ WebsiteNode *parseProgram(Parser *parser) {
                 consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after styles block");
                 break;
             }
+            case TOKEN_API: {
+                advanceParser(parser);
+                ApiEndpoint *endpoint = parseApi(parser);
+                if (!website->apiHead) {
+                    website->apiHead = endpoint;
+                } else {
+                    ApiEndpoint *current = website->apiHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = endpoint;
+                }
+                break;
+            }
+            case TOKEN_QUERY: {
+                advanceParser(parser);
+                QueryNode *query = parseQuery(parser);
+                if (!website->queryHead) {
+                    website->queryHead = query;
+                } else {
+                    QueryNode *current = website->queryHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = query;
+                }
+                break;
+            }
+            case TOKEN_TRANSFORM: {
+                advanceParser(parser);
+                TransformNode *transform = parseTransform(parser);
+                if (!website->transformHead) {
+                    website->transformHead = transform;
+                } else {
+                    TransformNode *current = website->transformHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = transform;
+                }
+                break;
+            }
+            case TOKEN_SCRIPT: {
+                advanceParser(parser);
+                ScriptNode *script = parseScript(parser);
+                if (!website->scriptHead) {
+                    website->scriptHead = script;
+                } else {
+                    ScriptNode *current = website->scriptHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = script;
+                }
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Parse error at line %d: Unexpected token '%s'\n",
+                        parser->current.line, parser->current.lexeme);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+}
+
+WebsiteNode *parseProgram(Parser *parser) {
+    WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));
+    advanceParser(parser); // read the first token
+
+    // Initialize include state
+    IncludeState includeState;
+    initIncludeState(&includeState);
+
+    consume(parser, TOKEN_WEBSITE, "Expected 'website' at start.");
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'website'.");
+
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'.");
+                website->name = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_AUTHOR: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'author'.");
+                website->author = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_VERSION: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'version'.");
+                website->version = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_INCLUDE: {
+                advanceParser(parser);
+                IncludeNode *include = parseInclude(parser);
+                if (!processInclude(parser, website, include->filepath, &includeState)) {
+                    parser->hadError = 1;
+                }
+                if (!website->includeHead) {
+                    website->includeHead = include;
+                } else {
+                    IncludeNode *current = website->includeHead;
+                    while (current->next) {
+                        current = current->next;
+                    }
+                    current->next = include;
+                }
+                break;
+            }
             case TOKEN_PORT: {
                 advanceParser(parser);
                 if (parser->current.type != TOKEN_NUMBER) {
@@ -1051,83 +1122,17 @@ WebsiteNode *parseProgram(Parser *parser) {
                 advanceParser(parser);
                 break;
             }
-            case TOKEN_API: {
-                advanceParser(parser);
-                ApiEndpoint *endpoint = parseApi(parser);
-                if (!website->apiHead) {
-                    website->apiHead = endpoint;
-                } else {
-                    // Add to end of list
-                    ApiEndpoint *current = website->apiHead;
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = endpoint;
-                }
-                break;
-            }
-            case TOKEN_QUERY: {
-                advanceParser(parser);
-                QueryNode *query = parseQuery(parser);
-                if (!website->queryHead) {
-                    website->queryHead = query;
-                } else {
-                    // Add to end of list
-                    QueryNode *current = website->queryHead;
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = query;
-                }
-                break;
-            }
-            case TOKEN_TRANSFORM: {
-                advanceParser(parser);
-                TransformNode *transform = parseTransform(parser);
-                if (!website->transformHead) {
-                    website->transformHead = transform;
-                } else {
-                    // Add to end of list
-                    TransformNode *current = website->transformHead;
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = transform;
-                }
-                break;
-            }
-            case TOKEN_SCRIPT: {
-                advanceParser(parser);
-                ScriptNode *script = parseScript(parser);
-                if (!website->scriptHead) {
-                    website->scriptHead = script;
-                } else {
-                    // Add to end of list
-                    ScriptNode *current = website->scriptHead;
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = script;
-                }
-                break;
-            }
             case TOKEN_DATABASE: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'database'.");
                 website->databaseUrl = copyString(parser, parser->previous.lexeme);
                 break;
             }
-            default: {
-                char buffer[256];
-                snprintf(buffer, sizeof(buffer), 
-                        "Parse error at line %d: Unexpected token '%s'\n",
-                        parser->current.line, parser->current.lexeme);
-                fputs(buffer, stderr);
-                parser->hadError = 1;
+            default:
+                // Handle all other website content
+                parseWebsiteNode(parser, website);
                 break;
-            }
         }
-        #pragma clang diagnostic pop
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of website block.");
@@ -1146,123 +1151,6 @@ WebsiteNode *parseWebsiteContent(Parser *parser) {
     memset(website, 0, sizeof(WebsiteNode));
     
     advanceParser(parser); // read the first token
-
-    while (parser->current.type != TOKEN_EOF && !parser->hadError) {
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wswitch-enum"
-        switch (parser->current.type) {
-            case TOKEN_PAGE: {
-                advanceParser(parser);
-                PageNode *page = parsePage(parser);
-                if (page) {
-                    if (!website->pageHead) {
-                        website->pageHead = page;
-                    } else {
-                        PageNode *current = website->pageHead;
-                        while (current->next) current = current->next;
-                        current->next = page;
-                    }
-                }
-                break;
-            }
-            case TOKEN_LAYOUT: {
-                advanceParser(parser);
-                LayoutNode *layout = parseLayout(parser);
-                if (layout) {
-                    if (!website->layoutHead) {
-                        website->layoutHead = layout;
-                    } else {
-                        LayoutNode *current = website->layoutHead;
-                        while (current->next) current = current->next;
-                        current->next = layout;
-                    }
-                }
-                break;
-            }
-            case TOKEN_STYLES: {
-                advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'styles'");
-                while (parser->current.type != TOKEN_CLOSE_BRACE && 
-                       parser->current.type != TOKEN_EOF && 
-                       !parser->hadError) {
-                    StyleBlockNode *block = parseStyleBlock(parser);
-                    if (block) {
-                        if (!website->styleHead) {
-                            website->styleHead = block;
-                        } else {
-                            StyleBlockNode *current = website->styleHead;
-                            while (current->next) current = current->next;
-                            current->next = block;
-                        }
-                    }
-                }
-                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after styles block");
-                break;
-            }
-            case TOKEN_QUERY: {
-                advanceParser(parser);
-                QueryNode *query = parseQuery(parser);
-                if (query) {
-                    if (!website->queryHead) {
-                        website->queryHead = query;
-                    } else {
-                        QueryNode *current = website->queryHead;
-                        while (current->next) current = current->next;
-                        current->next = query;
-                    }
-                }
-                break;
-            }
-            case TOKEN_TRANSFORM: {
-                advanceParser(parser);
-                TransformNode *transform = parseTransform(parser);
-                if (transform) {
-                    if (!website->transformHead) {
-                        website->transformHead = transform;
-                    } else {
-                        TransformNode *current = website->transformHead;
-                        while (current->next) current = current->next;
-                        current->next = transform;
-                    }
-                }
-                break;
-            }
-            case TOKEN_SCRIPT: {
-                advanceParser(parser);
-                ScriptNode *script = parseScript(parser);
-                if (script) {
-                    if (!website->scriptHead) {
-                        website->scriptHead = script;
-                    } else {
-                        ScriptNode *current = website->scriptHead;
-                        while (current->next) current = current->next;
-                        current->next = script;
-                    }
-                }
-                break;
-            }
-            case TOKEN_API: {
-                advanceParser(parser);
-                ApiEndpoint *api = parseApi(parser);
-                if (api) {
-                    if (!website->apiHead) {
-                        website->apiHead = api;
-                    } else {
-                        ApiEndpoint *current = website->apiHead;
-                        while (current->next) current = current->next;
-                        current->next = api;
-                    }
-                }
-                break;
-            }
-            default: {
-                // Skip any tokens we don't recognize
-                advanceParser(parser);
-                break;
-            }
-        }
-        #pragma clang diagnostic pop
-    }
-
+    parseWebsiteNode(parser, website);
     return website;
 }
