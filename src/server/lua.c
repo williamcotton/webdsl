@@ -3,6 +3,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "../ast.h"
 #include "utils.h"
 #include "server.h"
@@ -10,6 +12,8 @@
 
 #define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
 #define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
+#define INITIAL_REGISTRY_CAPACITY 16
+#define SCRIPTS_DIR "src/server/scripts"
 
 // Add arena wrapper struct
 typedef struct {
@@ -17,16 +21,172 @@ typedef struct {
     size_t total_allocated;
 } LuaArenaWrapper;
 
-typedef struct {
-    unsigned char* bytecode;
-    size_t bytecode_len;
-} LuaBytecode;
-
 typedef struct LuaChunkEntry {
     const char* code;           // Original Lua code for comparison
     LuaBytecode bytecode;
     struct LuaChunkEntry* next;
 } LuaChunkEntry;
+
+static LuaFileRegistry fileRegistry = {0};
+static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
+
+// Modify bytecodeWriter to handle both cases
+static int bytecodeWriter(lua_State *L __attribute__((unused)), 
+                         const void* p, 
+                         size_t sz, 
+                         void* ud) {
+    LuaBytecode* bytecode = (LuaBytecode*)ud;
+    unsigned char* new_code = realloc(bytecode->bytecode, 
+                                    bytecode->bytecode_len + sz);
+    if (!new_code) return 1;
+    
+    memcpy(new_code + bytecode->bytecode_len, p, sz);
+    bytecode->bytecode = new_code;
+    bytecode->bytecode_len += sz;
+    return 0;
+}
+
+// Initialize the file registry
+static bool initFileRegistry(void) {
+    fileRegistry.entries = malloc(INITIAL_REGISTRY_CAPACITY * sizeof(LuaFileEntry));
+    if (!fileRegistry.entries) return false;
+    fileRegistry.capacity = INITIAL_REGISTRY_CAPACITY;
+    fileRegistry.count = 0;
+    return true;
+}
+
+// Get base name from file path and remove extension
+static char* getModuleName(const char* filepath) {
+    const char* filename = strrchr(filepath, '/');
+    if (!filename) {
+        filename = filepath;
+    } else {
+        filename++; // Skip the '/'
+    }
+    
+    char* moduleName = strdup(filename);
+    if (!moduleName) return NULL;
+    
+    // Remove .lua extension if present
+    char* dot = strrchr(moduleName, '.');
+    if (dot) *dot = '\0';
+    
+    return moduleName;
+}
+
+// Load and compile a Lua file
+static bool loadLuaFile(lua_State *L, const char* filepath) {
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        return false;
+    }
+
+    // Check if we already have this file loaded and it's up to date
+    for (size_t i = 0; i < fileRegistry.count; i++) {
+        if (strcmp(fileRegistry.entries[i].filename, filepath) == 0) {
+            if (fileRegistry.entries[i].last_modified >= st.st_mtime) {
+                // File hasn't changed, use cached bytecode
+                if (luaL_loadbuffer(L, 
+                    (const char*)fileRegistry.entries[i].bytecode.bytecode,
+                    fileRegistry.entries[i].bytecode.bytecode_len,
+                    filepath) != 0) {
+                    return false;
+                }
+                return true;
+            }
+            break;
+        }
+    }
+
+    // Load and compile the file
+    if (luaL_loadfile(L, filepath) != 0) {
+        fprintf(stderr, "Failed to load %s: %s\n", filepath, lua_tostring(L, -1));
+        return false;
+    }
+
+    // Create new entry or reuse existing one
+    LuaFileEntry* entry = NULL;
+    for (size_t i = 0; i < fileRegistry.count; i++) {
+        if (strcmp(fileRegistry.entries[i].filename, filepath) == 0) {
+            entry = &fileRegistry.entries[i];
+            free(entry->bytecode.bytecode);
+            break;
+        }
+    }
+
+    if (!entry) {
+        // Need to add new entry
+        if (fileRegistry.count >= fileRegistry.capacity) {
+            size_t new_capacity = fileRegistry.capacity * 2;
+            LuaFileEntry* new_entries = realloc(fileRegistry.entries, 
+                                              new_capacity * sizeof(LuaFileEntry));
+            if (!new_entries) return false;
+            fileRegistry.entries = new_entries;
+            fileRegistry.capacity = new_capacity;
+        }
+        entry = &fileRegistry.entries[fileRegistry.count++];
+        entry->filename = strdup(filepath);
+        if (!entry->filename) return false;
+    }
+
+    entry->bytecode.bytecode = NULL;
+    entry->bytecode.bytecode_len = 0;
+    entry->last_modified = st.st_mtime;
+
+    // Compile to bytecode
+    if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
+        fprintf(stderr, "Failed to compile %s\n", filepath);
+        return false;
+    }
+
+    return true;
+}
+
+// Load all Lua files from scripts directory
+static bool loadAllScripts(lua_State *L) {
+    DIR *dir = opendir(SCRIPTS_DIR);
+    if (!dir) {
+        fprintf(stderr, "Failed to open scripts directory: %s\n", SCRIPTS_DIR);
+        return false;
+    }
+
+    bool success = true;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (entry->d_type == DT_REG) { // Regular file
+            const char *ext = strrchr(entry->d_name, '.');
+            if (ext && strcmp(ext, ".lua") == 0) {
+                char filepath[PATH_MAX];
+                snprintf(filepath, sizeof(filepath), "%s/%s", SCRIPTS_DIR, entry->d_name);
+                
+                if (loadLuaFile(L, filepath)) {
+                    // Execute the chunk and store it in a global with the module name
+                    if (lua_pcall(L, 0, 1, 0) == 0) {
+                        char* moduleName = getModuleName(filepath);
+                        if (moduleName) {
+                            lua_setglobal(L, moduleName);
+                            free(moduleName);
+                        } else {
+                            success = false;
+                            break;
+                        }
+                    } else {
+                        fprintf(stderr, "Failed to execute %s: %s\n", 
+                                filepath, lua_tostring(L, -1));
+                        success = false;
+                        break;
+                    }
+                } else {
+                    success = false;
+                    break;
+                }
+            }
+        }
+    }
+
+    closedir(dir);
+    return success;
+}
 
 // Add custom allocator function
 static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
@@ -81,46 +241,6 @@ static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     }
     return new_ptr;
 }
-
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wpadded"
-static struct {
-    unsigned char* bytecode;
-    size_t bytecode_len;
-    bool is_initialized;
-} QueryBuilder = {0};
-#pragma clang diagnostic pop
-
-// Modify bytecodeWriter to handle both cases
-static int bytecodeWriter(lua_State *L __attribute__((unused)), 
-                         const void* p, 
-                         size_t sz, 
-                         void* ud) {
-    // Check if we're writing querybuilder or pipeline bytecode
-    if (!ud) {
-        // QueryBuilder case
-        unsigned char* new_code = realloc(QueryBuilder.bytecode, 
-                                        QueryBuilder.bytecode_len + sz);
-        if (!new_code) return 1;
-        
-        memcpy(new_code + QueryBuilder.bytecode_len, p, sz);
-        QueryBuilder.bytecode = new_code;
-        QueryBuilder.bytecode_len += sz;
-    } else {
-        // Pipeline bytecode case
-        LuaBytecode* bytecode = (LuaBytecode*)ud;
-        unsigned char* new_code = realloc(bytecode->bytecode, 
-                                        bytecode->bytecode_len + sz);
-        if (!new_code) return 1;
-        
-        memcpy(new_code + bytecode->bytecode_len, p, sz);
-        bytecode->bytecode = new_code;
-        bytecode->bytecode_len += sz;
-    }
-    return 0;
-}
-
-static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
 
 // Add new function to walk AST and compile Lua steps
 static bool compilePipelineSteps(ServerContext *ctx) {
@@ -251,32 +371,24 @@ static bool compilePipelineSteps(ServerContext *ctx) {
     return true;
 }
 
-// Modify initLua to also compile pipeline steps:
+// Modify initLua to use new loading system:
 bool initLua(ServerContext *ctx) {
-    // Keep existing querybuilder initialization
+    if (!initFileRegistry()) {
+        return false;
+    }
+
     lua_State *L = luaL_newstate();
     if (!L) return false;
     
     luaL_openlibs(L);
     
-    // Load and compile querybuilder.lua
-    if (luaL_loadfile(L, "src/server/querybuilder.lua") != 0) {
-        fprintf(stderr, "Failed to load querybuilder.lua: %s\n", lua_tostring(L, -1));
+    // Load all Lua scripts from scripts directory
+    if (!loadAllScripts(L)) {
         lua_close(L);
+        cleanupLua();
         return false;
     }
-    
-    // Dump the compiled bytecode
-    QueryBuilder.bytecode_len = 0;
-    if (lua_dump(L, bytecodeWriter, NULL, 0) != 0) {
-        fprintf(stderr, "Failed to dump querybuilder bytecode\n");
-        free(QueryBuilder.bytecode);
-        QueryBuilder.bytecode = NULL;
-        lua_close(L);
-        return false;
-    }
-    
-    QueryBuilder.is_initialized = true;
+
     lua_close(L);
 
     // Add pipeline step compilation
@@ -288,15 +400,17 @@ bool initLua(ServerContext *ctx) {
     return true;
 }
 
-// Modify cleanupLua to also cleanup chunk table:
+// Modify cleanupLua to cleanup file registry:
 void cleanupLua(void) {
-    // Keep existing querybuilder cleanup
-    if (QueryBuilder.bytecode) {
-        free(QueryBuilder.bytecode);
-        QueryBuilder.bytecode = NULL;
-        QueryBuilder.bytecode_len = 0;
-        QueryBuilder.is_initialized = false;
+    // Cleanup file registry
+    for (size_t i = 0; i < fileRegistry.count; i++) {
+        free(fileRegistry.entries[i].filename);
+        free(fileRegistry.entries[i].bytecode.bytecode);
     }
+    free(fileRegistry.entries);
+    fileRegistry.entries = NULL;
+    fileRegistry.count = 0;
+    fileRegistry.capacity = 0;
 
     // Cleanup chunk table
     for (int i = 0; i < LUA_HASH_TABLE_SIZE; i++) {
@@ -311,37 +425,40 @@ void cleanupLua(void) {
     }
 }
 
-// Modify loadLuaFile to use cached bytecode
-static bool loadLuaFile(lua_State *L, const char *filename) {
-    // For querybuilder.lua, use cached bytecode
-    if (strcmp(filename, "src/server/querybuilder.lua") == 0) {
-        if (!QueryBuilder.is_initialized) {
+// Load cached scripts into a Lua state
+static bool loadCachedScripts(lua_State *L) {
+    for (size_t i = 0; i < fileRegistry.count; i++) {
+        LuaFileEntry* entry = &fileRegistry.entries[i];
+        
+        // Load the bytecode
+        if (luaL_loadbuffer(L, 
+            (const char*)entry->bytecode.bytecode,
+            entry->bytecode.bytecode_len,
+            entry->filename) != 0) {
+            fprintf(stderr, "Failed to load cached script %s\n", entry->filename);
             return false;
         }
         
-        if (luaL_loadbuffer(L, (const char*)QueryBuilder.bytecode, 
-                           QueryBuilder.bytecode_len, "querybuilder") != 0) {
-            return false;
-        }
-        
-        // Execute the loaded chunk to create the querybuilder table
+        // Execute the chunk
         if (lua_pcall(L, 0, 1, 0) != 0) {
+            fprintf(stderr, "Failed to execute cached script %s: %s\n", 
+                    entry->filename, lua_tostring(L, -1));
             return false;
         }
         
-        lua_setglobal(L, "querybuilder");
-        return true;
+        // Set as global with module name
+        char* moduleName = getModuleName(entry->filename);
+        if (moduleName) {
+            lua_setglobal(L, moduleName);
+            free(moduleName);
+        } else {
+            return false;
+        }
     }
-    
-    // For other files, load normally
-    if (luaL_dofile(L, filename) == 0) {
-        lua_setglobal(L, "querybuilder");
-        return true;
-    }
-    return false;
+    return true;
 }
 
-static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder) {
+static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder __attribute__((unused))) {
     // Create and initialize arena wrapper
     LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
     wrapper->arena = arena;
@@ -356,6 +473,12 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
     lua_gc(L, LUA_GCSTOP, 0);
 
     luaL_openlibs(L);
+    
+    // Load all cached scripts into this state
+    if (!loadCachedScripts(L)) {
+        lua_close(L);
+        return NULL;
+    }
     
     // Create tables for request context
     lua_newtable(L);  // Main request context table
@@ -391,14 +514,6 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
         lua_settable(L, -3);
     }
     lua_setglobal(L, "body");
-    
-    // Always load querybuilder for scripts that need it
-    if (loadQueryBuilder) {
-        if (!loadLuaFile(L, "src/server/querybuilder.lua")) {
-            lua_close(L);
-            return NULL;
-        }
-    }
     
     return L;
 }

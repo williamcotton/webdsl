@@ -11,6 +11,27 @@
 #include "../ast.h"
 #include "../arena.h"
 #include "server.h"
+#include <time.h>
+
+// Structure to hold bytecode
+typedef struct {
+    unsigned char* bytecode;
+    size_t bytecode_len;
+} LuaBytecode;
+
+// Structure for a loaded Lua file
+typedef struct {
+    char *filename;           // Full path relative to workspace
+    LuaBytecode bytecode;    // Compiled bytecode
+    time_t last_modified;    // For cache invalidation
+} LuaFileEntry;
+
+// Registry of all loaded Lua files
+typedef struct {
+    LuaFileEntry *entries;
+    size_t count;
+    size_t capacity;
+} LuaFileRegistry;
 
 // Initialize Lua subsystem
 bool initLua(ServerContext *ctx);
