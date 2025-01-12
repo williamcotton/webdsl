@@ -3,10 +3,7 @@
 #include "../src/server/handler.h"
 #include "../src/server/api.h"
 #include "../src/server/routing.h"
-#include "../src/server/jq.h"
-#include "../src/server/lua.h"
 #include "../src/server/db.h"
-#include "../src/parser.h"
 #include "test_runners.h"
 #include <string.h>
 #include <microhttpd.h>

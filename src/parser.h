@@ -16,5 +16,6 @@ typedef struct Parser {
 
 void initParser(Parser *parser, const char *source);
 WebsiteNode *parseProgram(Parser *parser);
+WebsiteNode *parseWebsiteContent(Parser *parser);
 
 #endif // PARSER_H

@@ -5,6 +5,8 @@ website {
     port 3123
     database "postgresql://localhost/express-test"
 
+    include "teams.webdsl"
+
     layout {
         name "main"
         html {
@@ -344,42 +346,6 @@ website {
                 request.test2 = "test2"
                 return request
             }
-        }
-    }
-
-    script {
-        name "teamParamsScript"
-        lua {
-            return {
-                params = {query.id}
-            }
-        }
-    }
-
-    query {
-        name "getTeam"
-        sql {
-            SELECT * FROM teams
-            WHERE id = $1
-        }
-    }
-
-    transform {
-        name "formatTeam"
-        jq {
-            {
-                data: (.data[0].rows | map({id: .id, name: .name}))
-            }
-        }
-    }
-
-    api {
-        route "/api/v1/team"
-        method "GET"
-        pipeline {
-            executeScript "teamParamsScript"
-            executeQuery "getTeam"
-            executeTransform "formatTeam"
         }
     }
 

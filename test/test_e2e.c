@@ -1,7 +1,6 @@
 #include "../test/unity/unity.h"
 #include "../src/server/server.h"
 #include "../src/parser.h"
-#include "../src/file_utils.h"
 #include "../src/website.h"
 #include <stdio.h>
 #include <unistd.h>
@@ -10,8 +9,9 @@
 #include <curl/curl.h>
 #include <jansson.h>
 
-// Function prototype
+// Function prototypes
 int run_e2e_tests(void);
+static void test_includes_functionality(void);
 
 // Test configuration files
 static const char *TEST_CONFIG = 
@@ -341,11 +341,109 @@ static void test_api_features(void) {
     sleep(1);
 }
 
+static const char *TEST_INCLUDE_CONFIG = 
+"query {\n"
+"    name \"getTest\"\n"
+"    sql {\n"
+"        SELECT 1 as id, 'test' as name\n"
+"    }\n"
+"}\n"
+"\n"
+"transform {\n"
+"    name \"formatTest\"\n"
+"    jq {\n"
+"        { data: [{ id: .id, name: .name }], result: \"success\" }\n"
+"    }\n"
+"}\n"
+"\n"
+"api {\n"
+"    route \"/api/v1/test\"\n"
+"    method \"GET\"\n"
+"    pipeline {\n"
+"        executeQuery \"getTest\"\n"
+"        executeTransform \"formatTest\"\n"
+"    }\n"
+"}\n";
+
+void test_includes_functionality(void) {
+    // Create temporary directory for test files
+    char temp_dir[] = "/tmp/webdsl_test_XXXXXX";
+    char *dir_path = mkdtemp(temp_dir);
+    TEST_ASSERT_NOT_NULL(dir_path);
+    
+    // Create paths for config files
+    char teams_path[256], main_path[256];
+    snprintf(teams_path, sizeof(teams_path), "%s/test.webdsl", dir_path);
+    snprintf(main_path, sizeof(main_path), "%s/main.webdsl", dir_path);
+    
+    // Write teams config
+    FILE *teams = fopen(teams_path, "w");
+    TEST_ASSERT_NOT_NULL(teams);
+    fprintf(teams, "%s", TEST_INCLUDE_CONFIG);
+    fclose(teams);
+    
+    // Create main config with relative include path
+    char main_config[1024];
+    snprintf(main_config, sizeof(main_config),
+        "website {\n"
+        "    name \"Include Test Site\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "    include \"%s/test.webdsl\"\n"
+        "    page {\n"
+        "        name \"home\"\n"
+        "        route \"/\"\n"
+        "        content { html \"Welcome\" }\n"
+        "    }\n"
+        "}\n",
+        dir_path);
+    
+    // Write main config
+    FILE *main = fopen(main_path, "w");
+    TEST_ASSERT_NOT_NULL(main);
+    fprintf(main, "%s", main_config);
+    fclose(main);
+    sync();
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, main_path);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL_STRING("Include Test Site", website->name);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Test included API endpoint
+    char *headers = NULL;
+    json_t *response = makeRequest("http://localhost:3456/api/v1/test?id=1", "GET", NULL, &headers);
+    TEST_ASSERT_NOT_NULL(headers);
+    TEST_ASSERT_NOT_NULL(strstr(headers, "200 OK"));
+    TEST_ASSERT_NOT_NULL(strstr(headers, "application/json"));
+    
+    // Verify response structure
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_NOT_NULL(json_object_get(response, "data"));
+    TEST_ASSERT_EQUAL_STRING("success", json_string_value(json_object_get(response, "result")));
+    
+    free(headers);
+    if (response) json_decref(response);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(teams_path);
+    remove(main_path);
+    rmdir(dir_path);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
     RUN_TEST(test_database_integration);
     RUN_TEST(test_pipeline_processing);
     RUN_TEST(test_api_features);
+    RUN_TEST(test_includes_functionality);
     return UNITY_END();
 }

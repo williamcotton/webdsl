@@ -11,15 +11,6 @@ void initIncludeState(IncludeState *state) {
     state->max_includes = MAX_INCLUDES;
 }
 
-static bool isFileIncluded(IncludeState *state, const char *filepath) {
-    for (int i = 0; i < state->num_included; i++) {
-        if (strcmp(state->included_files[i], filepath) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static char *readFile(const char *filepath, Arena *arena) {
     FILE *file = fopen(filepath, "r");
     if (!file) {
@@ -50,38 +41,119 @@ static char *readFile(const char *filepath, Arena *arena) {
     return buffer;
 }
 
-bool processInclude(Parser *parser, WebsiteNode *website, 
-                   const char *filepath, IncludeState *state) {
-    (void)website;  // Unused for now
-
+bool processInclude(Parser *parser, WebsiteNode *website, const char *filepath, IncludeState *state) {
     // Check for circular includes
-    if (isFileIncluded(state, filepath)) {
-        fprintf(stderr, "Error: Circular include detected for file '%s'\n", filepath);
-        return false;
+    for (int i = 0; i < state->num_included; i++) {
+        if (strcmp(state->included_files[i], filepath) == 0) {
+            fprintf(stderr, "Error: Circular include detected for file '%s'\n", filepath);
+            return false;
+        }
     }
 
-    // Check max includes
+    // Check maximum include depth
     if (state->num_included >= state->max_includes) {
         fprintf(stderr, "Error: Maximum include depth exceeded\n");
         return false;
     }
 
-    // Read file
+    // Read the file content
     char *content = readFile(filepath, parser->arena);
     if (!content) {
-        fprintf(stderr, "Error: Could not read file '%s'\n", filepath);
+        fprintf(stderr, "Error: Failed to read file '%s'\n", filepath);
         return false;
     }
 
-    // Add to included files
+    // Add to included files list
     state->included_files[state->num_included] = strdup(filepath);
     state->num_included++;
 
-    // Parse included content
+    // Parse the included content
     Parser includeParser;
     initParser(&includeParser, content);
+    Arena *tempArena = includeParser.arena;  // Store temporary arena
+    includeParser.arena = parser->arena;  // Use the same arena as the main parser
+
+    // Parse content and merge into main website
+    WebsiteNode *included = parseWebsiteContent(&includeParser);
     
-    // TODO: Parse and merge content
-    // For now, just return true to get the basic structure working
-    return true;
+    // Free the temporary arena that was created
+    freeArena(tempArena);
+
+    if (!includeParser.hadError) {
+        // Merge the nodes
+        if (included->pageHead) {
+            if (!website->pageHead) {
+                website->pageHead = included->pageHead;
+            } else {
+                PageNode *current = website->pageHead;
+                while (current->next) current = current->next;
+                current->next = included->pageHead;
+            }
+        }
+        
+        if (included->layoutHead) {
+            if (!website->layoutHead) {
+                website->layoutHead = included->layoutHead;
+            } else {
+                LayoutNode *current = website->layoutHead;
+                while (current->next) current = current->next;
+                current->next = included->layoutHead;
+            }
+        }
+        
+        if (included->styleHead) {
+            if (!website->styleHead) {
+                website->styleHead = included->styleHead;
+            } else {
+                StyleBlockNode *current = website->styleHead;
+                while (current->next) current = current->next;
+                current->next = included->styleHead;
+            }
+        }
+        
+        if (included->queryHead) {
+            if (!website->queryHead) {
+                website->queryHead = included->queryHead;
+            } else {
+                QueryNode *current = website->queryHead;
+                while (current->next) current = current->next;
+                current->next = included->queryHead;
+            }
+        }
+        
+        if (included->transformHead) {
+            if (!website->transformHead) {
+                website->transformHead = included->transformHead;
+            } else {
+                TransformNode *current = website->transformHead;
+                while (current->next) current = current->next;
+                current->next = included->transformHead;
+            }
+        }
+        
+        if (included->scriptHead) {
+            if (!website->scriptHead) {
+                website->scriptHead = included->scriptHead;
+            } else {
+                ScriptNode *current = website->scriptHead;
+                while (current->next) current = current->next;
+                current->next = included->scriptHead;
+            }
+        }
+        
+        if (included->apiHead) {
+            if (!website->apiHead) {
+                website->apiHead = included->apiHead;
+            } else {
+                ApiEndpoint *current = website->apiHead;
+                while (current->next) current = current->next;
+                current->next = included->apiHead;
+            }
+        }
+        
+        return true;
+    }
+
+    fprintf(stderr, "Error: Failed to parse included file '%s'\n", filepath);
+    return false;
 } 

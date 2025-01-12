@@ -34,6 +34,7 @@ void initParser(Parser *parser, const char *source) {
     parser->previous.type = TOKEN_UNKNOWN;
     parser->hadError = 0;
     parser->arena = createArena(1024 * 1024); // 1MB arena
+    parser->lexer.line = 1;  // Reset line number
 }
 
 static void advanceParser(Parser *parser) {
@@ -203,24 +204,26 @@ static PageNode *parsePage(Parser *parser) {
                 }
                 break;
             }
-            case TOKEN_PIPELINE: {
-                advanceParser(parser);
-                page->pipeline = parsePipeline(parser);
-                break;
-            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
                 page->contentHead = parseContent(parser);
                 break;
             }
+            case TOKEN_PIPELINE: {
+                advanceParser(parser);
+                page->pipeline = parsePipeline(parser);
+                break;
+            }
             default: {
+                // Report error but continue parsing
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token '%s' in page.\n",
                         parser->current.line, parser->current.lexeme);
                 fputs(buffer, stderr);
                 parser->hadError = 1;
+                advanceParser(parser);
                 break;
             }
         }
@@ -272,28 +275,36 @@ static ContentNode *parseContent(Parser *parser) {
 
         if (parser->current.type == TOKEN_STRING) {
             const char *value = parser->current.lexeme;
-            node->type = copyString(parser, value);
-            advanceParser(parser);
-
-            // Check if this is the special "content" placeholder
-            if (strcmp(node->type, "content") == 0) {
-                // Already the right type
-            } else if (parser->current.type == TOKEN_OPEN_BRACE) {
+            
+            // If the string is quoted, treat it as raw content
+            if (value[0] == '"') {
+                node->type = "raw_html";
+                node->arg1 = copyString(parser, value);
                 advanceParser(parser);
-                node->children = parseContent(parser);
             } else {
-                consume(parser, TOKEN_STRING, "Expected string after tag");
-                node->arg1 = copyString(parser, parser->previous.lexeme);
+                node->type = copyString(parser, value);
+                advanceParser(parser);
 
-                if (strcmp(node->type, "link") == 0) {
-                    consume(parser, TOKEN_STRING, "Expected link text after URL string");
-                    node->arg2 = copyString(parser, parser->previous.lexeme);
-                }
-                else if (strcmp(node->type, "image") == 0 && 
-                         parser->current.type == TOKEN_ALT) {
+                // Check if this is the special "content" placeholder
+                if (strcmp(node->type, "content") == 0) {
+                    // Already the right type
+                } else if (parser->current.type == TOKEN_OPEN_BRACE) {
                     advanceParser(parser);
-                    consume(parser, TOKEN_STRING, "Expected alt text after 'alt'");
-                    node->arg2 = copyString(parser, parser->previous.lexeme);
+                    node->children = parseContent(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string after tag");
+                    node->arg1 = copyString(parser, parser->previous.lexeme);
+
+                    if (strcmp(node->type, "link") == 0) {
+                        consume(parser, TOKEN_STRING, "Expected link text after URL string");
+                        node->arg2 = copyString(parser, parser->previous.lexeme);
+                    }
+                    else if (strcmp(node->type, "image") == 0 && 
+                             parser->current.type == TOKEN_ALT) {
+                        advanceParser(parser);
+                        consume(parser, TOKEN_STRING, "Expected alt text after 'alt'");
+                        node->arg2 = copyString(parser, parser->previous.lexeme);
+                    }
                 }
             }
 
@@ -1126,6 +1137,132 @@ WebsiteNode *parseProgram(Parser *parser) {
         free(includeState.included_files[i]);
     }
     free(includeState.included_files);
+
+    return website;
+}
+
+WebsiteNode *parseWebsiteContent(Parser *parser) {
+    WebsiteNode *website = arenaAlloc(parser->arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));
+    
+    advanceParser(parser); // read the first token
+
+    while (parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_PAGE: {
+                advanceParser(parser);
+                PageNode *page = parsePage(parser);
+                if (page) {
+                    if (!website->pageHead) {
+                        website->pageHead = page;
+                    } else {
+                        PageNode *current = website->pageHead;
+                        while (current->next) current = current->next;
+                        current->next = page;
+                    }
+                }
+                break;
+            }
+            case TOKEN_LAYOUT: {
+                advanceParser(parser);
+                LayoutNode *layout = parseLayout(parser);
+                if (layout) {
+                    if (!website->layoutHead) {
+                        website->layoutHead = layout;
+                    } else {
+                        LayoutNode *current = website->layoutHead;
+                        while (current->next) current = current->next;
+                        current->next = layout;
+                    }
+                }
+                break;
+            }
+            case TOKEN_STYLES: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'styles'");
+                while (parser->current.type != TOKEN_CLOSE_BRACE && 
+                       parser->current.type != TOKEN_EOF && 
+                       !parser->hadError) {
+                    StyleBlockNode *block = parseStyleBlock(parser);
+                    if (block) {
+                        if (!website->styleHead) {
+                            website->styleHead = block;
+                        } else {
+                            StyleBlockNode *current = website->styleHead;
+                            while (current->next) current = current->next;
+                            current->next = block;
+                        }
+                    }
+                }
+                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after styles block");
+                break;
+            }
+            case TOKEN_QUERY: {
+                advanceParser(parser);
+                QueryNode *query = parseQuery(parser);
+                if (query) {
+                    if (!website->queryHead) {
+                        website->queryHead = query;
+                    } else {
+                        QueryNode *current = website->queryHead;
+                        while (current->next) current = current->next;
+                        current->next = query;
+                    }
+                }
+                break;
+            }
+            case TOKEN_TRANSFORM: {
+                advanceParser(parser);
+                TransformNode *transform = parseTransform(parser);
+                if (transform) {
+                    if (!website->transformHead) {
+                        website->transformHead = transform;
+                    } else {
+                        TransformNode *current = website->transformHead;
+                        while (current->next) current = current->next;
+                        current->next = transform;
+                    }
+                }
+                break;
+            }
+            case TOKEN_SCRIPT: {
+                advanceParser(parser);
+                ScriptNode *script = parseScript(parser);
+                if (script) {
+                    if (!website->scriptHead) {
+                        website->scriptHead = script;
+                    } else {
+                        ScriptNode *current = website->scriptHead;
+                        while (current->next) current = current->next;
+                        current->next = script;
+                    }
+                }
+                break;
+            }
+            case TOKEN_API: {
+                advanceParser(parser);
+                ApiEndpoint *api = parseApi(parser);
+                if (api) {
+                    if (!website->apiHead) {
+                        website->apiHead = api;
+                    } else {
+                        ApiEndpoint *current = website->apiHead;
+                        while (current->next) current = current->next;
+                        current->next = api;
+                    }
+                }
+                break;
+            }
+            default: {
+                // Skip any tokens we don't recognize
+                advanceParser(parser);
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
 
     return website;
 }

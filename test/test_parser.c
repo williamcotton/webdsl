@@ -785,17 +785,17 @@ static void test_parse_website_with_includes(void) {
     // Create temporary files
     FILE *header = fopen(header_path, "w");
     TEST_ASSERT_NOT_NULL(header);
-    fprintf(header, "page { name \"header\" route \"/header\" content { \"header content\" } }");
+    fprintf(header, "page { name \"header\" route \"/header\" content { html \"header content\" } }");
     fclose(header);
     
     FILE *footer = fopen(footer_path, "w");
     TEST_ASSERT_NOT_NULL(footer);
-    fprintf(footer, "page { name \"footer\" route \"/footer\" content { \"footer content\" } }");
+    fprintf(footer, "page { name \"footer\" route \"/footer\" content { html \"footer content\" } }");
     fclose(footer);
     
     FILE *nav = fopen(nav_path, "w");
     TEST_ASSERT_NOT_NULL(nav);
-    fprintf(nav, "page { name \"nav\" route \"/nav\" content { \"nav content\" } }");
+    fprintf(nav, "page { name \"nav\" route \"/nav\" content { html \"nav content\" } }");
     fclose(nav);
     
     char input[1024];
