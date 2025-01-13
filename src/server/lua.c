@@ -53,6 +53,8 @@ static size_t writeCallback(void *contents, size_t size, size_t nmemb, void *use
 }
 
 // Lua function to make HTTP requests
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
 static int lua_fetch(lua_State *L) {
     // Get URL from first argument
     const char *url = luaL_checkstring(L, 1);
@@ -94,7 +96,7 @@ static int lua_fetch(lua_State *L) {
                 const char *key = lua_tostring(L, -2);
                 const char *value = lua_tostring(L, -1);
                 char *header = malloc(strlen(key) + strlen(value) + 3);
-                sprintf(header, "%s: %s", key, value);
+                snprintf(header, sizeof(header), "%s: %s", key, value);
                 headers = curl_slist_append(headers, header);
                 free(header);
                 lua_pop(L, 1);
@@ -154,7 +156,10 @@ static int lua_fetch(lua_State *L) {
         curl_slist_free_all(headers);
     }
     if (body) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wcast-qual"
         free((void*)body);
+        #pragma clang diagnostic pop
     }
     
     if (res != CURLE_OK) {
@@ -202,6 +207,7 @@ static int lua_fetch(lua_State *L) {
     free(response.data);
     return 1;
 }
+#pragma clang diagnostic pop
 
 // Register HTTP functions with Lua state
 void registerHttpFunctions(lua_State *L) {
@@ -296,9 +302,8 @@ static bool loadLuaFile(lua_State *L, const char* filepath) {
     if (!entry) {
         // Need to add new entry
         if (fileRegistry.count >= fileRegistry.capacity) {
-            size_t new_capacity = fileRegistry.capacity * 2;
-            LuaFileEntry* new_entries = realloc(fileRegistry.entries, 
-                                              new_capacity * sizeof(LuaFileEntry));
+            size_t new_capacity = fileRegistry.capacity > 0 ? fileRegistry.capacity * 2 : 1;
+            LuaFileEntry* new_entries = realloc(fileRegistry.entries, new_capacity * sizeof(LuaFileEntry));
             if (!new_entries) return false;
             fileRegistry.entries = new_entries;
             fileRegistry.capacity = new_capacity;

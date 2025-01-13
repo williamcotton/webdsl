@@ -243,3 +243,30 @@ api {
         }
     }
 }
+
+api {
+    route "/api/v1/posts"
+    method "GET"
+    pipeline {
+        lua {
+            local url = "https://jsonplaceholder.typicode.com/posts"
+            local response = fetch(url)
+            return {
+                data = response
+            }
+        }
+    }
+}
+
+api {
+    route "/api/v1/notes"
+    method "GET"
+    pipeline {
+        lua {
+            local result = query("SELECT * FROM notes")
+            return {
+                data = result
+            }
+        }
+    }
+}

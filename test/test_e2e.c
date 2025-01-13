@@ -12,6 +12,7 @@
 // Function prototypes
 int run_e2e_tests(void);
 static void test_includes_functionality(void);
+static void test_posts_endpoint(void);
 
 // Test configuration files
 static const char *TEST_CONFIG = 
@@ -35,6 +36,20 @@ static const char *TEST_CONFIG =
 "    content {\n"
 "      h1 \"Welcome\"\n"
 "      p \"Test content\"\n"
+"    }\n"
+"  }\n"
+"  \n"
+"  api {\n"
+"    route \"/api/v1/posts\"\n"
+"    method \"GET\"\n"
+"    pipeline {\n"
+"      lua {\n"
+"        local url = \"http://jsonplaceholder.typicode.com/posts\"\n"
+"        local response = fetch(url)\n"
+"        return {\n"
+"          data = response\n"
+"        }\n"
+"      }\n"
 "    }\n"
 "  }\n"
 "  \n"
@@ -438,6 +453,67 @@ void test_includes_functionality(void) {
     sleep(1);
 }
 
+static void test_posts_endpoint(void) {
+    // Write initial config
+    writeConfig(TEST_CONFIG);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Test GET request to posts endpoint
+    json_t *response = makeRequest("http://localhost:3456/api/v1/posts", "GET", NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify response structure
+    TEST_ASSERT_NOT_NULL(json_object_get(response, "data"));
+    TEST_ASSERT_TRUE(json_is_object(json_object_get(response, "data")));
+    
+    // Get the status and body from the response
+    json_t *status = json_object_get(json_object_get(response, "data"), "status");
+    json_t *body = json_object_get(json_object_get(response, "data"), "body");
+    
+    // Verify status code
+    TEST_ASSERT_NOT_NULL(status);
+    TEST_ASSERT_EQUAL(200, json_integer_value(status));
+    
+    // Verify body is an array
+    TEST_ASSERT_NOT_NULL(body);
+    TEST_ASSERT_TRUE(json_is_array(body));
+    
+    // Verify first post structure if array is not empty
+    if (json_array_size(body) > 0) {
+        json_t *first_post = json_array_get(body, 0);
+        TEST_ASSERT_NOT_NULL(first_post);
+        TEST_ASSERT_TRUE(json_is_object(first_post));
+        
+        // Verify required fields exist and have correct types
+        TEST_ASSERT_NOT_NULL(json_object_get(first_post, "id"));
+        TEST_ASSERT_TRUE(json_is_integer(json_object_get(first_post, "id")));
+        
+        TEST_ASSERT_NOT_NULL(json_object_get(first_post, "title"));
+        TEST_ASSERT_TRUE(json_is_string(json_object_get(first_post, "title")));
+        
+        TEST_ASSERT_NOT_NULL(json_object_get(first_post, "body"));
+        TEST_ASSERT_TRUE(json_is_string(json_object_get(first_post, "body")));
+        
+        TEST_ASSERT_NOT_NULL(json_object_get(first_post, "userId"));
+        TEST_ASSERT_TRUE(json_is_integer(json_object_get(first_post, "userId")));
+    }
+    
+    json_decref(response);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -445,5 +521,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_pipeline_processing);
     RUN_TEST(test_api_features);
     RUN_TEST(test_includes_functionality);
+    RUN_TEST(test_posts_endpoint);
     return UNITY_END();
 }
