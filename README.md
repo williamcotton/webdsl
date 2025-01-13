@@ -66,7 +66,7 @@ brew install webdsl
 
 To update to the latest version:
 ```bash
-brew reinstall --HEAD webdsl
+brew reinstall webdsl
 ```
 
 ## Quick Start
