@@ -25,12 +25,32 @@ website {
 - Declarative configuration for routes, layouts, and pages
 - Component-based templating with content placeholders and hot reloading
 - Built-in CSS styling with both raw and structured syntax support
-- REST API endpoints with field validation and pipeline-based processing
-- JQ and Lua transformation steps for request/response handling
-- Native PostgreSQL integration with connection pooling and prepared statement caching
-- Memory-safe arena allocation and thread-safe request handling
-- Comprehensive validation rules with detailed error messages
-- Live configuration reloading for rapid development
+- Modular file organization with include system
+- Mustache templates with conditional rendering and loops
+
+### API Features
+- REST API endpoints with field validation
+- Pipeline-based request processing
+- Reusable script and transform blocks
+- JQ and Lua transformation steps
+- External API integration with fetch support
+- Comprehensive request context access (query, headers, body)
+
+### Database Features
+- Native PostgreSQL integration with connection pooling
+- Query builder with fluent interface
+- Automatic pagination with metadata
+- Prepared statement caching
+- Direct SQL execution in Lua
+- Transaction support
+
+### Development Features
+- Memory-safe arena allocation
+- Thread-safe request handling
+- Live configuration reloading
+- Comprehensive validation rules
+- Detailed error messages
+- Hot module reloading
 
 ## Installation
 

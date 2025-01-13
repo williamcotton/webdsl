@@ -84,6 +84,99 @@ api {
 }
 ```
 
+### Script Blocks
+
+Reusable Lua scripts can be defined and referenced in pipelines:
+
+```webdsl
+script {
+    name "teamParamsScript"
+    lua {
+        return {
+            params = {query.id}
+        }
+    }
+}
+
+api {
+    pipeline {
+        executeScript "teamParamsScript"
+        executeQuery "getTeam"
+    }
+}
+```
+
+### Transform Blocks
+
+Reusable JQ transformations can be defined and referenced:
+
+```webdsl
+transform {
+    name "formatTeam"
+    jq {
+        {
+            data: (.rows | map({id: .id, name: .name})),
+            result: "success"
+        }
+    }
+}
+
+api {
+    pipeline {
+        executeQuery "getTeam"
+        executeTransform "formatTeam"
+    }
+}
+```
+
+### Advanced Pipeline Features
+
+#### Query Builder
+```webdsl
+pipeline {
+    lua {
+        local qb = querybuilder.new()
+        local result = qb
+            :select("id", "name")
+            :from("employees")
+            :where_if(query.team_id, "team_id = ?", query.team_id)
+            :limit(query.limit or 20)
+            :offset(query.offset or 0)
+            :with_metadata()
+            :build()
+        return result
+    }
+    executeQuery dynamic
+}
+```
+
+#### Multiple SQL Queries
+```webdsl
+pipeline {
+    sql { SELECT * FROM employees LIMIT $1 OFFSET $2 }
+    sql { SELECT COUNT(*) FROM employees }
+    jq {
+        {
+            data: .data[0].rows,
+            total: .data[1].rows[0].count
+        }
+    }
+}
+```
+
+#### External API Integration
+```webdsl
+pipeline {
+    lua {
+        local url = "https://api.example.com/data"
+        local response = fetch(url)
+        return {
+            data = response
+        }
+    }
+}
+```
+
 ## Request Context
 
 Available in pipeline steps:

@@ -72,6 +72,98 @@ pages {
 }
 ```
 
+## Mustache Templates
+
+Pages can use Mustache templates with dynamic data:
+
+```webdsl
+page {
+    name "employees"
+    route "/employees"
+    pipeline {
+        jq {
+            {
+                employees: .data[0].rows,
+                hasEmployees: (.data[0].rows | length > 0)
+            }
+        }
+    }
+    mustache {
+        <h2>Employees</h2>
+        {{#hasEmployees}}
+        <ul>
+            {{#employees}}
+            <li>{{name}}</li>
+            {{/employees}}
+        </ul>
+        {{/hasEmployees}}
+        {{^hasEmployees}}
+        <p>No employees found.</p>
+        {{/hasEmployees}}
+    }
+}
+```
+
+### Template Features
+- Conditional rendering with `{{#condition}}` and `{{^condition}}`
+- Loop iteration with `{{#array}}`
+- Variable interpolation with `{{variable}}`
+- Nested object access with `{{object.property}}`
+
+## Enhanced Layout System
+
+### Content Placeholders
+```webdsl
+layout {
+    name "master"
+    html {
+        <html>
+            <head>
+                <title>{{title}}</title>
+            </head>
+            <body>
+                <nav>
+                    <!-- Navigation content -->
+                </nav>
+                <!-- content -->
+                <footer>
+                    <!-- Footer content -->
+                </footer>
+            </body>
+        </html>
+    }
+}
+```
+
+### Layout Inheritance
+```webdsl
+page {
+    name "blog"
+    route "/blog"
+    layout "master"  // Inherits from master layout
+    content {
+        // Page-specific content
+    }
+}
+```
+
+## File Organization
+
+### Include System
+```webdsl
+website {
+    include "api.webdsl"    // Include API definitions
+    include "pages.webdsl"  // Include page definitions
+}
+```
+
+This allows for modular organization of:
+- API endpoints
+- Page definitions
+- Layout templates
+- Query definitions
+- Style definitions
+
 ## Styles
 
 CSS can be defined in two ways:

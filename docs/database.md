@@ -235,3 +235,80 @@ query {
         ORDER BY level
     }
 } 
+```
+
+### Direct SQL Execution
+
+SQL can be executed directly in Lua scripts:
+
+```webdsl
+pipeline {
+    lua {
+        local result = sqlQuery("SELECT * FROM notes")
+        return {
+            data = result
+        }
+    }
+}
+```
+
+### Query Builder
+
+The query builder provides a fluent interface for constructing SQL queries:
+
+```webdsl
+lua {
+    local qb = querybuilder.new()
+    
+    local result = qb
+        :select("id", "name", "email")
+        :from("employees")
+        :where_if(query.team_id, "team_id = ?", query.team_id)
+        :order_by("id")
+        :limit(query.limit or 20)
+        :offset(query.offset or 0)
+        :with_metadata()
+        :build()
+        
+    return result
+}
+```
+
+Query Builder Features:
+- Conditional WHERE clauses with `where_if`
+- Automatic parameter binding
+- Pagination support
+- Metadata generation
+- Order by clauses
+- Dynamic column selection
+
+### Pagination Handling
+
+Built-in support for pagination with metadata:
+
+```webdsl
+pipeline {
+    lua {
+        local qb = querybuilder.new()
+        return qb
+            :select("*")
+            :from("users")
+            :limit(query.limit or 20)
+            :offset(query.offset or 0)
+            :with_metadata()
+            :build()
+    }
+    executeQuery dynamic
+    jq {
+        {
+            data: (.rows | map(select(.type == "data"))),
+            metadata: {
+                total: (.rows | map(select(.type == "metadata")) | .[0].total_count),
+                offset: (.rows | map(select(.type == "metadata")) | .[0].offset),
+                limit: (.rows | map(select(.type == "metadata")) | .[0].limit),
+                has_more: (.rows | map(select(.type == "metadata")) | .[0].has_more)
+            }
+        }
+    }
+}
+``` 
