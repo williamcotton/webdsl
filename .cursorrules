@@ -1,0 +1,5 @@
+Tests: make test
+Test for memory leaks: make test-leaks
+Lint: make lint
+
+We use a per-request memory arena and the jansson API exposes custom allocators that we wire up to this allocator.
