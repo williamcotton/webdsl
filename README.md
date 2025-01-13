@@ -61,7 +61,7 @@ website {
 brew tap williamcotton/webdsl
 
 # Install WebDSL
-brew install --HEAD webdsl
+brew install webdsl
 ```
 
 To update to the latest version:
