@@ -184,7 +184,7 @@ typedef struct WebsiteNode {
     char *name;
     char *author;
     char *version;
-    char *base_url;
+    char *baseUrl;
     char *databaseUrl;
     int port;
     int _padding;

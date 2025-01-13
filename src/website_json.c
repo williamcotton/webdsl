@@ -256,7 +256,7 @@ json_t* websiteToJson(const WebsiteNode* website) {
     if (website->name) json_object_set_new(root, "name", json_string(website->name));
     if (website->author) json_object_set_new(root, "author", json_string(website->author));
     if (website->version) json_object_set_new(root, "version", json_string(website->version));
-    if (website->base_url) json_object_set_new(root, "base_url", json_string(website->base_url));
+    if (website->baseUrl) json_object_set_new(root, "baseUrl", json_string(website->baseUrl));
     if (website->databaseUrl) json_object_set_new(root, "database", json_string(website->databaseUrl));
     if (website->port) json_object_set_new(root, "port", json_integer(website->port));
     
