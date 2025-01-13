@@ -198,7 +198,7 @@ script {
         local qb = querybuilder.new()
         
         local result = qb
-            :select("*")
+            :select("id", "team_id", "name", "email")
             :from("employees")
             :where_if(query.team_id, "team_id = ?", query.team_id)
             :limit(query.limit or 20)
