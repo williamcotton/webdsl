@@ -577,6 +577,118 @@ static void test_sql_query_endpoint(void) {
     sleep(1);
 }
 
+static void test_mustache_template_page(void) {
+    // Write initial config with mustache template page
+    const char *config = 
+        "website {\n"
+        "    name \"Mustache Test Site\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    layout {\n"
+        "        name \"blog\"\n"
+        "        html {\n"
+        "            <header>\n"
+        "                <h1>Blog Layout</h1>\n"
+        "                <nav>\n"
+        "                    <a href=\"/\">Home</a> |\n"
+        "                    <a href=\"/blog\">Blog</a>\n"
+        "                </nav>\n"
+        "            </header>\n"
+        "            <!-- content -->\n"
+        "            <footer>\n"
+        "                <p>Blog footer - Copyright 2024</p>\n"
+        "            </footer>\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    page {\n"
+        "        name \"mustache-test\"\n"
+        "        route \"/mustache-test\"\n"
+        "        layout \"blog\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    title: \"My Title\",\n"
+        "                    message: \"My Message\",\n"
+        "                    items: [\n"
+        "                        { name: \"Wired up Item 1\" },\n"
+        "                        { name: \"Wired up Item 2\" },\n"
+        "                        { name: \"Wired up Item 3\" }\n"
+        "                    ],\n"
+        "                    url: .url,\n"
+        "                    version: .version,\n"
+        "                    method: .method\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        mustache {\n"
+        "            <h1>{{title}}</h1>\n"
+        "            <p>{{message}}</p>\n"
+        "            <p>URL: {{url}}</p>\n"
+        "            <p>Version: {{version}}</p>\n"
+        "            <p>Method: {{method}}</p>\n"
+        "            <ul>\n"
+        "                {{#items}}\n"
+        "                <li>{{name}}</li>\n"
+        "                {{/items}}\n"
+        "            </ul>\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL_STRING("Mustache Test Site", website->name);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Make request to mustache template page
+    ResponseBuffer response = {0};
+    response.data = malloc(1);
+    response.size = 0;
+    
+    CURL *curl = curl_easy_init();
+    TEST_ASSERT_NOT_NULL(curl);
+    
+    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:3456/mustache-test");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    CURLcode res = curl_easy_perform(curl);
+    TEST_ASSERT_EQUAL(CURLE_OK, res);
+    
+    curl_easy_cleanup(curl);
+    
+    // Verify response contains expected content
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<h1>My Title</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>My Message</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>URL: /mustache-test</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>Method: GET</p>"));
+    
+    // Verify all items are present
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 1</li>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 2</li>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 3</li>"));
+    
+    // Verify layout content is present
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "<h1>Blog Layout</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response.data, "Blog footer - Copyright 2024"));
+    
+    free(response.data);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -586,5 +698,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_includes_functionality);
     RUN_TEST(test_posts_endpoint);
     RUN_TEST(test_sql_query_endpoint);
+    RUN_TEST(test_mustache_template_page);
     return UNITY_END();
 }

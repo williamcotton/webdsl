@@ -186,5 +186,7 @@ enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
   struct MHD_Response *response = MHD_create_response_from_buffer(
       strlen(html_copy), html_copy, MHD_RESPMEM_MUST_FREE);
   MHD_add_response_header(response, "Content-Type", "text/html");
-  return MHD_queue_response(connection, MHD_HTTP_OK, response);
+  enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return ret;
 }
