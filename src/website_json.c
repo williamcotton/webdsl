@@ -5,6 +5,29 @@
 #pragma clang diagnostic pop
 #include <string.h>
 
+static json_t* pipelineToJson(const PipelineStepNode* pipeline) {
+    if (!pipeline) return NULL;
+    
+    json_t* steps_array = json_array();
+    const PipelineStepNode* current = pipeline;
+    
+    while (current) {
+        json_t* step = json_object();
+        json_object_set_new(step, "type", json_string(
+            current->type == STEP_JQ ? "jq" :
+            current->type == STEP_LUA ? "lua" :
+            current->type == STEP_SQL ? "sql" : "unknown"
+        ));
+        if (current->code) json_object_set_new(step, "code", json_string(current->code));
+        if (current->name) json_object_set_new(step, "name", json_string(current->name));
+        json_object_set_new(step, "is_dynamic", json_boolean(current->is_dynamic));
+        json_array_append_new(steps_array, step);
+        current = current->next;
+    }
+    
+    return steps_array;
+}
+
 static json_t* contentNodeToJson(const ContentNode* node) {
     if (!node) return NULL;
     
@@ -16,6 +39,10 @@ static json_t* contentNodeToJson(const ContentNode* node) {
         json_object_set_new(content, "type", json_string(current->type));
         if (current->arg1) json_object_set_new(content, "arg1", json_string(current->arg1));
         if (current->arg2) json_object_set_new(content, "arg2", json_string(current->arg2));
+        if (current->children) {
+            json_t* children = contentNodeToJson(current->children);
+            if (children) json_object_set_new(content, "children", children);
+        }
         json_array_append_new(content_array, content);
         current = current->next;
     }
@@ -83,10 +110,17 @@ static json_t* pagesToJson(const PageNode* pages) {
     
     while (current) {
         json_t* page = json_object();
+        if (current->identifier) json_object_set_new(page, "identifier", json_string(current->identifier));
         if (current->route) json_object_set_new(page, "route", json_string(current->route));
         if (current->layout) json_object_set_new(page, "layout", json_string(current->layout));
+        if (current->title) json_object_set_new(page, "title", json_string(current->title));
+        if (current->description) json_object_set_new(page, "description", json_string(current->description));
         json_t* content = contentNodeToJson(current->contentHead);
         if (content) json_object_set_new(page, "content", content);
+        if (current->pipeline) {
+            json_t* pipeline = pipelineToJson(current->pipeline);
+            if (pipeline) json_object_set_new(page, "pipeline", pipeline);
+        }
         json_array_append_new(pages_array, page);
         current = current->next;
     }
@@ -125,29 +159,6 @@ static json_t* queriesToJson(const QueryNode* queries) {
     }
     
     return queries_array;
-}
-
-static json_t* pipelineToJson(const PipelineStepNode* pipeline) {
-    if (!pipeline) return NULL;
-    
-    json_t* steps_array = json_array();
-    const PipelineStepNode* current = pipeline;
-    
-    while (current) {
-        json_t* step = json_object();
-        json_object_set_new(step, "type", json_string(
-            current->type == STEP_JQ ? "jq" :
-            current->type == STEP_LUA ? "lua" :
-            current->type == STEP_SQL ? "sql" : "unknown"
-        ));
-        if (current->code) json_object_set_new(step, "code", json_string(current->code));
-        if (current->name) json_object_set_new(step, "name", json_string(current->name));
-        json_object_set_new(step, "is_dynamic", json_boolean(current->is_dynamic));
-        json_array_append_new(steps_array, step);
-        current = current->next;
-    }
-    
-    return steps_array;
 }
 
 static json_t* apiFieldsToJson(const ApiField* fields) {
@@ -245,6 +256,7 @@ json_t* websiteToJson(const WebsiteNode* website) {
     if (website->name) json_object_set_new(root, "name", json_string(website->name));
     if (website->author) json_object_set_new(root, "author", json_string(website->author));
     if (website->version) json_object_set_new(root, "version", json_string(website->version));
+    if (website->base_url) json_object_set_new(root, "base_url", json_string(website->base_url));
     if (website->databaseUrl) json_object_set_new(root, "database", json_string(website->databaseUrl));
     if (website->port) json_object_set_new(root, "port", json_integer(website->port));
     
