@@ -32,6 +32,23 @@ website {
 - Comprehensive validation rules with detailed error messages
 - Live configuration reloading for rapid development
 
+## Installation
+
+### Using Homebrew (macOS)
+
+```bash
+# Add the WebDSL tap
+brew tap williamcotton/webdsl
+
+# Install WebDSL
+brew install --HEAD webdsl
+```
+
+To update to the latest version:
+```bash
+brew reinstall --HEAD webdsl
+```
+
 ## Quick Start
 
 ### Prerequisites
