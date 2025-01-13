@@ -263,7 +263,7 @@ api {
     method "GET"
     pipeline {
         lua {
-            local result = query("SELECT * FROM notes")
+            local result = sqlQuery("SELECT * FROM notes")
             return {
                 data = result
             }

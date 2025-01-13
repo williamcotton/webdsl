@@ -52,4 +52,7 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
 // Register HTTP functions with Lua state
 void registerHttpFunctions(lua_State *L);
 
+// Register database functions with Lua state
+void registerDbFunctions(lua_State *L);
+
 #endif

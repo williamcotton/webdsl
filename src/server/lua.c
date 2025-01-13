@@ -9,6 +9,7 @@
 #include "utils.h"
 #include "server.h"
 #include "routing.h"
+#include "db.h"
 
 #define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
 #define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
@@ -33,6 +34,8 @@ typedef struct LuaChunkEntry {
 
 static LuaFileRegistry fileRegistry = {0};
 static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
+
+static struct ServerContext *g_ctx = NULL;  // Rename global ctx to g_ctx
 
 // Write callback for curl
 static size_t writeCallback(void *contents, size_t size, size_t nmemb, void *userp) {
@@ -427,9 +430,9 @@ static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
 }
 
 // Add new function to walk AST and compile Lua steps
-static bool compilePipelineSteps(ServerContext *ctx) {
+static bool compilePipelineSteps(ServerContext *server_ctx) {
     // First compile all named scripts
-    ScriptNode* script = ctx->website->scriptHead;
+    ScriptNode* script = server_ctx->website->scriptHead;
     while (script) {
         if (script->type == FILTER_LUA) {
             uint32_t hash = hashString(script->code) & LUA_HASH_MASK;
@@ -483,7 +486,7 @@ static bool compilePipelineSteps(ServerContext *ctx) {
     }
 
     // Then compile pipeline steps (existing)
-    ApiEndpoint* endpoint = ctx->website->apiHead;
+    ApiEndpoint* endpoint = server_ctx->website->apiHead;
     while (endpoint) {
         PipelineStepNode* step = endpoint->pipeline;
         while (step) {
@@ -555,8 +558,72 @@ static bool compilePipelineSteps(ServerContext *ctx) {
     return true;
 }
 
-// Modify initLua to use new loading system:
-bool initLua(ServerContext *ctx) {
+// SQL query function implementation
+static int lua_sqlQuery(lua_State *L) {
+    // Get SQL query from first argument
+    const char *sql = luaL_checkstring(L, 1);
+    
+    // Get params table from second argument (optional)
+    size_t param_count = 0;
+    const char **params = NULL;
+    
+    if (lua_gettop(L) >= 2 && !lua_isnil(L, 2)) {
+        luaL_checktype(L, 2, LUA_TTABLE);
+        
+        // Count params
+        lua_len(L, 2);
+        lua_Integer len = lua_tointeger(L, -1);
+        // Check that len is positive and not larger than SIZE_MAX
+        if (len > 0 && (lua_Unsigned)len <= SIZE_MAX) {
+            param_count = (size_t)len;
+        }
+        lua_pop(L, 1);
+        
+        if (param_count > 0) {
+            // Allocate params array
+            params = malloc(sizeof(char *) * param_count);
+            if (!params) {
+                return luaL_error(L, "Failed to allocate memory for parameters");
+            }
+            
+            // Extract params from table
+            for (lua_Integer i = 0; i < (lua_Integer)param_count; i++) {
+                lua_rawgeti(L, 2, i + 1);
+                if (lua_isnil(L, -1)) {
+                    params[i] = NULL;
+                } else {
+                    params[i] = lua_tostring(L, -1);
+                }
+                lua_pop(L, 1);
+            }
+        }
+    }
+    
+    // Execute query
+    json_t *result = executeSqlWithParams(g_ctx->db, sql, params, param_count);
+    free(params);
+    
+    if (!result) {
+        return luaL_error(L, "Failed to execute SQL query");
+    }
+    
+    // Convert result to Lua table
+    pushJsonToLua(L, result);
+    json_decref(result);
+    
+    return 1;
+}
+
+// Register database functions with Lua state
+void registerDbFunctions(lua_State *L) {
+    lua_pushcfunction(L, lua_sqlQuery);
+    lua_setglobal(L, "sqlQuery");
+}
+
+// Modify initLua to store context and register DB functions
+bool initLua(ServerContext *server_ctx) {
+    g_ctx = server_ctx;  // Store in global
+    
     if (!initFileRegistry()) {
         return false;
     }
@@ -565,6 +632,10 @@ bool initLua(ServerContext *ctx) {
     if (!L) return false;
     
     luaL_openlibs(L);
+    
+    // Register our functions
+    registerHttpFunctions(L);
+    registerDbFunctions(L);  // Add DB functions registration
     
     // Load all Lua scripts from scripts directory
     if (!loadAllScripts(L)) {
@@ -576,7 +647,7 @@ bool initLua(ServerContext *ctx) {
     lua_close(L);
 
     // Add pipeline step compilation
-    if (!compilePipelineSteps(ctx)) {
+    if (!compilePipelineSteps(server_ctx)) {
         cleanupLua();
         return false;
     }
@@ -658,8 +729,9 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
 
     luaL_openlibs(L);
     
-    // Register HTTP functions
+    // Register our functions
     registerHttpFunctions(L);
+    registerDbFunctions(L);  // Add DB functions registration
     
     // Load all cached scripts into this state
     if (!loadCachedScripts(L)) {

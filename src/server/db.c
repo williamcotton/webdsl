@@ -122,7 +122,7 @@ static PGresult* executePreparedStatement(Database *db, const char *sql,
 }
 
 // Modify existing executeParameterizedQuery to use prepared statements
-static PGresult* executeParameterizedQuery(Database *db, const char *sql, 
+PGresult* executeParameterizedQuery(Database *db, const char *sql, 
                                   const char **values, size_t value_count) {
     return executePreparedStatement(db, sql, values, value_count);
 }
@@ -200,7 +200,7 @@ void closeDatabase(Database *db) {
     closeConnectionPool(db->pool);
 }
 
-static json_t* resultToJson(PGresult *result, const char *sql) {
+json_t* resultToJson(PGresult *result, const char *sql) {
     if (!result) return NULL;
     
     int rowCount = PQntuples(result);
@@ -233,7 +233,7 @@ static json_t* resultToJson(PGresult *result, const char *sql) {
     return root;
 }
 
-static json_t* executeSqlWithParams(Database *db, const char *sql, const char **values, size_t value_count) {
+json_t* executeSqlWithParams(Database *db, const char *sql, const char **values, size_t value_count) {
     PGresult *result;
     if (values && value_count > 0) {
         result = executeParameterizedQuery(db, sql, values, value_count);

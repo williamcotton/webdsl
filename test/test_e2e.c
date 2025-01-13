@@ -110,6 +110,19 @@ static const char *TEST_CONFIG =
 "      }\n"
 "    }\n"
 "  }\n"
+"  \n"
+"  api {\n"
+"    route \"/api/test/sql\"\n"
+"    method \"GET\"\n"
+"    pipeline {\n"
+"      lua {\n"
+"        local result = sqlQuery(\"SELECT $1::int as num, $2::text as str\", {42, \"hello\"})\n"
+"        return {\n"
+"          data = result\n"
+"        }\n"
+"      }\n"
+"    }\n"
+"  }\n"
 "}\n";
 
 static const char *TEST_FILE = "test_e2e_config.webdsl";
@@ -514,6 +527,56 @@ static void test_posts_endpoint(void) {
     sleep(1);
 }
 
+static void test_sql_query_endpoint(void) {
+    // Write initial config
+    writeConfig(TEST_CONFIG);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Test GET request to SQL endpoint
+    json_t *response = makeRequest("http://localhost:3456/api/test/sql", "GET", NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify response structure
+    json_t *data = json_object_get(response, "data");
+    TEST_ASSERT_NOT_NULL(data);
+    
+    // Get the rows from the response
+    json_t *result = json_object_get(data, "rows");
+    TEST_ASSERT_NOT_NULL(result);
+    TEST_ASSERT_TRUE(json_is_array(result));
+    TEST_ASSERT_TRUE(json_array_size(result) > 0);
+    
+    // Verify first row structure
+    json_t *first_row = json_array_get(result, 0);
+    TEST_ASSERT_NOT_NULL(first_row);
+    TEST_ASSERT_TRUE(json_is_object(first_row));
+    
+    // Verify the values match what we queried
+    TEST_ASSERT_EQUAL_STRING("42", json_string_value(json_object_get(first_row, "num")));
+    TEST_ASSERT_EQUAL_STRING("hello", json_string_value(json_object_get(first_row, "str")));
+    
+    // Verify the query was included in response
+    json_t *query = json_object_get(data, "query");
+    TEST_ASSERT_NOT_NULL(query);
+    TEST_ASSERT_TRUE(json_is_string(query));
+    TEST_ASSERT_EQUAL_STRING("SELECT $1::int as num, $2::text as str", json_string_value(query));
+    
+    json_decref(response);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -522,5 +585,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_api_features);
     RUN_TEST(test_includes_functionality);
     RUN_TEST(test_posts_endpoint);
+    RUN_TEST(test_sql_query_endpoint);
     return UNITY_END();
 }

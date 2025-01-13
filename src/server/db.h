@@ -43,6 +43,12 @@ Database* initDatabase(Arena *arena, const char *conninfo);
 
 void closeDatabase(Database *db);
 
+// Core database functions exposed for Lua integration
+PGresult* executeParameterizedQuery(Database *db, const char *sql, 
+                                  const char **values, size_t value_count);
+json_t* resultToJson(PGresult *result, const char *sql);
+json_t* executeSqlWithParams(Database *db, const char *sql, const char **values, size_t value_count);
+
 json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
                        json_t *requestContext, Arena *arena, struct ServerContext *ctx);
 
