@@ -12,6 +12,7 @@
 #include "../arena.h"
 #include "server.h"
 #include <time.h>
+#include <curl/curl.h>
 
 // Structure to hold bytecode
 typedef struct {
@@ -33,6 +34,12 @@ typedef struct {
     size_t capacity;
 } LuaFileRegistry;
 
+// HTTP response buffer structure
+typedef struct {
+    char *data;
+    size_t size;
+} ResponseBuffer;
+
 // Initialize Lua subsystem
 bool initLua(ServerContext *ctx);
 
@@ -41,5 +48,8 @@ void cleanupLua(void);
 
 // Execute a Lua pipeline step
 json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx);
+
+// Register HTTP functions with Lua state
+void registerHttpFunctions(lua_State *L);
 
 #endif

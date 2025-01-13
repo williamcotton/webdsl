@@ -15,6 +15,10 @@
 #define INITIAL_REGISTRY_CAPACITY 16
 #define SCRIPTS_DIR "src/server/scripts"
 
+// Forward declarations
+static void pushJsonToLua(lua_State *L, json_t *json);
+static json_t* luaToJson(lua_State *L, int index);
+
 // Add arena wrapper struct
 typedef struct {
     Arena *arena;
@@ -29,6 +33,181 @@ typedef struct LuaChunkEntry {
 
 static LuaFileRegistry fileRegistry = {0};
 static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
+
+// Write callback for curl
+static size_t writeCallback(void *contents, size_t size, size_t nmemb, void *userp) {
+    size_t realsize = size * nmemb;
+    ResponseBuffer *mem = (ResponseBuffer *)userp;
+    
+    char *ptr = realloc(mem->data, mem->size + realsize + 1);
+    if (!ptr) {
+        return 0;  // Out of memory
+    }
+    
+    mem->data = ptr;
+    memcpy(&(mem->data[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->data[mem->size] = 0;
+    
+    return realsize;
+}
+
+// Lua function to make HTTP requests
+static int lua_fetch(lua_State *L) {
+    // Get URL from first argument
+    const char *url = luaL_checkstring(L, 1);
+    
+    // Get options table from second argument (optional)
+    const char *method = "GET";
+    const char *body = NULL;
+    struct curl_slist *headers = NULL;
+    
+    if (lua_gettop(L) >= 2) {
+        luaL_checktype(L, 2, LUA_TTABLE);
+        
+        // Get method
+        lua_getfield(L, 2, "method");
+        if (!lua_isnil(L, -1)) {
+            method = lua_tostring(L, -1);
+        }
+        lua_pop(L, 1);
+        
+        // Get body
+        lua_getfield(L, 2, "body");
+        if (!lua_isnil(L, -1)) {
+            if (lua_istable(L, -1)) {
+                // Convert table to JSON string
+                json_t *json_body = luaToJson(L, -1);
+                body = json_dumps(json_body, 0);
+                json_decref(json_body);
+            } else {
+                body = lua_tostring(L, -1);
+            }
+        }
+        lua_pop(L, 1);
+        
+        // Get headers
+        lua_getfield(L, 2, "headers");
+        if (lua_istable(L, -1)) {
+            lua_pushnil(L);
+            while (lua_next(L, -2) != 0) {
+                const char *key = lua_tostring(L, -2);
+                const char *value = lua_tostring(L, -1);
+                char *header = malloc(strlen(key) + strlen(value) + 3);
+                sprintf(header, "%s: %s", key, value);
+                headers = curl_slist_append(headers, header);
+                free(header);
+                lua_pop(L, 1);
+            }
+        }
+        lua_pop(L, 1);
+    }
+    
+    // Initialize CURL
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        lua_pushnil(L);
+        lua_pushstring(L, "Failed to initialize CURL");
+        return 2;
+    }
+    
+    // Set up response buffer
+    ResponseBuffer response = {0};
+    response.data = malloc(1);
+    response.size = 0;
+    
+    // Set up request
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    // Set method and body
+    if (strcmp(method, "POST") == 0) {
+        curl_easy_setopt(curl, CURLOPT_POST, 1L);
+        if (body) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        }
+    } else if (strcmp(method, "PUT") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+        if (body) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        }
+    } else if (strcmp(method, "DELETE") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
+    } else if (strcmp(method, "PATCH") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PATCH");
+        if (body) {
+            curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+        }
+    }
+    
+    // Set headers
+    if (headers) {
+        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    }
+    
+    // Perform request
+    CURLcode res = curl_easy_perform(curl);
+    
+    // Clean up
+    if (headers) {
+        curl_slist_free_all(headers);
+    }
+    if (body) {
+        free((void*)body);
+    }
+    
+    if (res != CURLE_OK) {
+        const char *error_msg = curl_easy_strerror(res);
+        lua_pushnil(L);
+        lua_pushstring(L, error_msg);
+        free(response.data);
+        curl_easy_cleanup(curl);
+        return 2;
+    }
+    
+    // Get status code
+    long status_code;
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status_code);
+    
+    // Clean up curl
+    curl_easy_cleanup(curl);
+    
+    // Try to parse response as JSON
+    json_error_t error;
+    json_t *json = json_loads(response.data, 0, &error);
+    
+    // Create response table
+    lua_createtable(L, 0, 3);
+    
+    // Add status
+    lua_pushinteger(L, status_code);
+    lua_setfield(L, -2, "status");
+    
+    // Add ok
+    lua_pushboolean(L, status_code >= 200 && status_code < 300);
+    lua_setfield(L, -2, "ok");
+    
+    // Add body
+    if (json) {
+        // If JSON parsing succeeded, convert to Lua table
+        pushJsonToLua(L, json);
+        json_decref(json);
+    } else {
+        // If not JSON, return as string
+        lua_pushstring(L, response.data);
+    }
+    lua_setfield(L, -2, "body");
+    
+    free(response.data);
+    return 1;
+}
+
+// Register HTTP functions with Lua state
+void registerHttpFunctions(lua_State *L) {
+    lua_pushcfunction(L, lua_fetch);
+    lua_setglobal(L, "fetch");
+}
 
 // Modify bytecodeWriter to handle both cases
 static int bytecodeWriter(lua_State *L __attribute__((unused)), 
@@ -473,6 +652,9 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
     lua_gc(L, LUA_GCSTOP, 0);
 
     luaL_openlibs(L);
+    
+    // Register HTTP functions
+    registerHttpFunctions(L);
     
     // Load all cached scripts into this state
     if (!loadCachedScripts(L)) {
