@@ -12,7 +12,6 @@ static ServerContext *serverCtx = NULL;
 void initMustache(ServerContext *_serverCtx) {
     serverCtx = _serverCtx;
 }
-
 char* generateMustacheContent(Arena *arena, const ContentNode *cn, int indent) {
     StringBuilder *sb = StringBuilder_new(arena);
     char indentStr[32];
@@ -190,3 +189,4 @@ enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
   MHD_destroy_response(response);
   return ret;
 }
+

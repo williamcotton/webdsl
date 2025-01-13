@@ -1,7 +1,7 @@
 #include "handler.h"
 #include "routing.h"
 #include "api.h"
-#include "html.h"
+#include "css.h"
 #include "mustache.h"
 #include "../arena.h"
 #include <string.h>
@@ -171,13 +171,8 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         return handleCssRequest(connection, requestArena);
     }
 
-    // Check if the page uses mustache templates
-    PageNode *page = findPage(url);
-    if (page && page->contentHead && strcmp(page->contentHead->type, "raw_mustache") == 0) {
-        return handleMustachePageRequest(connection, api, method, url, version, *con_cls, requestArena, ctx);
-    }
-    
-    return handlePageRequest(connection, url, requestArena);
+    return handleMustachePageRequest(connection, api, method, url, version,
+                                     *con_cls, requestArena, ctx);
 }
 
 void handleRequestCompleted(ServerContext *ctx,

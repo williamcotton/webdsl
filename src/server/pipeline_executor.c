@@ -1,7 +1,4 @@
 #include "pipeline_executor.h"
-#include "jq.h"
-#include "lua.h"
-#include "db.h"
 #include <string.h>
 
 json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx) {

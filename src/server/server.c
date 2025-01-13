@@ -3,7 +3,7 @@
 #include "routing.h"
 #include "db.h"
 #include "lua.h"
-#include "html.h"
+#include "css.h"
 #include "mustache.h"
 #include <microhttpd.h>
 #include <stdio.h>
@@ -46,7 +46,7 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
 
     // Initialize subsystems
     initDb(serverCtx);
-    initHtml(serverCtx);
+    initCss(serverCtx);
     initMustache(serverCtx);
 
     // Initialize Lua subsystem

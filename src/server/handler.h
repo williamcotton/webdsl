@@ -2,7 +2,6 @@
 #define SERVER_HANDLER_H
 
 #include <microhttpd.h>
-#include <string.h>
 #include "../arena.h"
 #include "server.h"
 
