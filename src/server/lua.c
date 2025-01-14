@@ -37,6 +37,9 @@ static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
 
 static struct ServerContext *g_ctx = NULL;  // Rename global ctx to g_ctx
 
+// Add typedef for Page
+typedef struct PageNode Page;
+
 // Write callback for curl
 static size_t writeCallback(void *contents, size_t size, size_t nmemb, void *userp) {
     size_t realsize = size * nmemb;
@@ -429,7 +432,78 @@ static void* luaArenaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     return new_ptr;
 }
 
-// Add new function to walk AST and compile Lua steps
+// Helper function to compile pipeline steps
+static bool compilePipelineStepsHelper(PipelineStepNode* step) {
+    // Validate pointer alignment
+    if (!step || ((uintptr_t)step & 7) != 0) return true;  // Skip if NULL or misaligned
+    
+    while (step && ((uintptr_t)step & 7) == 0) {  // Check alignment in loop too
+        if (step->type == STEP_LUA) {
+            const char* code = step->code;
+            if (step->name) {
+                // For named scripts, get code from script block
+                ScriptNode* namedScript = findScript(step->name);
+                if (!namedScript) {
+                    fprintf(stderr, "Script not found: %s\n", step->name);
+                    return false;
+                }
+                code = namedScript->code;
+            }
+            
+            if (!code) continue;
+            
+            uint32_t hash = hashString(code) & LUA_HASH_MASK;
+            
+            // Check if already cached
+            LuaChunkEntry* entry = chunkTable[hash];
+            while (entry) {
+                if (strcmp(entry->code, code) == 0) {
+                    break;
+                }
+                entry = entry->next;
+            }
+            
+            if (!entry) {
+                // New chunk - compile and cache it
+                entry = malloc(sizeof(LuaChunkEntry));
+                if (!entry) return false;
+                
+                entry->code = code;
+                entry->bytecode.bytecode = NULL;
+                entry->bytecode.bytecode_len = 0;
+                
+                lua_State *L = luaL_newstate();
+                if (!L) {
+                    free(entry);
+                    return false;
+                }
+                
+                luaL_openlibs(L);
+                
+                if (luaL_loadstring(L, code) != 0) {
+                    lua_close(L);
+                    free(entry);
+                    return false;
+                }
+                
+                if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
+                    lua_close(L);
+                    free(entry);
+                    return false;
+                }
+                
+                lua_close(L);
+                
+                // Add to hash table
+                entry->next = chunkTable[hash];
+                chunkTable[hash] = entry;
+            }
+        }
+        step = step->next;
+    }
+    return true;
+}
+
 static bool compilePipelineSteps(ServerContext *server_ctx) {
     // First compile all named scripts
     ScriptNode* script = server_ctx->website->scriptHead;
@@ -485,76 +559,24 @@ static bool compilePipelineSteps(ServerContext *server_ctx) {
         script = script->next;
     }
 
-    // Then compile pipeline steps (existing)
+    // Compile API endpoint pipeline steps
     ApiEndpoint* endpoint = server_ctx->website->apiHead;
     while (endpoint) {
-        PipelineStepNode* step = endpoint->pipeline;
-        while (step) {
-            if (step->type == STEP_LUA) {
-                const char* code = step->code;
-                if (step->name) {
-                    // For named scripts, get code from script block
-                    ScriptNode* namedScript = findScript(step->name);
-                    if (!namedScript) {
-                        fprintf(stderr, "Script not found: %s\n", step->name);
-                        return false;
-                    }
-                    code = namedScript->code;
-                }
-                
-                if (!code) continue;
-                
-                uint32_t hash = hashString(code) & LUA_HASH_MASK;
-                
-                // Check if already cached
-                LuaChunkEntry* entry = chunkTable[hash];
-                while (entry) {
-                    if (strcmp(entry->code, code) == 0) {
-                        break;
-                    }
-                    entry = entry->next;
-                }
-                
-                if (!entry) {
-                    // New chunk - compile and cache it
-                    entry = malloc(sizeof(LuaChunkEntry));
-                    if (!entry) return false;
-                    
-                    entry->code = code;
-                    entry->bytecode.bytecode = NULL;
-                    entry->bytecode.bytecode_len = 0;
-                    
-                    lua_State *L = luaL_newstate();
-                    if (!L) {
-                        free(entry);
-                        return false;
-                    }
-                    
-                    luaL_openlibs(L);
-                    
-                    if (luaL_loadstring(L, code) != 0) {
-                        lua_close(L);
-                        free(entry);
-                        return false;
-                    }
-                    
-                    if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
-                        lua_close(L);
-                        free(entry);
-                        return false;
-                    }
-                    
-                    lua_close(L);
-                    
-                    // Add to hash table
-                    entry->next = chunkTable[hash];
-                    chunkTable[hash] = entry;
-                }
-            }
-            step = step->next;
+        if (endpoint->pipeline && !compilePipelineStepsHelper(endpoint->pipeline)) {
+            return false;
         }
         endpoint = endpoint->next;
     }
+
+    // Compile page pipeline steps
+    Page* page = server_ctx->website->pageHead;
+    while (page) {
+        if (page->pipeline && !compilePipelineStepsHelper(page->pipeline)) {
+            return false;
+        }
+        page = page->next;
+    }
+
     return true;
 }
 

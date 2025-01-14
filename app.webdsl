@@ -7,4 +7,5 @@ website {
 
     include "api.webdsl"
     include "pages.webdsl"
+    include "htmx.webdsl"
 }
