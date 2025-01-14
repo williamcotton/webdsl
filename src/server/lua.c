@@ -505,6 +505,10 @@ static bool compilePipelineStepsHelper(PipelineStepNode* step) {
 }
 
 static bool compilePipelineSteps(ServerContext *server_ctx) {
+    if (!server_ctx || !server_ctx->website) {
+        return false;
+    }
+
     // First compile all named scripts
     ScriptNode* script = server_ctx->website->scriptHead;
     while (script) {
