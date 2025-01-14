@@ -10,6 +10,7 @@
 #include "server.h"
 #include "routing.h"
 #include "db.h"
+#include "generated_scripts.h"
 
 #define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
 #define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
@@ -19,6 +20,7 @@
 // Forward declarations
 static void pushJsonToLua(lua_State *L, json_t *json);
 static json_t* luaToJson(lua_State *L, int index);
+static bool loadEmbeddedScripts(lua_State *L);
 
 // Add arena wrapper struct
 typedef struct {
@@ -336,8 +338,8 @@ static bool loadLuaFile(lua_State *L, const char* filepath) {
 static bool loadAllScripts(lua_State *L) {
     DIR *dir = opendir(SCRIPTS_DIR);
     if (!dir) {
-        fprintf(stderr, "Failed to open scripts directory: %s\n", SCRIPTS_DIR);
-        return false;
+        // Scripts directory doesn't exist - that's fine, continue with embedded scripts
+        return true;
     }
 
     bool success = true;
@@ -661,9 +663,16 @@ bool initLua(ServerContext *server_ctx) {
     
     // Register our functions
     registerHttpFunctions(L);
-    registerDbFunctions(L);  // Add DB functions registration
+    registerDbFunctions(L);
     
-    // Load all Lua scripts from scripts directory
+    // First load embedded scripts
+    if (!loadEmbeddedScripts(L)) {
+        lua_close(L);
+        cleanupLua();
+        return false;
+    }
+    
+    // Then load filesystem scripts (which can override embedded ones)
     if (!loadAllScripts(L)) {
         lua_close(L);
         cleanupLua();
@@ -706,40 +715,7 @@ void cleanupLua(void) {
     }
 }
 
-// Load cached scripts into a Lua state
-static bool loadCachedScripts(lua_State *L) {
-    for (size_t i = 0; i < fileRegistry.count; i++) {
-        LuaFileEntry* entry = &fileRegistry.entries[i];
-        
-        // Load the bytecode
-        if (luaL_loadbuffer(L, 
-            (const char*)entry->bytecode.bytecode,
-            entry->bytecode.bytecode_len,
-            entry->filename) != 0) {
-            fprintf(stderr, "Failed to load cached script %s\n", entry->filename);
-            return false;
-        }
-        
-        // Execute the chunk
-        if (lua_pcall(L, 0, 1, 0) != 0) {
-            fprintf(stderr, "Failed to execute cached script %s: %s\n", 
-                    entry->filename, lua_tostring(L, -1));
-            return false;
-        }
-        
-        // Set as global with module name
-        char* moduleName = getModuleName(entry->filename);
-        if (moduleName) {
-            lua_setglobal(L, moduleName);
-            free(moduleName);
-        } else {
-            return false;
-        }
-    }
-    return true;
-}
-
-static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool loadQueryBuilder __attribute__((unused))) {
+static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     // Create and initialize arena wrapper
     LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
     wrapper->arena = arena;
@@ -757,10 +733,10 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
     
     // Register our functions
     registerHttpFunctions(L);
-    registerDbFunctions(L);  // Add DB functions registration
+    registerDbFunctions(L);
     
-    // Load all cached scripts into this state
-    if (!loadCachedScripts(L)) {
+    // Load embedded scripts into this state
+    if (!loadEmbeddedScripts(L)) {
         lua_close(L);
         return NULL;
     }
@@ -949,10 +925,7 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
         return result;
     }
 
-    // Check if script needs querybuilder
-    bool needs_querybuilder = strstr(code, "querybuilder") != NULL;
-    
-    lua_State *L = createLuaState(input, arena, needs_querybuilder);
+    lua_State *L = createLuaState(input, arena);
     if (!L) {
         json_t *result = json_object();
         json_object_set_new(result, "error", json_string("Failed to create Lua state"));
@@ -1047,4 +1020,43 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     }
     
     return result;
+}
+
+static bool loadEmbeddedScripts(lua_State *L) {
+    for (const EmbeddedScript *script = EMBEDDED_SCRIPTS; script->name != NULL; script++) {
+        // Concatenate all chunks into one string
+        size_t total_len = 0;
+        for (size_t i = 0; i < script->num_chunks; i++) {
+            total_len += strlen(script->chunks[i]);
+        }
+
+        char *buffer = arenaAlloc(g_ctx->arena, total_len + 1);
+        if (!buffer) return false;
+
+        char *ptr = buffer;
+        for (size_t i = 0; i < script->num_chunks; i++) {
+            size_t len = strlen(script->chunks[i]);
+            memcpy(ptr, script->chunks[i], len);
+            ptr += len;
+        }
+        *ptr = '\0';
+
+        // Load and execute the script
+        if (luaL_loadbuffer(L, buffer, total_len, script->name) != 0) {
+            fprintf(stderr, "Failed to load embedded script %s: %s\n", 
+                    script->name, lua_tostring(L, -1));
+            return false;
+        }
+
+        // Execute the chunk to get the module table
+        if (lua_pcall(L, 0, 1, 0) != 0) {
+            fprintf(stderr, "Failed to execute embedded script %s: %s\n",
+                    script->name, lua_tostring(L, -1));
+            return false;
+        }
+
+        // Set the module table as a global with the script name
+        lua_setglobal(L, script->name);
+    }
+    return true;
 }

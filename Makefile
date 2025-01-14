@@ -64,7 +64,7 @@ endif
 start: $(BUILD_DIR)/webdsl
 	$(BUILD_DIR)/webdsl
 
-$(BUILD_DIR)/webdsl:
+$(BUILD_DIR)/webdsl: generate-scripts
 	mkdir -p $(BUILD_DIR)
 	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LIBS)
 
@@ -204,3 +204,9 @@ SRCS = src/main.c src/arena.c src/db.c src/lexer.c src/parser.c \
 TEST_SRCS = test/test_arena.c test/test_lexer.c test/test_main.c \
              test/test_parser.c test/test_server.c test/test_stringbuilder.c \
              test/unity/unity.c
+
+GENERATED_SCRIPTS = src/server/generated_scripts.c src/server/generated_scripts.h
+
+.PHONY: generate-scripts
+generate-scripts:
+	./tools/generate_embedded_scripts.py

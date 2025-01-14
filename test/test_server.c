@@ -245,7 +245,7 @@ static void test_server_request_context(void) {
 }
 
 static void test_server_pipeline_execution(void) {
-    Arena *arena = createArena(1024 * 64);
+    Arena *arena = createArena(1024 * 1024);
     WebsiteNode *website = createTestWebsite(arena);
 
     initRequestJsonArena(arena);
