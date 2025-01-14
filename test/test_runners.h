@@ -13,6 +13,7 @@ int run_server_tests(void);
 int run_server_html_tests(void);
 int run_server_css_tests(void);
 int run_server_validation_tests(void);
+int run_route_params_tests(void);
 
 // Hotreload test runners
 int run_website_tests(void);

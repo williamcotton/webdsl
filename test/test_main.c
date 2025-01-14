@@ -23,6 +23,7 @@ int main(void) {
     result |= run_server_tests();
     result |= run_server_css_tests();
     result |= run_server_validation_tests();
+    result |= run_route_params_tests();
     
     // Run hotreload tests
     result |= run_website_tests();
