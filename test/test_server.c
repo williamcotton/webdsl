@@ -81,15 +81,76 @@ static void test_server_routing(void) {
     TEST_ASSERT_NOT_NULL(ctx);
     
     // Test route finding
-    PageNode *found = findPage("/test");
+    RouteParams params = {0};
+    PageNode *found = findPage("/test", &params, arena);
     TEST_ASSERT_NOT_NULL(found);
     TEST_ASSERT_EQUAL_STRING("/test", found->route);
+    TEST_ASSERT_EQUAL(0, params.count);  // No parameters for exact match
     
     // Test API route finding
-    ApiEndpoint *api = findApi("/api/test", "GET");
+    RouteParams apiParams = {0};
+    ApiEndpoint *api = findApi("/api/test", "GET", &apiParams, arena);
     TEST_ASSERT_NOT_NULL(api);
     TEST_ASSERT_EQUAL_STRING("/api/test", api->route);
     TEST_ASSERT_EQUAL_STRING("GET", api->method);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_routing_with_params(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    // Add a test page with route parameters
+    PageNode *page = arenaAlloc(arena, sizeof(PageNode));
+    page->route = arenaDupString(arena, "/notes/:id/comments/:comment_id");
+    page->identifier = arenaDupString(arena, "test");
+    page->next = NULL;
+    website->pageHead = page;
+    
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+    
+    // Test route finding with parameters
+    RouteParams params = {0};
+    PageNode *found = findPage("/notes/123/comments/456", &params, arena);
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_EQUAL_STRING("/notes/:id/comments/:comment_id", found->route);
+    
+    // Verify extracted parameters
+    TEST_ASSERT_EQUAL(2, params.count);
+    TEST_ASSERT_EQUAL_STRING("id", params.params[0].name);
+    TEST_ASSERT_EQUAL_STRING("123", params.params[0].value);
+    TEST_ASSERT_EQUAL_STRING("comment_id", params.params[1].name);
+    TEST_ASSERT_EQUAL_STRING("456", params.params[1].value);
+    
+    stopServer();
+    freeArena(arena);
+}
+
+static void test_server_api_routing_with_params(void) {
+    Arena *arena = createArena(1024 * 64);
+    WebsiteNode *website = createTestWebsite(arena);
+
+    // Add an API endpoint
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/users/:userId/posts/:postId/comments");
+    api->method = arenaDupString(arena, "GET");
+    api->uses_pipeline = true;
+    api->pipeline = NULL;
+    api->next = website->apiHead;
+    website->apiHead = api;
+
+    ServerContext *ctx = startServer(website, arena);
+    TEST_ASSERT_NOT_NULL(ctx);
+
+    // Test API endpoint finding
+    RouteParams params = {0};
+    ApiEndpoint *found = findApi("/api/users/123/posts/456/comments", "GET", &params, arena);
+    TEST_ASSERT_NOT_NULL(found);
+    TEST_ASSERT_EQUAL_STRING("/api/users/:userId/posts/:postId/comments", found->route);
+    TEST_ASSERT_EQUAL_STRING("GET", found->method);
     
     stopServer();
     freeArena(arena);
@@ -122,7 +183,8 @@ static void test_server_api_validation(void) {
     TEST_ASSERT_NOT_NULL(ctx);
     
     // Test API endpoint finding
-    ApiEndpoint *found = findApi("/api/validate", "POST");
+    RouteParams params = {0};
+    ApiEndpoint *found = findApi("/api/validate", "POST", &params, arena);
     TEST_ASSERT_NOT_NULL(found);
     TEST_ASSERT_NOT_NULL(found->apiFields);
     TEST_ASSERT_EQUAL_STRING("email", found->apiFields->name);
@@ -342,10 +404,12 @@ int run_server_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_server_init);
     RUN_TEST(test_server_routing);
+    RUN_TEST(test_server_routing_with_params);
     RUN_TEST(test_server_api_validation);
     RUN_TEST(test_server_database_connection);
     RUN_TEST(test_server_request_context);
     RUN_TEST(test_server_pipeline_execution);
     RUN_TEST(test_server_post_request);
+    RUN_TEST(test_server_api_routing_with_params);  
     return UNITY_END();
 }

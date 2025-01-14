@@ -21,6 +21,7 @@ json_t* executePipeline(ServerContext *ctx, PipelineStepNode *pipeline, json_t *
     }
 
     json_t *current = requestContext;
+
     PipelineStepNode *step = pipeline;
     
     while (step) {

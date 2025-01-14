@@ -158,9 +158,10 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     }
 
     // Check for API endpoint first
-    ApiEndpoint *api = findApi(url, method);
+    RouteParams params = {0};
+    ApiEndpoint *api = findApi(url, method, &params, requestArena);
     if (api) {
-        return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena, ctx);
+        return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena, ctx, &params);
     }
 
     if (strcmp(url, "/styles.css") == 0) {

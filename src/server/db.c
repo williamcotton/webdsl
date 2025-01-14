@@ -268,7 +268,7 @@ static json_t* createErrorResponse(const char* message) {
 }
 
 static void extractJsonParams(json_t *input, Arena *arena, const char ***values, size_t *value_count) {
-    json_t *params = json_object_get(input, "params");
+    json_t *params = json_object_get(input, "sqlParams");
     *values = NULL;
     *value_count = 0;
 
@@ -338,7 +338,7 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
             return createErrorResponse("Failed to allocate memory for parameters");
         }
         // Store the params for including in result
-        params = json_object_get(input, "params");
+        params = json_object_get(input, "sqlParams");
     }
 
     json_t *jsonData = executeAndFormatQuery(arena, sql, values, value_count);
@@ -351,7 +351,7 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
     if (input) {
         result = json_deep_copy(input);
         // Clear params after execution
-        json_object_set_new(result, "params", json_array());
+        json_object_set_new(result, "sqlParams", json_array());
     } else {
         result = json_object();
     }
@@ -365,7 +365,7 @@ json_t *executeSqlStep(PipelineStepNode *step, json_t *input,
 
     // If we had params, include them in the result data
     if (params && json_array_size(params) > 0) {
-        json_object_set(jsonData, "params", params);
+        json_object_set(jsonData, "sqlParams", params);
     }
 
     // Add new result to data array

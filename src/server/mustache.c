@@ -64,7 +64,8 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
                                ApiEndpoint *api, const char *method,
                                const char *url, const char *version,
                                void *con_cls, Arena *arena, ServerContext *ctx,
-                               PageNode *page, LayoutNode *layout) {
+                               PageNode *page, LayoutNode *layout,
+                               RouteParams *params) {
   (void)api;                                
   StringBuilder *sb = StringBuilder_new(arena);
 
@@ -113,7 +114,7 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
   if (page->pipeline) {
     // Create request context
     json_t *requestContext =
-        buildRequestContextJson(connection, arena, con_cls, method, url, version);
+        buildRequestContextJson(connection, arena, con_cls, method, url, version, params);
 
     // Execute pipeline
     data = executePipeline(ctx, page->pipeline, requestContext, arena);
@@ -161,7 +162,8 @@ enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
                                           void *con_cls, Arena *arena,
                                           ServerContext *ctx) {
   // Find matching page
-  PageNode *page = findPage(url);
+  RouteParams params = {0};
+  PageNode *page = findPage(url, &params, arena);
 
   if (!page) {
     const char *not_found_text =
@@ -179,7 +181,7 @@ enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
   LayoutNode *layout = findLayout(page->layout);
 
   // Generate the page with mustache templates
-  char *html = generateFullMustachePage(connection, api, method, url, version, con_cls, arena, ctx, page, layout);
+  char *html = generateFullMustachePage(connection, api, method, url, version, con_cls, arena, ctx, page, layout, &params);
 
   if (page->redirect) {
     struct MHD_Response *response =

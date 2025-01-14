@@ -191,7 +191,7 @@ end
 function QueryBuilder:build()
     return {
         sql = self:_build_select(),
-        params = self._params
+        sqlParams = self._params
     }
 end
 

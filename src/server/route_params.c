@@ -15,12 +15,12 @@ bool parseRouteParams(const char *pattern, const char *url, RouteParams *params,
             p++; // Skip ':'
             const char *name_start = p;
             while (*p && *p != '/') p++;
-            size_t name_len = p - name_start;
+            size_t name_len = (size_t)(p - name_start);
             
             // Extract value from URL
             const char *value_start = u;
             while (*u && *u != '/') u++;
-            size_t value_len = u - value_start;
+            size_t value_len = (size_t)(u - value_start);
             
             // Store parameter if we have space
             if (params->count < MAX_ROUTE_PARAMS) {

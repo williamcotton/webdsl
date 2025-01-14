@@ -785,6 +785,18 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena, bool load
         lua_settable(L, -3);
     }
     lua_setglobal(L, "headers");
+
+    // Add params
+    lua_newtable(L);
+    json_t *params = json_object_get(requestContext, "params");
+    const char *params_key;
+    json_t *params_value;
+    json_object_foreach(params, params_key, params_value) {
+        lua_pushstring(L, params_key);
+        lua_pushstring(L, json_string_value(params_value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "params");
     
     // Add body params
     lua_newtable(L);

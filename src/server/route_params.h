@@ -1,6 +1,7 @@
 #ifndef SERVER_ROUTE_PARAMS_H
 #define SERVER_ROUTE_PARAMS_H
 
+#include <stdint.h>
 #include "../arena.h"
 
 #define MAX_ROUTE_PARAMS 8
@@ -15,6 +16,7 @@ typedef struct RouteParam {
 typedef struct RouteParams {
     RouteParam params[MAX_ROUTE_PARAMS];
     int count;
+    uint64_t : 32;
 } RouteParams;
 
 // Parse route parameters from a URL based on a pattern

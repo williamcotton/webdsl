@@ -11,6 +11,7 @@
 #include <microhttpd.h>
 #include <pthread.h>
 #include "server.h"
+#include "route_params.h"
 
 // API request handling
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
@@ -20,7 +21,8 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                const char *version,
                                void *con_cls,
                                Arena *arena,
-                               ServerContext *ctx);
+                               ServerContext *ctx,
+                               RouteParams *params);
 
 // API response generation
 json_t* generateApiResponse(Arena *arena, 
@@ -34,6 +36,7 @@ void setupStepExecutor(PipelineStepNode *step);
 
 json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena,
                                 void *con_cls, const char *method,
-                                const char *url, const char *version);
+                                const char *url, const char *version,
+                                RouteParams *params);
 
 #endif // SERVER_API_H

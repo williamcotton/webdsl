@@ -102,7 +102,7 @@ static const char *TEST_CONFIG =
 "    method \"GET\"\n"
 "    pipeline {\n"
 "      lua {\n"
-"        return { params = { query.id } }\n"
+"        return { sqlParams = { query.id } }\n"
 "      }\n"
 "      executeQuery \"testQuery\"\n"
 "      jq {\n"
@@ -193,7 +193,7 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
     } else {
         free(header_response.data);
     }
-    
+
     json_error_t error;
     // Use standard malloc/free for JSON parsing instead of arena
     json_set_alloc_funcs(malloc, free);
@@ -909,6 +909,90 @@ static void test_page_redirect(void) {
     sleep(1);
 }
 
+static void test_route_params(void) {
+    // Write initial config with parameterized routes
+    const char *config = 
+        "website {\n"
+        "    name \"Route Params Test\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/notes/:id/comments/:comment_id\"\n"
+        "        method \"GET\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    params: .params,\n"
+        "                    url: .url,\n"
+        "                    method: .method\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/users/:userId/posts/:postId/comments\"\n"
+        "        method \"GET\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    params: .params,\n"
+        "                    url: .url\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL_STRING("Route Params Test", website->name);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Test first route with parameters
+    json_t *response = makeRequest("http://localhost:3456/api/notes/123/comments/456", "GET", NULL, NULL);
+
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify response structure and parameters
+    json_t *params = json_object_get(response, "params");
+    TEST_ASSERT_NOT_NULL(params);
+    TEST_ASSERT_TRUE(json_is_object(params));
+    TEST_ASSERT_EQUAL_STRING("123", json_string_value(json_object_get(params, "id")));
+    TEST_ASSERT_EQUAL_STRING("456", json_string_value(json_object_get(params, "comment_id")));
+    TEST_ASSERT_EQUAL_STRING("/api/notes/123/comments/456", json_string_value(json_object_get(response, "url")));
+    TEST_ASSERT_EQUAL_STRING("GET", json_string_value(json_object_get(response, "method")));
+    
+    json_decref(response);
+
+    // Test second route with different parameters
+    response = makeRequest("http://localhost:3456/api/users/789/posts/101/comments", "GET", NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify second route parameters
+    params = json_object_get(response, "params");
+    TEST_ASSERT_NOT_NULL(params);
+    TEST_ASSERT_TRUE(json_is_object(params));
+    TEST_ASSERT_EQUAL_STRING("789", json_string_value(json_object_get(params, "userId")));
+    TEST_ASSERT_EQUAL_STRING("101", json_string_value(json_object_get(params, "postId")));
+    TEST_ASSERT_EQUAL_STRING("/api/users/789/posts/101/comments", json_string_value(json_object_get(response, "url")));
+    
+    json_decref(response);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -921,5 +1005,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_mustache_template_page);
     RUN_TEST(test_page_post_handler);
     RUN_TEST(test_page_redirect);
+    RUN_TEST(test_route_params);
     return UNITY_END();
 }

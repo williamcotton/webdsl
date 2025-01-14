@@ -99,7 +99,7 @@ page {
     pipeline {
         jq {
             . + {
-                params: [(.query.limit // 20), (.query.offset // 0)]
+                sqlParams: [(.query.limit // 20), (.query.offset // 0)]
             }
         }
         sql {
@@ -214,7 +214,7 @@ page {
             
             -- Return params array for SQL step
             return {
-                params = {name, email, team_id}
+                sqlParams = {name, email, team_id}
             }
         }
         

@@ -3,6 +3,7 @@
 
 #include "../ast.h"
 #include "../arena.h"
+#include "route_params.h"
 #include <jq.h>
 #include <pthread.h>
 
@@ -34,6 +35,12 @@ typedef struct QueryHashEntry {
     struct QueryHashEntry *next;
 } QueryHashEntry;
 
+// Structure to hold a page match with its route parameters
+typedef struct PageMatch {
+    PageNode *page;
+    RouteParams params;
+} PageMatch;
+
 typedef struct JQHashEntry {
     const char *filter;
     jq_state *jq;
@@ -45,9 +52,10 @@ extern pthread_key_t jq_key;
 void jq_thread_cleanup(void *ptr);
 
 void buildRouteMaps(WebsiteNode *website, Arena *arena);
-PageNode* findPage(const char *url);
+PageNode* findPage(const char *url, RouteParams *params, Arena *arena);
+PageMatch* findPageWithParams(const char *url, Arena *arena);
 LayoutNode* findLayout(const char *identifier);
-ApiEndpoint* findApi(const char *url, const char *method);
+ApiEndpoint* findApi(const char *url, const char *method, RouteParams *params, Arena *arena);
 QueryNode* findQuery(const char *name);
 jq_state* findOrCreateJQ(const char *filter, Arena *arena);
 void cleanupJQCache(void);

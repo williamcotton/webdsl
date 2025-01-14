@@ -13,6 +13,7 @@
 #include "lua.h"
 #include "utils.h"
 #include "jq.h"
+#include "route_params.h"
 
 // Fix the const qualifier drop warning
 static struct MHD_Response* createErrorResponse(const char *error_msg, int status_code) {
@@ -55,7 +56,8 @@ static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
 
 json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
-                                   const char *url, const char *version) {
+                                   const char *url, const char *version,
+                                   RouteParams *params) {
     (void)arena; // Suppress unused parameter warning
     json_t *context = json_object();
 
@@ -81,6 +83,13 @@ json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena,
     MHD_get_connection_values(connection, MHD_COOKIE_KIND,
         jsonKvIterator, cookies);
     json_object_set_new(context, "cookies", cookies);
+
+    // Add params to context
+    json_t *params_obj = json_object();
+    for (int i = 0; i < params->count; i++) {
+        json_object_set_new(params_obj, params->params[i].name, json_string(params->params[i].value));
+    }
+    json_object_set_new(context, "params", params_obj);
 
     // Build body object
     json_t *body = json_object();
@@ -270,7 +279,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                  ApiEndpoint *api, const char *method,
                                  const char *url, const char *version,
                                  void *con_cls, Arena *arena,
-                                 ServerContext *ctx) {
+                                 ServerContext *ctx, RouteParams *params) {
   // Handle OPTIONS requests for CORS
   if (strcmp(method, "OPTIONS") == 0) {
     struct MHD_Response *response =
@@ -300,9 +309,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   }
 
   json_t *requestContext =
-      buildRequestContextJson(connection, arena, con_cls, method, url, version);
-
-  // printf("Request context: %s\n", request_context);
+      buildRequestContextJson(connection, arena, con_cls, method, url, version, params);
 
   // Generate API response with request context
   json_t *apiResponse = generateApiResponse(arena, api, con_cls, requestContext, ctx);

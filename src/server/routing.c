@@ -138,16 +138,31 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     }
 }
 
-PageNode* findPage(const char *url) {
+PageNode* findPage(const char *url, RouteParams *params, Arena *arena) {
     uint32_t hash = hashString(url) & HASH_MASK;
     RouteHashEntry *entry = routeTable[hash];
     
+    // First try exact match for performance
     while (entry) {
         if (strcmp(entry->route, url) == 0) {
+            // For exact matches, params will be empty
+            params->count = 0;
             return entry->page;
         }
         entry = entry->next;
     }
+    
+    // If no exact match, try pattern matching
+    for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+        entry = routeTable[i];
+        while (entry) {
+            if (parseRouteParams(entry->route, url, params, arena)) {
+                return entry->page;
+            }
+            entry = entry->next;
+        }
+    }
+    
     return NULL;
 }
 
@@ -164,18 +179,32 @@ LayoutNode* findLayout(const char *identifier) {
     return NULL;
 }
 
-ApiEndpoint* findApi(const char *url, const char *method) {
+ApiEndpoint* findApi(const char *url, const char *method, RouteParams *params, Arena *arena) {
     uint32_t hash = hashString(url);
     hash ^= hashString(method);
     hash &= HASH_MASK;
     ApiHashEntry *entry = apiTable[hash];
-    
+
+    // First try exact match for performance
     while (entry) {
         if (strcmp(entry->route, url) == 0 && strcmp(entry->method, method) == 0) {
+            params->count = 0;
             return entry->endpoint;
         }
         entry = entry->next;
     }
+    
+    // If no exact match, try pattern matching
+    for (int i = 0; i < HASH_TABLE_SIZE; i++) {
+        entry = apiTable[i];
+        while (entry) {
+            if (parseRouteParams(entry->route, url, params, arena)) {
+                return entry->endpoint;
+            }
+            entry = entry->next;
+        }
+    }
+
     return NULL;
 }
 
