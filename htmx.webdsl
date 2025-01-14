@@ -4,6 +4,7 @@ layout {
         <html>
             <head>
                 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+                <script src="https://cdn.tailwindcss.com"></script>
                 <title>HTMX Demo</title>
             </head>
             <body>
