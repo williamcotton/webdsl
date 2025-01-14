@@ -1,12 +1,20 @@
 // Notes collection with HTMX interactions
 
+query {
+    name "getNotes"
+    sql {
+        SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id ORDER BY date DESC
+    }
+}
+
 page {
     name "notes-list"
     route "/htmx/notes"
     layout "htmx"
     pipeline {
         lua {
-            local result = sqlQuery("SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id ORDER BY date DESC")
+            local sql = findQuery("getNotes")
+            local result = sqlQuery(sql)
             return { notes = result.rows }
         }
     }
@@ -56,6 +64,13 @@ page {
     }
 }
 
+query {
+    name "getEmployees"
+    sql {
+        SELECT id, name FROM employees ORDER BY name
+    }
+} 
+
 // New note form
 page {
     name "notes-new"
@@ -63,7 +78,8 @@ page {
     layout "none"
     pipeline {
         lua {
-            local result = sqlQuery("SELECT id, name FROM employees ORDER BY name")
+            local sql = findQuery("getEmployees")
+            local result = sqlQuery(sql)
             return { employees = result.rows }
         }
     }
@@ -113,6 +129,20 @@ page {
     }
 }
 
+query {
+    name "createNote"
+    sql {
+        INSERT INTO notes (title, employee_id, date) VALUES ($1, $2, $3) RETURNING id
+    }
+}
+
+query {
+    name "getNote"
+    sql {
+        SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id WHERE notes.id = $1
+    }
+}
+
 // Create note endpoint
 page {
     name "notes-create"
@@ -121,20 +151,17 @@ page {
     layout "none"
     pipeline {
         lua {
+            
             local title = body.title
             local employee_id = body.employee_id
             local date = body.date
-            
-            local result = sqlQuery(
-                "INSERT INTO notes (title, employee_id, date) VALUES ($1, $2, $3) RETURNING id",
-                {title, employee_id, date}
-            )
+
+            local sql = findQuery("createNote")
+            local result = sqlQuery(sql, {title, employee_id, date})
             
             if result.rows and result.rows[1] then
-                local note = sqlQuery(
-                    "SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id WHERE notes.id = $1",
-                    {result.rows[1].id}
-                )
+                local sql = findQuery("getNote")
+                local note = sqlQuery(sql, {result.rows[1].id})
                 return { note = note.rows[1] }
             end
             return { error = "Failed to create note" }
@@ -166,6 +193,13 @@ page {
     }
 }
 
+query {
+    name "getNoteById"
+    sql {
+        SELECT * FROM notes WHERE id = $1
+    }
+}
+
 // Edit note form
 page {
     name "notes-edit"
@@ -174,11 +208,10 @@ page {
     pipeline {
         lua {
             local id = params.id
-            local note = sqlQuery(
-                "SELECT * FROM notes WHERE id = $1",
-                {id}
-            )
-            local employees = sqlQuery("SELECT id, name FROM employees ORDER BY name")
+            local sql = findQuery("getNoteById")
+            local note = sqlQuery(sql, {id})
+            local sql = findQuery("getEmployees")
+            local employees = sqlQuery(sql)
             
             --  Mark the currently selected employee 
             local noteEmployeeId = note.rows[1].employee_id
@@ -244,6 +277,14 @@ page {
     }
 }
 
+query {
+    name "updateNote"
+    sql {
+        UPDATE notes SET title = $1, employee_id = $2, date = $3 WHERE id = $4
+    }
+}
+
+
 // Update note endpoint
 page {
     name "notes-update"
@@ -257,15 +298,11 @@ page {
             local employee_id = body.employee_id
             local date = body.date
             
-            sqlQuery(
-                "UPDATE notes SET title = $1, employee_id = $2, date = $3 WHERE id = $4",
-                {title, employee_id, date, id}
-            )
+            local sql = findQuery("updateNote")
+            sqlQuery(sql, {title, employee_id, date, id})
             
-            local note = sqlQuery(
-                "SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id WHERE notes.id = $1",
-                {id}
-            )
+            local sql = findQuery("getNote")
+            local note = sqlQuery(sql, {id})
             return { note = note.rows[1] }
         }
     }
@@ -295,6 +332,13 @@ page {
     }
 }
 
+query {
+    name "deleteNote"
+    sql {
+        DELETE FROM notes WHERE id = $1
+    }
+}
+
 // Delete note endpoint
 page {
     name "notes-delete"
@@ -304,7 +348,8 @@ page {
     pipeline {
         lua {
             local id = params.id
-            sqlQuery("DELETE FROM notes WHERE id = $1", {id})
+            local sql = findQuery("deleteNote")
+            sqlQuery(sql, {id})
             return {}
         }
     }

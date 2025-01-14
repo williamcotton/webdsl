@@ -642,10 +642,30 @@ static int lua_sqlQuery(lua_State *L) {
     return 1;
 }
 
+// Find SQL query by name function
+static int lua_findQuery(lua_State *L) {
+    // Get query name from first argument
+    const char *name = luaL_checkstring(L, 1);
+    
+    // Find the query
+    QueryNode *query = findQuery(name);
+    if (!query || !query->sql) {
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    // Return the SQL string
+    lua_pushstring(L, query->sql);
+    return 1;
+}
+
 // Register database functions with Lua state
 void registerDbFunctions(lua_State *L) {
     lua_pushcfunction(L, lua_sqlQuery);
     lua_setglobal(L, "sqlQuery");
+    
+    lua_pushcfunction(L, lua_findQuery);
+    lua_setglobal(L, "findQuery");
 }
 
 // Add global cache for embedded scripts
