@@ -207,7 +207,7 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
 }
 
 // Helper to make POST requests and return the raw response
-static char* makePostRequest(const char *url, const char *post_data, long *response_code_out) {
+static char* makePostRequest(const char *url, const char *post_data, long *response_code_out, char **headers_out) {
     CURL *curl = curl_easy_init();
     if (!curl) return NULL;
     
@@ -215,15 +215,27 @@ static char* makePostRequest(const char *url, const char *post_data, long *respo
     response.data = malloc(1);
     response.size = 0;
     
+    ResponseBuffer header_response = {0};
+    header_response.data = malloc(1);
+    header_response.size = 0;
+    
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L); // Don't follow redirects
+    
+    // If headers are requested, capture them
+    if (headers_out) {
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, writeCallback);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&header_response);
+    }
     
     CURLcode res = curl_easy_perform(curl);
     
     if (res != CURLE_OK) {
         free(response.data);
+        free(header_response.data);
         curl_easy_cleanup(curl);
         return NULL;
     }
@@ -232,7 +244,48 @@ static char* makePostRequest(const char *url, const char *post_data, long *respo
         curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, response_code_out);
     }
     
+    if (headers_out) {
+        *headers_out = header_response.data;
+    } else {
+        free(header_response.data);
+    }
+    
     curl_easy_cleanup(curl);
+    
+    // For empty responses, return NULL
+    if (response.size == 0) {
+        free(response.data);
+        return NULL;
+    }
+    
+    return response.data;
+}
+
+// Helper to make HTTP requests and return raw response
+static char* makeRawRequest(const char *url, ResponseBuffer *response_out) {
+    CURL *curl = curl_easy_init();
+    if (!curl) return NULL;
+    
+    ResponseBuffer response = {0};
+    response.data = malloc(1);
+    response.size = 0;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    CURLcode res = curl_easy_perform(curl);
+    curl_easy_cleanup(curl);
+    
+    if (res != CURLE_OK) {
+        free(response.data);
+        return NULL;
+    }
+    
+    if (response_out) {
+        *response_out = response;
+    }
+    
     return response.data;
 }
 #pragma clang diagnostic pop
@@ -680,37 +733,25 @@ static void test_mustache_template_page(void) {
     
     // Make request to mustache template page
     ResponseBuffer response = {0};
-    response.data = malloc(1);
-    response.size = 0;
-    
-    CURL *curl = curl_easy_init();
-    TEST_ASSERT_NOT_NULL(curl);
-    
-    curl_easy_setopt(curl, CURLOPT_URL, "http://localhost:3456/mustache-test");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
-    
-    CURLcode res = curl_easy_perform(curl);
-    TEST_ASSERT_EQUAL(CURLE_OK, res);
-    
-    curl_easy_cleanup(curl);
+    char *response_data = makeRawRequest("http://localhost:3456/mustache-test", &response);
+    TEST_ASSERT_NOT_NULL(response_data);
     
     // Verify response contains expected content
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<h1>My Title</h1>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>My Message</p>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>URL: /mustache-test</p>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<p>Method: GET</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>My Title</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>My Message</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>URL: /mustache-test</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Method: GET</p>"));
     
     // Verify all items are present
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 1</li>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 2</li>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<li>Wired up Item 3</li>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<li>Wired up Item 1</li>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<li>Wired up Item 2</li>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<li>Wired up Item 3</li>"));
     
     // Verify layout content is present
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "<h1>Blog Layout</h1>"));
-    TEST_ASSERT_NOT_NULL(strstr(response.data, "Blog footer - Copyright 2024"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>Blog Layout</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "Blog footer - Copyright 2024"));
     
-    free(response.data);
+    free(response_data);
     
     // Clean up
     stopServer();
@@ -772,7 +813,7 @@ static void test_page_post_handler(void) {
     
     // Make POST request
     long response_code;
-    char *response_data = makePostRequest("http://localhost:3456/test/form", post_data, &response_code);
+    char *response_data = makePostRequest("http://localhost:3456/test/form", post_data, &response_code, NULL);
     TEST_ASSERT_NOT_NULL(response_data);
     TEST_ASSERT_EQUAL(200, response_code);
     
@@ -792,6 +833,82 @@ static void test_page_post_handler(void) {
     sleep(1);
 }
 
+static void test_page_redirect(void) {
+    // Write initial config with redirect page
+    const char *config = 
+        "website {\n"
+        "    name \"Redirect Test Site\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    layout {\n"
+        "        name \"main\"\n"
+        "        content {\n"
+        "            h1 \"Test Layout\"\n"
+        "            \"content\"\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    page {\n"
+        "        route \"/test/redirect\"\n"
+        "        layout \"main\"\n"
+        "        method \"POST\"\n"
+        "        fields {\n"
+        "            \"message\" {\n"
+        "                type \"string\"\n"
+        "                required true\n"
+        "            }\n"
+        "        }\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    message: .body.message,\n"
+        "                    method: .method,\n"
+        "                    url: .url\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        redirect \"/test/destination\"\n"
+        "    }\n"
+        "}\n";
+    
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    sleep(1);
+
+    // Prepare POST data
+    const char *post_data = "message=Hello%20World";
+
+    // Make request to redirect page
+    long response_code;
+    char *headers = NULL;
+    char *response_data = makePostRequest("http://localhost:3456/test/redirect", post_data, &response_code, &headers);
+    
+    // Verify redirect response
+    TEST_ASSERT_EQUAL(302, response_code);
+    TEST_ASSERT_NOT_NULL(headers);
+    TEST_ASSERT_NOT_NULL(strstr(headers, "Location: /test/destination"));
+    
+    // For redirects, response_data should either be NULL or an empty response
+    if (response_data) {
+        TEST_ASSERT_EQUAL_STRING("", response_data);
+    }
+    
+    // Clean up
+    if (response_data) free(response_data);
+    free(headers);
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -803,5 +920,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_sql_query_endpoint);
     RUN_TEST(test_mustache_template_page);
     RUN_TEST(test_page_post_handler);
+    RUN_TEST(test_page_redirect);
     return UNITY_END();
 }
