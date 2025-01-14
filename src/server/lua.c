@@ -14,7 +14,7 @@
 #define LUA_HASH_TABLE_SIZE 64  // Should be power of 2
 #define LUA_HASH_MASK (LUA_HASH_TABLE_SIZE - 1)
 #define INITIAL_REGISTRY_CAPACITY 16
-#define SCRIPTS_DIR "src/server/scripts"
+#define SCRIPTS_DIR "scripts"
 
 // Forward declarations
 static void pushJsonToLua(lua_State *L, json_t *json);
