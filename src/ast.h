@@ -50,6 +50,9 @@ typedef struct PageNode {
     char *layout;
     char *title;
     char *description;
+    char *method;
+    struct ApiField *fields;
+    char *redirect;
     ContentNode *contentHead;
     struct PipelineStepNode *pipeline;  // Pipeline for preparing mustache template data
     struct PageNode *next;

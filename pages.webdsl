@@ -163,7 +163,7 @@ page {
     content {
         h1 "Add New Employee"
         html {
-            <form action="/api/v1/employees" method="POST">
+            <form action="/employees/create" method="POST">
                 <div class="form-group">
                     <label for="name">Name:</label>
                     <input type="text" id="name" name="name" required>
@@ -180,6 +180,67 @@ page {
             </form>
         }
     }
+}
+
+page {
+    route "/employees/create"
+    method "POST"
+    layout "main"
+    fields {
+        "name" {
+            type "string"
+            required true
+            length 10..100
+        }
+        "email" {
+            type "string"
+            required true
+            format "email"
+        }
+        "team_id" {
+            type "number"
+            required false
+        }
+    }
+    pipeline {
+        lua {
+            local name = body.name
+            local email = body.email
+            local team_id = body.team_id
+            
+            if team_id then
+                team_id = tonumber(team_id)
+            end
+            
+            -- Return params array for SQL step
+            return {
+                params = {name, email, team_id}
+            }
+        }
+        
+        executeQuery "insertEmployee"
+        
+        jq {
+            {
+                success: true,
+                employee: {
+                    id: .data[0].rows[0].id,
+                    name: .data[0].rows[0].name,
+                    email: .data[0].rows[0].email,
+                    team_id: .data[0].rows[0].team_id
+                },
+                request: .
+            }
+        }
+    }
+    redirect "/employees"
+    // mustache {
+    //     <h2>Employee Created</h2>
+    //     <p>Employee ID: {{employee.id}}</p>
+    //     <p>Name: {{employee.name}}</p>
+    //     <p>Email: {{employee.email}}</p>
+    //     <p>Team ID: {{employee.team_id}}</p>
+    // }
 }
 
 styles {

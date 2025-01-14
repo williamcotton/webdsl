@@ -135,6 +135,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                     memcpy(post->raw_json, upload_data, *upload_data_size);
                     post->size = *upload_data_size;
                 } else {
+                    printf("post\n");
                     char *new_buffer = arenaAlloc(post->arena, post->size + *upload_data_size + 1);
                     memcpy(new_buffer, post->raw_json, post->size);
                     memcpy(new_buffer + post->size, upload_data, *upload_data_size);
@@ -160,11 +161,6 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     ApiEndpoint *api = findApi(url, method);
     if (api) {
         return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena, ctx);
-    }
-
-    // Handle regular pages and CSS
-    if (strcmp(method, "GET") != 0) {
-        return MHD_NO;
     }
 
     if (strcmp(url, "/styles.css") == 0) {

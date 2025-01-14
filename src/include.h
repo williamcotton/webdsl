@@ -3,7 +3,6 @@
 
 #include "parser.h"
 #include "ast.h"
-#include "arena.h"
 
 typedef struct IncludeState {
     char **included_files;  // Array of already included files

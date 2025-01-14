@@ -160,6 +160,18 @@ static PageNode *parsePage(Parser *parser) {
                 page->route = copyString(parser, parser->previous.lexeme);
                 break;
             }
+            case TOKEN_METHOD: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'method'.");
+                page->method = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_FIELDS: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'fields'.");
+                page->fields = parseApiFields(parser);
+                break;
+            }
             case TOKEN_LAYOUT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'layout'.");
@@ -208,6 +220,12 @@ static PageNode *parsePage(Parser *parser) {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
                 page->contentHead = parseContent(parser);
+                break;
+            }
+            case TOKEN_REDIRECT: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'redirect'.");
+                page->redirect = copyString(parser, parser->previous.lexeme);
                 break;
             }
             case TOKEN_PIPELINE: {

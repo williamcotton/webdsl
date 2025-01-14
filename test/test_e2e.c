@@ -205,6 +205,36 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
     
     return json;
 }
+
+// Helper to make POST requests and return the raw response
+static char* makePostRequest(const char *url, const char *post_data, long *response_code_out) {
+    CURL *curl = curl_easy_init();
+    if (!curl) return NULL;
+    
+    ResponseBuffer response = {0};
+    response.data = malloc(1);
+    response.size = 0;
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_data);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    CURLcode res = curl_easy_perform(curl);
+    
+    if (res != CURLE_OK) {
+        free(response.data);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+    
+    if (response_code_out) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, response_code_out);
+    }
+    
+    curl_easy_cleanup(curl);
+    return response.data;
+}
 #pragma clang diagnostic pop
 
 static void writeConfig(const char *config) {
@@ -689,6 +719,79 @@ static void test_mustache_template_page(void) {
     sleep(1);
 }
 
+static void test_page_post_handler(void) {
+    // Write initial config with POST handler page
+    const char *config = 
+        "website {\n"
+        "    name \"Page POST Test\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    page {\n"
+        "        route \"/test/form\"\n"
+        "        method \"POST\"\n"
+        "        layout \"main\"\n"
+        "        fields {\n"
+        "            \"message\" {\n"
+        "                type \"string\"\n"
+        "                required true\n"
+        "            }\n"
+        "        }\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    message: .body.message,\n"
+        "                    method: .method,\n"
+        "                    url: .url\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        mustache {\n"
+        "            <div class=\"result\">\n"
+        "                <h1>Form Processed</h1>\n"
+        "                <p>Message: {{message}}</p>\n"
+        "                <p>Method: {{method}}</p>\n"
+        "                <p>URL: {{url}}</p>\n"
+        "            </div>\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Prepare POST data
+    const char *post_data = "message=Hello%20World";
+    
+    // Make POST request
+    long response_code;
+    char *response_data = makePostRequest("http://localhost:3456/test/form", post_data, &response_code);
+    TEST_ASSERT_NOT_NULL(response_data);
+    TEST_ASSERT_EQUAL(200, response_code);
+    
+    // Verify response contains expected content
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>Form Processed</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Message: Hello World</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Method: POST</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>URL: /test/form</p>"));
+    
+    // Clean up
+    free(response_data);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -699,5 +802,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_posts_endpoint);
     RUN_TEST(test_sql_query_endpoint);
     RUN_TEST(test_mustache_template_page);
+    RUN_TEST(test_page_post_handler);
     return UNITY_END();
 }

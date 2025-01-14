@@ -52,6 +52,7 @@ typedef enum {
     TOKEN_RANGE,
     TOKEN_PARAMS,
     TOKEN_MUSTACHE,
+    TOKEN_REDIRECT,
 } TokenType;
 
 typedef struct {
