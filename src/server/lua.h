@@ -32,6 +32,7 @@ typedef struct {
     LuaFileEntry *entries;
     size_t count;
     size_t capacity;
+    Arena *embedded_scripts_arena;  // Arena for embedded scripts
 } LuaFileRegistry;
 
 // HTTP response buffer structure

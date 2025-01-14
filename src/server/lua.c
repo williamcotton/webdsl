@@ -648,49 +648,108 @@ void registerDbFunctions(lua_State *L) {
     lua_setglobal(L, "sqlQuery");
 }
 
-// Modify initLua to store context and register DB functions
-bool initLua(ServerContext *server_ctx) {
-    g_ctx = server_ctx;  // Store in global
-    
-    if (!initFileRegistry()) {
-        return false;
+// Add global cache for embedded scripts
+static struct {
+    char **script_buffers;  // Array of script buffers
+    size_t script_count;
+    const char **script_names;  // Array of script names
+} g_embedded_scripts = {0};
+
+static bool loadEmbeddedScripts(lua_State *L) {
+    // If scripts are already loaded, just set them as globals
+    if (g_embedded_scripts.script_buffers) {
+        for (size_t i = 0; i < g_embedded_scripts.script_count; i++) {
+            const char *name = g_embedded_scripts.script_names[i];
+            const char *buffer = g_embedded_scripts.script_buffers[i];
+            
+            // Load and execute the script
+            if (luaL_loadstring(L, buffer) != 0) {
+                fprintf(stderr, "Failed to load embedded script %s: %s\n", 
+                        name, lua_tostring(L, -1));
+                return false;
+            }
+
+            // Execute the chunk to get the module table
+            if (lua_pcall(L, 0, 1, 0) != 0) {
+                fprintf(stderr, "Failed to execute embedded script %s: %s\n",
+                        name, lua_tostring(L, -1));
+                return false;
+            }
+
+            // Set the module table as a global with the script name
+            lua_setglobal(L, name);
+        }
+        return true;
     }
 
-    lua_State *L = luaL_newstate();
-    if (!L) return false;
-    
-    luaL_openlibs(L);
-    
-    // Register our functions
-    registerHttpFunctions(L);
-    registerDbFunctions(L);
-    
-    // First load embedded scripts
-    if (!loadEmbeddedScripts(L)) {
-        lua_close(L);
-        cleanupLua();
-        return false;
-    }
-    
-    // Then load filesystem scripts (which can override embedded ones)
-    if (!loadAllScripts(L)) {
-        lua_close(L);
-        cleanupLua();
-        return false;
+    // First time loading - count scripts
+    size_t script_count = 0;
+    for (const EmbeddedScript *script = EMBEDDED_SCRIPTS; script->name != NULL; script++) {
+        script_count++;
     }
 
-    lua_close(L);
-
-    // Add pipeline step compilation
-    if (!compilePipelineSteps(server_ctx)) {
-        cleanupLua();
+    // Allocate arrays
+    g_embedded_scripts.script_buffers = malloc(script_count * sizeof(char*));
+    g_embedded_scripts.script_names = malloc(script_count * sizeof(char*));
+    if (!g_embedded_scripts.script_buffers || !g_embedded_scripts.script_names) {
+        fprintf(stderr, "Failed to allocate script arrays\n");
         return false;
     }
-    
+    g_embedded_scripts.script_count = script_count;
+
+    // Load each script
+    size_t script_idx = 0;
+    for (const EmbeddedScript *script = EMBEDDED_SCRIPTS; script->name != NULL; script++) {
+        // Calculate total length
+        size_t total_len = 0;
+        for (size_t i = 0; i < script->num_chunks; i++) {
+            total_len += strlen(script->chunks[i]);
+        }
+
+        // Allocate buffer
+        char *buffer = malloc(total_len + 1);
+        if (!buffer) {
+            fprintf(stderr, "Failed to allocate buffer for embedded script %s\n", script->name);
+            return false;
+        }
+
+        // Concatenate chunks
+        char *ptr = buffer;
+        for (size_t i = 0; i < script->num_chunks; i++) {
+            size_t len = strlen(script->chunks[i]);
+            memcpy(ptr, script->chunks[i], len);
+            ptr += len;
+        }
+        *ptr = '\0';
+
+        // Store in global cache
+        g_embedded_scripts.script_buffers[script_idx] = buffer;
+        g_embedded_scripts.script_names[script_idx] = script->name;
+
+        // Load and execute the script
+        if (luaL_loadstring(L, buffer) != 0) {
+            fprintf(stderr, "Failed to load embedded script %s: %s\n", 
+                    script->name, lua_tostring(L, -1));
+            return false;
+        }
+
+        // Execute the chunk to get the module table
+        if (lua_pcall(L, 0, 1, 0) != 0) {
+            fprintf(stderr, "Failed to execute embedded script %s: %s\n",
+                    script->name, lua_tostring(L, -1));
+            return false;
+        }
+
+        // Set the module table as a global with the script name
+        lua_setglobal(L, script->name);
+        
+        script_idx++;
+    }
+
     return true;
 }
 
-// Modify cleanupLua to cleanup file registry:
+// Modify cleanupLua to cleanup embedded scripts:
 void cleanupLua(void) {
     // Cleanup file registry
     for (size_t i = 0; i < fileRegistry.count; i++) {
@@ -701,6 +760,18 @@ void cleanupLua(void) {
     fileRegistry.entries = NULL;
     fileRegistry.count = 0;
     fileRegistry.capacity = 0;
+
+    // Cleanup embedded scripts
+    if (g_embedded_scripts.script_buffers) {
+        for (size_t i = 0; i < g_embedded_scripts.script_count; i++) {
+            free(g_embedded_scripts.script_buffers[i]);
+        }
+        free(g_embedded_scripts.script_buffers);
+        free((void*)g_embedded_scripts.script_names);
+        g_embedded_scripts.script_buffers = NULL;
+        g_embedded_scripts.script_names = NULL;
+        g_embedded_scripts.script_count = 0;
+    }
 
     // Cleanup chunk table
     for (int i = 0; i < LUA_HASH_TABLE_SIZE; i++) {
@@ -718,15 +789,21 @@ void cleanupLua(void) {
 static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     // Create and initialize arena wrapper
     LuaArenaWrapper *wrapper = arenaAlloc(arena, sizeof(LuaArenaWrapper));
+    if (!wrapper) {
+        fprintf(stderr, "Failed to allocate arena wrapper\n");
+        return NULL;
+    }
     wrapper->arena = arena;
     wrapper->total_allocated = 0;
 
     // Create Lua state with custom allocator
     lua_State *L = lua_newstate(luaArenaAlloc, wrapper);
     if (!L) {
+        fprintf(stderr, "Failed to create new Lua state\n");
         return NULL;
     }
 
+    // Disable GC since we're using arena allocation and states are short-lived
     lua_gc(L, LUA_GCSTOP, 0);
 
     luaL_openlibs(L);
@@ -737,6 +814,7 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     
     // Load embedded scripts into this state
     if (!loadEmbeddedScripts(L)) {
+        fprintf(stderr, "Failed to load embedded scripts\n");
         lua_close(L);
         return NULL;
     }
@@ -1022,41 +1100,44 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     return result;
 }
 
-static bool loadEmbeddedScripts(lua_State *L) {
-    for (const EmbeddedScript *script = EMBEDDED_SCRIPTS; script->name != NULL; script++) {
-        // Concatenate all chunks into one string
-        size_t total_len = 0;
-        for (size_t i = 0; i < script->num_chunks; i++) {
-            total_len += strlen(script->chunks[i]);
-        }
-
-        char *buffer = arenaAlloc(g_ctx->arena, total_len + 1);
-        if (!buffer) return false;
-
-        char *ptr = buffer;
-        for (size_t i = 0; i < script->num_chunks; i++) {
-            size_t len = strlen(script->chunks[i]);
-            memcpy(ptr, script->chunks[i], len);
-            ptr += len;
-        }
-        *ptr = '\0';
-
-        // Load and execute the script
-        if (luaL_loadbuffer(L, buffer, total_len, script->name) != 0) {
-            fprintf(stderr, "Failed to load embedded script %s: %s\n", 
-                    script->name, lua_tostring(L, -1));
-            return false;
-        }
-
-        // Execute the chunk to get the module table
-        if (lua_pcall(L, 0, 1, 0) != 0) {
-            fprintf(stderr, "Failed to execute embedded script %s: %s\n",
-                    script->name, lua_tostring(L, -1));
-            return false;
-        }
-
-        // Set the module table as a global with the script name
-        lua_setglobal(L, script->name);
+// Modify initLua to store context and register DB functions
+bool initLua(ServerContext *server_ctx) {
+    g_ctx = server_ctx;  // Store in global
+    
+    if (!initFileRegistry()) {
+        return false;
     }
+
+    lua_State *L = luaL_newstate();
+    if (!L) return false;
+    
+    luaL_openlibs(L);
+    
+    // Register our functions
+    registerHttpFunctions(L);
+    registerDbFunctions(L);
+    
+    // First load embedded scripts
+    if (!loadEmbeddedScripts(L)) {
+        lua_close(L);
+        cleanupLua();
+        return false;
+    }
+    
+    // Then load filesystem scripts (which can override embedded ones)
+    if (!loadAllScripts(L)) {
+        lua_close(L);
+        cleanupLua();
+        return false;
+    }
+
+    lua_close(L);
+
+    // Add pipeline step compilation
+    if (!compilePipelineSteps(server_ctx)) {
+        cleanupLua();
+        return false;
+    }
+    
     return true;
 }
