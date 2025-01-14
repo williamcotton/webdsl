@@ -2,6 +2,7 @@
 #define SERVER_ROUTE_PARAMS_H
 
 #include <stdint.h>
+#include <stdbool.h>
 #include "../arena.h"
 
 #define MAX_ROUTE_PARAMS 8
