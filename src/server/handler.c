@@ -187,25 +187,19 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     if (pipeline) {
         pipelineResult = executePipeline(ctx, pipeline, requestContext, requestArena);
     }
-    
-    json_decref(requestContext);
-
-    // enum MHD_Result handleApiRequest(
-    //     struct MHD_Connection * connection, ApiEndpoint * api,
-    //     const char *method, void *con_cls, Arena *arena, json_t *pipelineResult)
 
         // Handle based on route type
-        switch (match.type) {
-    case ROUTE_TYPE_API:
-      return handleApiRequest(connection, match.endpoint.api, method,
-                               *con_cls, requestArena, pipelineResult);
+    switch (match.type) {
+        case ROUTE_TYPE_API:
+        return handleApiRequest(connection, match.endpoint.api, method,
+                                *con_cls, requestArena, pipelineResult);
 
-    case ROUTE_TYPE_PAGE:
-      return handleMustachePageRequest(connection, url, requestArena,
-                                       pipelineResult);
+        case ROUTE_TYPE_PAGE:
+        return handleMustachePageRequest(connection, url, requestArena,
+                                        pipelineResult);
 
-    case ROUTE_TYPE_NONE:
-      return MHD_NO;
+        case ROUTE_TYPE_NONE:
+        return MHD_NO;
     }
 
     return MHD_NO;

@@ -6,6 +6,7 @@ layout {
             <head>
                 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
                 <script src="https://cdn.tailwindcss.com"></script>
+                <link rel="stylesheet" href="/styles.css">
                 <title>{{pageTitle}}</title>
                 {{head}}
             </head>
@@ -38,7 +39,6 @@ page {
 page {
     name "htmx-time"
     route "/htmx/time"
-    layout "none"
     pipeline {
         lua {
             local time = os.date("%H:%M:%S")
