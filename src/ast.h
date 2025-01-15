@@ -54,7 +54,9 @@ typedef struct PageNode {
     struct ApiField *fields;
     char *redirect;
     ContentNode *contentHead;
-    struct PipelineStepNode *pipeline;  // Pipeline for preparing mustache template data
+    ContentNode *errorContent;
+    ContentNode *successContent;
+    struct PipelineStepNode *pipeline;
     struct PageNode *next;
 } PageNode;
 

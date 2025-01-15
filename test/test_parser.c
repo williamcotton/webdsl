@@ -867,6 +867,60 @@ static void test_parse_include_errors(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_page_with_error_success_blocks(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"notes-create\"\n"
+        "    route \"/notes/create\"\n"
+        "    method \"POST\"\n"
+        "    fields {\n"
+        "      \"title\" {\n"
+        "        type \"string\"\n"
+        "        required true\n"
+        "      }\n"
+        "    }\n"
+        "    error {\n"
+        "      mustache {\n"
+        "        <div class=\"error-message\">{{error}}</div>\n"
+        "      }\n"
+        "    }\n"
+        "    success {\n"
+        "      mustache {\n"
+        "        <div class=\"success-message\">Note created!</div>\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    
+    PageNode *page = website->pageHead;
+    TEST_ASSERT_EQUAL_STRING("notes-create", page->identifier);
+    TEST_ASSERT_EQUAL_STRING("/notes/create", page->route);
+    TEST_ASSERT_EQUAL_STRING("POST", page->method);
+    
+    // Check error block
+    TEST_ASSERT_NOT_NULL(page->errorContent);
+    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->errorContent->type);
+    TEST_ASSERT_NOT_NULL(page->errorContent->arg1);
+    TEST_ASSERT_TRUE(strstr(page->errorContent->arg1, "<div class=\"error-message\">{{error}}</div>") != NULL);
+    
+    // Check success block
+    TEST_ASSERT_NOT_NULL(page->successContent);
+    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->successContent->type);
+    TEST_ASSERT_NOT_NULL(page->successContent->arg1);
+    TEST_ASSERT_TRUE(strstr(page->successContent->arg1, "<div class=\"success-message\">Note created!</div>") != NULL);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -892,5 +946,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_page_with_pipeline);
     RUN_TEST(test_parse_website_with_includes);
     RUN_TEST(test_parse_include_errors);
+    RUN_TEST(test_parse_page_with_error_success_blocks);
     return UNITY_END();
 }

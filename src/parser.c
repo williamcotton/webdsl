@@ -216,6 +216,50 @@ static PageNode *parsePage(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_ERROR: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'error'.");
+                consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    page->errorContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(page->errorContent, 0, sizeof(ContentNode));
+                    page->errorContent->type = "raw_mustache";
+                    page->errorContent->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected mustache block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after error block.");
+                break;
+            }
+            case TOKEN_SUCCESS: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'success'.");
+                consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
+                
+                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+                    page->successContent = arenaAlloc(parser->arena, sizeof(ContentNode));
+                    memset(page->successContent, 0, sizeof(ContentNode));
+                    page->successContent->type = "raw_mustache";
+                    page->successContent->arg1 = copyString(parser, parser->current.lexeme);
+                    advanceParser(parser);  // consume raw block or string
+                } else {
+                    char buffer[256];
+                    snprintf(buffer, sizeof(buffer),
+                            "Expected mustache block at line %d\n",
+                            parser->current.line);
+                    fputs(buffer, stderr);
+                    parser->hadError = 1;
+                }
+                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after success block.");
+                break;
+            }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");

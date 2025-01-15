@@ -729,6 +729,66 @@ static void test_lexer_include(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_error_success_blocks(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    // Test error and success blocks
+    const char *input = 
+        "error {\n"
+        "    mustache {\n"
+        "        <div>Error template</div>\n"
+        "    }\n"
+        "}\n"
+        "success {\n"
+        "    mustache {\n"
+        "        <div>Success template</div>\n"
+        "    }\n"
+        "}";
+    
+    initLexer(&lexer, input, &parser);
+    
+    // Test error block
+    Token token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_ERROR, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_OPEN_BRACE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_MUSTACHE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "Error template"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_CLOSE_BRACE, token.type);
+    
+    // Test success block
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_SUCCESS, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_OPEN_BRACE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_MUSTACHE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_RAW_BLOCK, token.type);
+    TEST_ASSERT_NOT_NULL(strstr(token.lexeme, "Success template"));
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_CLOSE_BRACE, token.type);
+    
+    token = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, token.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -751,5 +811,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_comments);
     RUN_TEST(test_lexer_mustache_block);
     RUN_TEST(test_lexer_include);
+    RUN_TEST(test_lexer_error_success_blocks);
     return UNITY_END();
 }

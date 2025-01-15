@@ -152,6 +152,22 @@ page {
     route "/htmx/notes/create"
     method "POST"
     layout "none"
+    fields {
+        "title" {
+            type "string"
+            required true
+            length 10..100
+        }
+        "date" {
+            type "string"
+            required true
+            format "date"
+        }
+        "employee_id" {
+            type "number"
+            required true
+        }
+    }
     pipeline {
         lua {
             
