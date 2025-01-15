@@ -66,4 +66,21 @@ TransformNode* findTransform(const char *name);
 // Find a named script by name
 ScriptNode* findScript(const char *name);
 
+typedef enum {
+    ROUTE_TYPE_API,
+    ROUTE_TYPE_PAGE,
+    ROUTE_TYPE_NONE
+} RouteType;
+
+typedef struct {
+    RouteType type;
+    union {
+        ApiEndpoint *api;
+        PageNode *page;
+    } endpoint;
+    RouteParams params;
+} RouteMatch;
+
+RouteMatch findRoute(const char *url, const char *method, Arena *arena);
+
 #endif // SERVER_ROUTING_H

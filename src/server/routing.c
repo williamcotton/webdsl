@@ -320,3 +320,26 @@ void cleanupJQCache(void) {
         threadJQTable[i] = NULL;
     }
 }
+
+RouteMatch findRoute(const char *url, const char *method, Arena *arena) {
+    RouteMatch match = {
+        .type = ROUTE_TYPE_NONE,
+        .endpoint = {.api = NULL}  // Initialize union to prevent undefined behavior
+    };
+    memset(&match.params, 0, sizeof(RouteParams));
+    
+    // Try API first (maintaining current precedence)
+    match.endpoint.api = findApi(url, method, &match.params, arena);
+    if (match.endpoint.api) {
+        match.type = ROUTE_TYPE_API;
+        return match;
+    }
+    
+    // Try page routes
+    match.endpoint.page = findPage(url, &match.params, arena);
+    if (match.endpoint.page) {
+        match.type = ROUTE_TYPE_PAGE;
+    }
+    
+    return match;
+}

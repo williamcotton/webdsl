@@ -412,6 +412,50 @@ static void test_server_post_request(void) {
     freeArena(arena);
 }
 
+static void test_route_matching(void) {
+    Arena *arena = createArena(1024 * 1024);  // 1MB arena
+    
+    // Create a minimal website for testing
+    WebsiteNode *website = arenaAlloc(arena, sizeof(WebsiteNode));
+    memset(website, 0, sizeof(WebsiteNode));
+    
+    // Add a test API endpoint
+    ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
+    memset(api, 0, sizeof(ApiEndpoint));
+    api->route = arenaDupString(arena, "/api/test");
+    api->method = arenaDupString(arena, "GET");
+    website->apiHead = api;
+    
+    // Add a test page
+    PageNode *page = arenaAlloc(arena, sizeof(PageNode));
+    memset(page, 0, sizeof(PageNode));
+    page->route = arenaDupString(arena, "/");
+    page->identifier = arenaDupString(arena, "home");
+    website->pageHead = page;
+    
+    // Initialize server context (needed for route maps)
+    startServer(website, arena);
+    
+    // Test API route
+    RouteMatch apiMatch = findRoute("/api/test", "GET", arena);
+    TEST_ASSERT_EQUAL(ROUTE_TYPE_API, apiMatch.type);
+    TEST_ASSERT_NOT_NULL(apiMatch.endpoint.api);
+    TEST_ASSERT_EQUAL_STRING("/api/test", apiMatch.endpoint.api->route);
+    
+    // Test page route
+    RouteMatch pageMatch = findRoute("/", "GET", arena);
+    TEST_ASSERT_EQUAL(ROUTE_TYPE_PAGE, pageMatch.type);
+    TEST_ASSERT_NOT_NULL(pageMatch.endpoint.page);
+    TEST_ASSERT_EQUAL_STRING("/", pageMatch.endpoint.page->route);
+    
+    // Test non-existent route
+    RouteMatch noMatch = findRoute("/nonexistent", "GET", arena);
+    TEST_ASSERT_EQUAL(ROUTE_TYPE_NONE, noMatch.type);
+    TEST_ASSERT_NULL(noMatch.endpoint.api);
+    
+    freeArena(arena);
+}
+
 int run_server_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_server_init);
@@ -423,5 +467,6 @@ int run_server_tests(void) {
     RUN_TEST(test_server_pipeline_execution);
     RUN_TEST(test_server_post_request);
     RUN_TEST(test_server_api_routing_with_params);  
+    RUN_TEST(test_route_matching);
     return UNITY_END();
 }
