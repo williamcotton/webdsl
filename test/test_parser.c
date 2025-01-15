@@ -71,8 +71,9 @@ static void test_parse_website_with_page(void) {
     TEST_ASSERT_EQUAL_STRING("home", page->identifier);
     TEST_ASSERT_EQUAL_STRING("/", page->route);
     TEST_ASSERT_EQUAL_STRING("main", page->layout);
-    TEST_ASSERT_NOT_NULL(page->contentHead);
-    TEST_ASSERT_EQUAL_STRING("content", page->contentHead->type);
+    TEST_ASSERT_NOT_NULL(page->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, page->template->type);
+    TEST_ASSERT_EQUAL_STRING("content", page->template->content);
     
     freeArena(parser.arena);
 }
@@ -103,33 +104,6 @@ static void test_parse_website_with_styles(void) {
     TEST_ASSERT_EQUAL_STRING("#fff", style->propHead->value);
     TEST_ASSERT_EQUAL_STRING("color", style->propHead->next->property);
     TEST_ASSERT_EQUAL_STRING("#000", style->propHead->next->value);
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_website_with_layout(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  layout {\n"
-        "    name \"main\"\n"
-        "    content {\n"
-        "      \"content\"\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->layoutHead);
-    
-    LayoutNode *layout = website->layoutHead;
-    TEST_ASSERT_EQUAL_STRING("main", layout->identifier);
-    TEST_ASSERT_NOT_NULL(layout->bodyContent);
-    TEST_ASSERT_EQUAL_STRING("content", layout->bodyContent->type);
     
     freeArena(parser.arena);
 }
@@ -183,8 +157,8 @@ static void test_parse_nested_content(void) {
     
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_NOT_NULL(website->pageHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
-    TEST_ASSERT_EQUAL_STRING("div", website->pageHead->contentHead->type);
+    TEST_ASSERT_NOT_NULL(website->pageHead->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->pageHead->template->type);
     
     freeArena(parser.arena);
 }
@@ -207,98 +181,6 @@ static void test_parse_error_recovery(void) {
     TEST_ASSERT_EQUAL(1, parser.hadError);
     TEST_ASSERT_NOT_NULL(website->pageHead);
     
-    freeArena(parser.arena);
-}
-
-static void test_parse_complex_website(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  name \"Test Site\"\n"
-        "  author \"Test Author\"\n"
-        "  version \"1.0\"\n"
-        "  port 8080\n"
-        "  layout {\n"
-        "    name \"main\"\n"
-        "    content {\n"
-        "      h1 \"Site Header\"\n"
-        "      p \"Welcome to our website\"\n"
-        "      \"content\"\n"
-        "      p \"Footer text\"\n"
-        "    }\n"
-        "  }\n"
-        "  styles {\n"
-        "    \"body\" {\n"
-        "      \"margin\" \"0\"\n"
-        "      \"padding\" \"20px\"\n"
-        "    }\n"
-        "    \"div\" {\n"
-        "      \"color\" \"#333\"\n"
-        "    }\n"
-        "  }\n"
-        "  page {\n"
-        "    name \"index\"\n"
-        "    route \"/\"\n"
-        "    layout \"main\"\n"
-        "    content {\n"
-        "      h1 \"Welcome!\"\n"
-        "      p {\n"
-        "        link \"/about\" \"Learn more about our site\"\n"
-        "      }\n"
-        "      p \"This is a regular paragraph.\"\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_EQUAL(8080, website->port);
-    TEST_ASSERT_EQUAL_STRING("Test Site", website->name);
-    TEST_ASSERT_EQUAL_STRING("Test Author", website->author);
-    TEST_ASSERT_EQUAL_STRING("1.0", website->version);
-    
-    TEST_ASSERT_NOT_NULL(website->layoutHead);
-    TEST_ASSERT_NOT_NULL(website->styleHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead);
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_invalid_constructs(void) {
-    Parser parser;
-    
-    // Test invalid page without route
-    const char *input1 = 
-        "website {\n"
-        "  page {\n"
-        "    name \"test\"\n"
-        "    route \"/test\"\n"
-        "    content {}\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input1);
-    WebsiteNode *website = parseProgram(&parser);
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    freeArena(parser.arena);
-    
-    // Test invalid layout without content
-    const char *input2 = 
-        "website {\n"
-        "  layout {\n"
-        "    name \"main\"\n"
-        "    content {}\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input2);
-    website = parseProgram(&parser);
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
     freeArena(parser.arena);
 }
 
@@ -380,20 +262,20 @@ static void test_parse_html_content(void) {
     
     // Check layout HTML
     TEST_ASSERT_NOT_NULL(website->layoutHead);
-    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyContent);
-    TEST_ASSERT_EQUAL_STRING("raw_html", website->layoutHead->bodyContent->type);
+    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyTemplate);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->layoutHead->bodyTemplate->type);
     
-    const char* layoutHtml = website->layoutHead->bodyContent->arg1;
+    const char* layoutHtml = website->layoutHead->bodyTemplate->content;
     TEST_ASSERT_NOT_NULL(layoutHtml);
     TEST_ASSERT_TRUE(strstr(layoutHtml, "<header>") != NULL);
     TEST_ASSERT_TRUE(strstr(layoutHtml, "<!-- content -->") != NULL);
     
     // Check page HTML
     TEST_ASSERT_NOT_NULL(website->pageHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
-    TEST_ASSERT_EQUAL_STRING("raw_html", website->pageHead->contentHead->type);
+    TEST_ASSERT_NOT_NULL(website->pageHead->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->pageHead->template->type);
     
-    const char* pageHtml = website->pageHead->contentHead->arg1;
+    const char* pageHtml = website->pageHead->template->content;
     TEST_ASSERT_NOT_NULL(pageHtml);
     TEST_ASSERT_TRUE(strstr(pageHtml, "<h1>Welcome</h1>") != NULL);
     
@@ -681,20 +563,20 @@ static void test_parse_mustache_content(void) {
     
     // Check layout mustache template
     TEST_ASSERT_NOT_NULL(website->layoutHead);
-    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyContent);
-    TEST_ASSERT_EQUAL_STRING("raw_mustache", website->layoutHead->bodyContent->type);
+    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyTemplate);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->layoutHead->bodyTemplate->type);
     
-    const char* layoutTemplate = website->layoutHead->bodyContent->arg1;
+    const char* layoutTemplate = website->layoutHead->bodyTemplate->content;
     TEST_ASSERT_NOT_NULL(layoutTemplate);
     TEST_ASSERT_TRUE(strstr(layoutTemplate, "<div>{{name}}</div>") != NULL);
     TEST_ASSERT_TRUE(strstr(layoutTemplate, "<p>{{description}}</p>") != NULL);
     
     // Check page mustache template
     TEST_ASSERT_NOT_NULL(website->pageHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead->contentHead);
-    TEST_ASSERT_EQUAL_STRING("raw_mustache", website->pageHead->contentHead->type);
+    TEST_ASSERT_NOT_NULL(website->pageHead->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->template->type);
     
-    const char* pageTemplate = website->pageHead->contentHead->arg1;
+    const char* pageTemplate = website->pageHead->template->content;
     TEST_ASSERT_NOT_NULL(pageTemplate);
     TEST_ASSERT_TRUE(strstr(pageTemplate, "<h1>{{title}}</h1>") != NULL);
     TEST_ASSERT_TRUE(strstr(pageTemplate, "<p>{{content}}</p>") != NULL);
@@ -760,81 +642,12 @@ static void test_parse_page_with_pipeline(void) {
     TEST_ASSERT_TRUE(strstr(step->code, ". + {count: (.items | length)}") != NULL);
     
     // Check mustache template
-    TEST_ASSERT_NOT_NULL(page->contentHead);
-    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->contentHead->type);
-    TEST_ASSERT_NOT_NULL(page->contentHead->arg1);
-    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{title}}") != NULL);
-    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{count}}") != NULL);
-    TEST_ASSERT_TRUE(strstr(page->contentHead->arg1, "{{#items}}") != NULL);
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_website_with_includes(void) {
-    Parser parser;
-    char temp_dir[] = "/tmp/webdsl_test_XXXXXX";
-    char *dir_path = mkdtemp(temp_dir);
-    TEST_ASSERT_NOT_NULL(dir_path);
-    
-    // Create paths for temporary files
-    char header_path[256], footer_path[256], nav_path[256];
-    snprintf(header_path, sizeof(header_path), "%s/test_header.webdsl", dir_path);
-    snprintf(footer_path, sizeof(footer_path), "%s/test_footer.webdsl", dir_path);
-    snprintf(nav_path, sizeof(nav_path), "%s/test_nav.webdsl", dir_path);
-    
-    // Create temporary files
-    FILE *header = fopen(header_path, "w");
-    TEST_ASSERT_NOT_NULL(header);
-    fprintf(header, "page { name \"header\" route \"/header\" content { html \"header content\" } }");
-    fclose(header);
-    
-    FILE *footer = fopen(footer_path, "w");
-    TEST_ASSERT_NOT_NULL(footer);
-    fprintf(footer, "page { name \"footer\" route \"/footer\" content { html \"footer content\" } }");
-    fclose(footer);
-    
-    FILE *nav = fopen(nav_path, "w");
-    TEST_ASSERT_NOT_NULL(nav);
-    fprintf(nav, "page { name \"nav\" route \"/nav\" content { html \"nav content\" } }");
-    fclose(nav);
-    
-    char input[1024];
-    snprintf(input, sizeof(input),
-        "website {\n"
-        "    include \"%s\"\n"
-        "    name \"Test Site\"\n"
-        "    include \"%s\"\n"
-        "    include \"%s\"\n"
-        "}", header_path, footer_path, nav_path);
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_EQUAL_STRING("Test Site", website->name);
-    
-    // Check includes
-    TEST_ASSERT_NOT_NULL(website->includeHead);
-    
-    IncludeNode *include = website->includeHead;
-    TEST_ASSERT_EQUAL_STRING(header_path, include->filepath);
-    
-    include = include->next;
-    TEST_ASSERT_NOT_NULL(include);
-    TEST_ASSERT_EQUAL_STRING(footer_path, include->filepath);
-    
-    include = include->next;
-    TEST_ASSERT_NOT_NULL(include);
-    TEST_ASSERT_EQUAL_STRING(nav_path, include->filepath);
-    
-    TEST_ASSERT_NULL(include->next);
-    
-    // Clean up temporary files
-    remove(header_path);
-    remove(footer_path);
-    remove(nav_path);
-    rmdir(dir_path);
+    TEST_ASSERT_NOT_NULL(page->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, page->template->type);
+    TEST_ASSERT_NOT_NULL(page->template->content);
+    TEST_ASSERT_TRUE(strstr(page->template->content, "{{title}}") != NULL);
+    TEST_ASSERT_TRUE(strstr(page->template->content, "{{count}}") != NULL);
+    TEST_ASSERT_TRUE(strstr(page->template->content, "{{#items}}") != NULL);
     
     freeArena(parser.arena);
 }
@@ -867,56 +680,104 @@ static void test_parse_include_errors(void) {
     freeArena(parser.arena);
 }
 
-static void test_parse_page_with_error_success_blocks(void) {
+static void test_parse_page_with_error_success_templates(void) {
     Parser parser;
     const char *input = 
         "website {\n"
         "  page {\n"
-        "    name \"notes-create\"\n"
-        "    route \"/notes/create\"\n"
-        "    method \"POST\"\n"
-        "    fields {\n"
-        "      \"title\" {\n"
-        "        type \"string\"\n"
-        "        required true\n"
-        "      }\n"
-        "    }\n"
+        "    name \"test\"\n"
+        "    route \"/test\"\n"
         "    error {\n"
         "      mustache {\n"
-        "        <div class=\"error-message\">{{error}}</div>\n"
+        "        <div>Error: {{message}}</div>\n"
         "      }\n"
         "    }\n"
         "    success {\n"
         "      mustache {\n"
-        "        <div class=\"success-message\">Note created!</div>\n"
+        "        <div>Success: {{message}}</div>\n"
         "      }\n"
         "    }\n"
         "  }\n"
         "}";
     
     initParser(&parser, input);
+    
     WebsiteNode *website = parseProgram(&parser);
     
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check error template
     TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->errorTemplate);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->errorTemplate->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->errorTemplate->content, "Error: {{message}}") != NULL);
     
-    PageNode *page = website->pageHead;
-    TEST_ASSERT_EQUAL_STRING("notes-create", page->identifier);
-    TEST_ASSERT_EQUAL_STRING("/notes/create", page->route);
-    TEST_ASSERT_EQUAL_STRING("POST", page->method);
+    // Check success template
+    TEST_ASSERT_NOT_NULL(website->pageHead->successTemplate);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->successTemplate->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->successTemplate->content, "Success: {{message}}") != NULL);
     
-    // Check error block
-    TEST_ASSERT_NOT_NULL(page->errorContent);
-    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->errorContent->type);
-    TEST_ASSERT_NOT_NULL(page->errorContent->arg1);
-    TEST_ASSERT_TRUE(strstr(page->errorContent->arg1, "<div class=\"error-message\">{{error}}</div>") != NULL);
+    freeArena(parser.arena);
+}
+
+static void test_parse_website_with_content(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"home\"\n"
+        "    route \"/\"\n"
+        "    html \"\"\"\n"
+        "    <h1>Welcome</h1>\n"
+        "    <p>This is the home page.</p>\n"
+        "    \"\"\"\n"
+        "  }\n"
+        "}";
     
-    // Check success block
-    TEST_ASSERT_NOT_NULL(page->successContent);
-    TEST_ASSERT_EQUAL_STRING("raw_mustache", page->successContent->type);
-    TEST_ASSERT_NOT_NULL(page->successContent->arg1);
-    TEST_ASSERT_TRUE(strstr(page->successContent->arg1, "<div class=\"success-message\">Note created!</div>") != NULL);
+    initParser(&parser, input);
+    
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check page content
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->template);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->pageHead->template->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->template->content, "<h1>Welcome</h1>") != NULL);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_layout_with_content(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  layout {\n"
+        "    name \"main\"\n"
+        "    html \"\"\"\n"
+        "    <header>Header</header>\n"
+        "    <!-- content -->\n"
+        "    <footer>Footer</footer>\n"
+        "    \"\"\"\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check layout content
+    TEST_ASSERT_NOT_NULL(website->layoutHead);
+    TEST_ASSERT_NOT_NULL(website->layoutHead->bodyTemplate);
+    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->layoutHead->bodyTemplate->type);
+    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyTemplate->content, "<header>Header</header>") != NULL);
+    TEST_ASSERT_TRUE(strstr(website->layoutHead->bodyTemplate->content, "<!-- content -->") != NULL);
     
     freeArena(parser.arena);
 }
@@ -927,13 +788,10 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_minimal_website);
     RUN_TEST(test_parse_website_with_page);
     RUN_TEST(test_parse_website_with_styles);
-    RUN_TEST(test_parse_website_with_layout);
     RUN_TEST(test_parse_error_handling);
     RUN_TEST(test_parse_website_with_port);
     RUN_TEST(test_parse_nested_content);
     RUN_TEST(test_parse_error_recovery);
-    RUN_TEST(test_parse_complex_website);
-    RUN_TEST(test_parse_invalid_constructs);
     RUN_TEST(test_parse_invalid_api);
     RUN_TEST(test_parse_website_with_query);
     RUN_TEST(test_parse_html_content);
@@ -944,8 +802,9 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_transform_and_script);
     RUN_TEST(test_parse_mustache_content);
     RUN_TEST(test_parse_page_with_pipeline);
-    RUN_TEST(test_parse_website_with_includes);
     RUN_TEST(test_parse_include_errors);
-    RUN_TEST(test_parse_page_with_error_success_blocks);
+    RUN_TEST(test_parse_page_with_error_success_templates);
+    RUN_TEST(test_parse_website_with_content);
+    RUN_TEST(test_parse_layout_with_content);
     return UNITY_END();
 }

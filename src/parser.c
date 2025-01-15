@@ -9,7 +9,6 @@
 static void advanceParser(Parser *parser);
 static void consume(Parser *parser, TokenType type, const char *errorMsg);
 static PageNode *parsePage(Parser *parser);
-static ContentNode *parseContent(Parser *parser);
 static StyleBlockNode *parseStyleBlock(Parser *parser);
 static StylePropNode *parseStyleProps(Parser *parser);
 static LayoutNode *parseLayout(Parser *parser);
@@ -58,6 +57,43 @@ static char *copyString(Parser *parser, const char *source) {
     return arenaDupString(parser->arena, source);
 }
 
+static TemplateNode *parseTemplate(Parser *parser, TokenType templateType) {
+    TemplateNode *node = arenaAlloc(parser->arena, sizeof(TemplateNode));
+    memset(node, 0, sizeof(TemplateNode));
+
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wswitch-enum"
+    // Set template type based on token
+    switch (templateType) {
+        case TOKEN_MUSTACHE:
+            node->type = TEMPLATE_MUSTACHE;
+            break;
+        case TOKEN_HTML:
+            node->type = TEMPLATE_HTML;
+            break;
+        default:
+            node->type = TEMPLATE_RAW;
+            break;
+    }
+    #pragma clang diagnostic pop
+    
+    // Parse the template content
+    if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
+        node->content = copyString(parser, parser->current.lexeme);
+        advanceParser(parser);  // consume raw block or string
+    } else {
+        char buffer[256];
+        snprintf(buffer, sizeof(buffer),
+                "Expected template content at line %d\n",
+                parser->current.line);
+        fputs(buffer, stderr);
+        parser->hadError = 1;
+        return NULL;
+    }
+    
+    return node;
+}
+
 static LayoutNode *parseLayout(Parser *parser) {
     LayoutNode *layout = arenaAlloc(parser->arena, sizeof(LayoutNode));
     memset(layout, 0, sizeof(LayoutNode));
@@ -76,48 +112,13 @@ static LayoutNode *parseLayout(Parser *parser) {
                 break;
             }
             case TOKEN_HTML: {
-                advanceParser(parser);  // consume HTML token
-                
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(layout->bodyContent, 0, sizeof(ContentNode));
-                    layout->bodyContent->type = "raw_html";
-                    layout->bodyContent->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected HTML block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
+                advanceParser(parser);
+                layout->bodyTemplate = parseTemplate(parser, TOKEN_HTML);
                 break;
             }
-            // same as html
             case TOKEN_MUSTACHE: {
                 advanceParser(parser);
-                 
-                 if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    layout->bodyContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(layout->bodyContent, 0, sizeof(ContentNode));
-                    layout->bodyContent->type = "raw_mustache";
-                    layout->bodyContent->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected mustache block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
-                break;
-            }
-            case TOKEN_CONTENT: {
-                advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
-                layout->bodyContent = parseContent(parser);
+                layout->bodyTemplate = parseTemplate(parser, TOKEN_MUSTACHE);
                 break;
             }
             default: {
@@ -179,62 +180,20 @@ static PageNode *parsePage(Parser *parser) {
                 break;
             }
             case TOKEN_HTML: {
-                advanceParser(parser);  // consume HTML token
-                
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(page->contentHead, 0, sizeof(ContentNode));
-                    page->contentHead->type = "raw_html";
-                    page->contentHead->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected HTML block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
+                advanceParser(parser);
+                page->template = parseTemplate(parser, TOKEN_HTML);
                 break;
             }
             case TOKEN_MUSTACHE: {
                 advanceParser(parser);
-
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    page->contentHead = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(page->contentHead, 0, sizeof(ContentNode));
-                    page->contentHead->type = "raw_mustache";
-                    page->contentHead->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected mustache block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
+                page->template = parseTemplate(parser, TOKEN_MUSTACHE);
                 break;
             }
             case TOKEN_ERROR: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'error'.");
                 consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
-                
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    page->errorContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(page->errorContent, 0, sizeof(ContentNode));
-                    page->errorContent->type = "raw_mustache";
-                    page->errorContent->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected mustache block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
+                page->errorTemplate = parseTemplate(parser, TOKEN_MUSTACHE);
                 consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after error block.");
                 break;
             }
@@ -242,28 +201,14 @@ static PageNode *parsePage(Parser *parser) {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'success'.");
                 consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
-                
-                if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                    page->successContent = arenaAlloc(parser->arena, sizeof(ContentNode));
-                    memset(page->successContent, 0, sizeof(ContentNode));
-                    page->successContent->type = "raw_mustache";
-                    page->successContent->arg1 = copyString(parser, parser->current.lexeme);
-                    advanceParser(parser);  // consume raw block or string
-                } else {
-                    char buffer[256];
-                    snprintf(buffer, sizeof(buffer),
-                            "Expected mustache block at line %d\n",
-                            parser->current.line);
-                    fputs(buffer, stderr);
-                    parser->hadError = 1;
-                }
+                page->successTemplate = parseTemplate(parser, TOKEN_MUSTACHE);
                 consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after success block.");
                 break;
             }
             case TOKEN_CONTENT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
-                page->contentHead = parseContent(parser);
+                page->template = parseTemplate(parser, TOKEN_HTML);
                 break;
             }
             case TOKEN_REDIRECT: {
@@ -278,7 +223,6 @@ static PageNode *parsePage(Parser *parser) {
                 break;
             }
             default: {
-                // Report error but continue parsing
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token '%s' in page.\n",
@@ -294,96 +238,6 @@ static PageNode *parsePage(Parser *parser) {
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after page block.");
     return page;
-}
-
-static ContentNode *parseContent(Parser *parser) {
-    ContentNode *head = NULL;
-    ContentNode *tail = NULL;
-
-    while (parser->current.type != TOKEN_CLOSE_BRACE &&
-           parser->current.type != TOKEN_EOF && !parser->hadError) {
-        
-        // Handle raw HTML blocks
-        if (parser->current.type == TOKEN_HTML) {
-            advanceParser(parser);  // consume HTML token
-            
-            if (parser->current.type == TOKEN_RAW_BLOCK || parser->current.type == TOKEN_STRING) {
-                ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
-                memset(node, 0, sizeof(ContentNode));
-                node->type = "raw_html";
-                node->arg1 = copyString(parser, parser->current.lexeme);
-                advanceParser(parser);  // consume raw block or string
-                
-                if (!head) {
-                    head = node;
-                    tail = node;
-                } else {
-                    tail->next = node;
-                    tail = node;
-                }
-                continue;
-            } else {
-                char buffer[256];
-                snprintf(buffer, sizeof(buffer),
-                        "Expected HTML block at line %d\n",
-                        parser->current.line);
-                fputs(buffer, stderr);
-                parser->hadError = 1;
-            }
-        }
-
-        ContentNode *node = arenaAlloc(parser->arena, sizeof(ContentNode));
-        memset(node, 0, sizeof(ContentNode));
-
-        if (parser->current.type == TOKEN_STRING) {
-            const char *value = parser->current.lexeme;
-            
-            // If the string is quoted, treat it as raw content
-            if (value[0] == '"') {
-                node->type = "raw_html";
-                node->arg1 = copyString(parser, value);
-                advanceParser(parser);
-            } else {
-                node->type = copyString(parser, value);
-                advanceParser(parser);
-
-                // Check if this is the special "content" placeholder
-                if (strcmp(node->type, "content") == 0) {
-                    // Already the right type
-                } else if (parser->current.type == TOKEN_OPEN_BRACE) {
-                    advanceParser(parser);
-                    node->children = parseContent(parser);
-                } else {
-                    consume(parser, TOKEN_STRING, "Expected string after tag");
-                    node->arg1 = copyString(parser, parser->previous.lexeme);
-
-                    if (strcmp(node->type, "link") == 0) {
-                        consume(parser, TOKEN_STRING, "Expected link text after URL string");
-                        node->arg2 = copyString(parser, parser->previous.lexeme);
-                    }
-                    else if (strcmp(node->type, "image") == 0 && 
-                             parser->current.type == TOKEN_ALT) {
-                        advanceParser(parser);
-                        consume(parser, TOKEN_STRING, "Expected alt text after 'alt'");
-                        node->arg2 = copyString(parser, parser->previous.lexeme);
-                    }
-                }
-            }
-
-            if (!head) {
-                head = node;
-                tail = node;
-            } else {
-                tail->next = node;
-                tail = node;
-            }
-        } else {
-            break;
-        }
-    }
-
-    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' at end of content block");
-    return head;
 }
 
 static StyleBlockNode *parseStyleBlock(Parser *parser) {

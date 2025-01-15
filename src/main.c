@@ -131,13 +131,12 @@ int main(int argc, char* argv[]) {
     if (json_output) {
         website = parseWebsite(&parser, webdsl_path);
         if (website != NULL) {
-            json_t* json = websiteToJson(website);
-            char* json_str = json_dumps(json, JSON_INDENT(2));
+            char* json_str = websiteToJson(website);
+            // char* json_str = json_dumps(json, JSON_INDENT(2));
             if (json_str) {
                 printf("%s\n", json_str);
                 free(json_str);
             }
-            json_decref(json);
             freeArena(parser.arena);
             return 0;
         }

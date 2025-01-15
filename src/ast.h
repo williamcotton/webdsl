@@ -19,30 +19,17 @@ struct ServerContext;
 // Add function pointer type for step execution
 typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, struct ServerContext *ctx);
 
-// Node types
 typedef enum {
-    NODE_WEBSITE,
-    NODE_LAYOUT,
-    NODE_PAGE,
-    NODE_CONTENT,
-    NODE_API,
-    NODE_QUERY,
-    NODE_PIPELINE,
-    NODE_PIPELINE_STEP,
-    NODE_FIELD,
-    NODE_FIELD_VALIDATION,
-    NODE_TRANSFORM,
-    NODE_SCRIPT,
-    NODE_INCLUDE
-} NodeType;
+    TEMPLATE_MUSTACHE,
+    TEMPLATE_HTML,
+    TEMPLATE_RAW
+} TemplateType;
 
-typedef struct ContentNode {
-    char *type;
-    char *arg1;
-    char *arg2;
-    struct ContentNode *next;
-    struct ContentNode *children;
-} ContentNode;
+typedef struct TemplateNode {
+    TemplateType type;
+    uint64_t : 32;
+    char *content;
+} TemplateNode;
 
 typedef struct PageNode {
     char *identifier;
@@ -53,9 +40,9 @@ typedef struct PageNode {
     char *method;
     struct ApiField *fields;
     char *redirect;
-    ContentNode *contentHead;
-    ContentNode *errorContent;
-    ContentNode *successContent;
+    TemplateNode *template;
+    TemplateNode *errorTemplate;
+    TemplateNode *successTemplate;
     struct PipelineStepNode *pipeline;
     struct PageNode *next;
 } PageNode;
@@ -75,8 +62,8 @@ typedef struct StyleBlockNode {
 typedef struct LayoutNode {
     const char *identifier;
     char *doctype;
-    ContentNode *headContent;
-    ContentNode *bodyContent;
+    TemplateNode *headTemplate;
+    TemplateNode *bodyTemplate;
     struct LayoutNode *next;
 } LayoutNode;
 
