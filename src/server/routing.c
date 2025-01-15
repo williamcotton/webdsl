@@ -167,6 +167,10 @@ PageNode* findPage(const char *url, RouteParams *params, Arena *arena) {
 }
 
 LayoutNode* findLayout(const char *identifier) {
+    // return null if identifier is null
+    if (identifier == NULL) {
+        return NULL;
+    }
     uint32_t hash = hashString(identifier) & HASH_MASK;
     LayoutHashEntry *entry = layoutTable[hash];
     
