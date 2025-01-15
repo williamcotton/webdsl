@@ -101,7 +101,7 @@ char *generateFullPage(Arena *arena,
     return arena_result;
 }
 
-enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
+enum MHD_Result handlePageRequest(struct MHD_Connection *connection,
                                         const char *url, Arena *arena,
                                         json_t *pipelineResult) {
     // Find matching page

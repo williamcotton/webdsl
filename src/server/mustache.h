@@ -19,7 +19,7 @@ char *generateFullPage(Arena *arena,
                       json_t *pipelineResult);
 
 // Request handler for mustache pages
-enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
+enum MHD_Result handlePageRequest(struct MHD_Connection *connection,
                                         const char *url, Arena *arena,
                                         json_t *pipelineResult);
 

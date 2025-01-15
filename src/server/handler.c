@@ -191,12 +191,10 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         // Handle based on route type
     switch (match.type) {
         case ROUTE_TYPE_API:
-        return handleApiRequest(connection, match.endpoint.api, method,
-                                *con_cls, requestArena, pipelineResult);
+        return handleApiRequest(connection, match.endpoint.api, method, *con_cls, requestArena, pipelineResult);
 
         case ROUTE_TYPE_PAGE:
-        return handleMustachePageRequest(connection, url, requestArena,
-                                        pipelineResult);
+        return handlePageRequest(connection, url, requestArena, pipelineResult);
 
         case ROUTE_TYPE_NONE:
         return MHD_NO;

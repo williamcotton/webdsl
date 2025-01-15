@@ -249,13 +249,6 @@ page {
         }
     }
     redirect "/employees"
-    // mustache {
-    //     <h2>Employee Created</h2>
-    //     <p>Employee ID: {{employee.id}}</p>
-    //     <p>Name: {{employee.name}}</p>
-    //     <p>Email: {{employee.email}}</p>
-    //     <p>Team ID: {{employee.team_id}}</p>
-    // }
 }
 
 styles {
