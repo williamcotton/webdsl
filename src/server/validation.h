@@ -5,6 +5,8 @@
 #include "../arena.h"
 #include <stdbool.h>
 #include <regex.h>
+#include <jansson.h>
+#include "handler.h"
 
 // Common format types
 #define FORMAT_EMAIL "email"
@@ -18,5 +20,9 @@
 
 // Validate a field value against its field definition
 char* validateField(Arena *arena, const char *value, ApiField *field);
+
+// New validation functions
+json_t* validateJsonFields(Arena *arena, ApiField *fields, struct PostContext *post_ctx);
+json_t* validateFormFields(Arena *arena, ApiField *fields, struct PostContext *post_ctx);
 
 #endif // SERVER_VALIDATION_H

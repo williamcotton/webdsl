@@ -268,3 +268,100 @@ char* validateField(Arena *arena, const char *value, ApiField *field) {
     
     return NULL;
 }
+
+json_t* validateJsonFields(Arena *arena, ApiField *fields, struct PostContext *post_ctx) {
+    if (!post_ctx->raw_json) {
+        json_t *error = json_object();
+        json_object_set_new(error, "error", json_string("No JSON data provided"));
+        return error;
+    }
+
+    // Parse JSON data
+    json_error_t json_error;
+    json_t *json_body = json_loads(post_ctx->raw_json, 0, &json_error);
+    if (!json_body) {
+        json_t *error = json_object();
+        json_object_set_new(error, "error", json_string("Invalid JSON format"));
+        return error;
+    }
+
+    // Create errors object
+    json_t *errors = json_object();
+    bool has_errors = false;
+
+    // Validate each field
+    for (ApiField *field = fields; field; field = field->next) {
+        const char *value = NULL;
+        json_t *json_value = json_object_get(json_body, field->name);
+        
+        if (json_value) {
+            if (json_is_string(json_value)) {
+                value = json_string_value(json_value);
+            } else if (json_is_number(json_value)) {
+                char num_str[32];
+                snprintf(num_str, sizeof(num_str), "%.0f", json_number_value(json_value));
+                value = arenaDupString(arena, num_str);
+            }
+        }
+
+        char *error = validateField(arena, value, field);
+        if (error) {
+            json_object_set_new(errors, field->name, json_string(error));
+            has_errors = true;
+        }
+    }
+
+    json_decref(json_body);
+
+    if (has_errors) {
+        json_t *error_response = json_object();
+        json_object_set_new(error_response, "errors", errors);
+        return error_response;
+    }
+
+    json_decref(errors);
+    return NULL;
+}
+
+json_t* validateFormFields(Arena *arena, ApiField *fields, struct PostContext *post_ctx) {
+    // Create errors object
+    json_t *errors = json_object();
+    bool has_errors = false;
+
+    // Validate each field
+    for (ApiField *field = fields; field; field = field->next) {
+        const char *value = NULL;
+        
+        // Find field value in post data
+        for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+            if (strcmp(post_ctx->post_data.keys[i], field->name) == 0) {
+                value = post_ctx->post_data.values[i];
+                break;
+            }
+        }
+
+        char *error = validateField(arena, value, field);
+        if (error) {
+            json_object_set_new(errors, field->name, json_string(error));
+            has_errors = true;
+        }
+    }
+
+    if (has_errors) {
+        json_t *error_response = json_object();
+        json_object_set_new(error_response, "errors", errors);
+        
+        // Add form values to response for re-rendering
+        json_t *values = json_object();
+        for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+            json_object_set_new(values, post_ctx->post_data.keys[i], 
+                              json_string(post_ctx->post_data.values[i]));
+        }
+        json_object_set_new(error_response, "values", values);
+        
+        return error_response;
+    }
+
+    json_decref(errors);
+    return NULL;
+}

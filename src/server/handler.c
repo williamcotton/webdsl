@@ -4,6 +4,7 @@
 #include "css.h"
 #include "mustache.h"
 #include "pipeline_executor.h"
+#include "validation.h"
 #include "../arena.h"
 #include <string.h>
 #include <stdlib.h>
@@ -136,7 +137,6 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                     memcpy(post->raw_json, upload_data, *upload_data_size);
                     post->size = *upload_data_size;
                 } else {
-                    printf("post\n");
                     char *new_buffer = arenaAlloc(post->arena, post->size + *upload_data_size + 1);
                     memcpy(new_buffer, post->raw_json, post->size);
                     memcpy(new_buffer + post->size, upload_data, *upload_data_size);
@@ -166,6 +166,42 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Find route using unified routing
     RouteMatch match = findRoute(url, method, requestArena);
     
+    // Early validation for POST requests
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post = *con_cls;
+        json_t *validation_errors = NULL;
+        
+        if (match.type == ROUTE_TYPE_API && match.endpoint.api->apiFields) {
+            if (post->type == REQUEST_TYPE_JSON_POST) {
+                validation_errors = validateJsonFields(requestArena, match.endpoint.api->apiFields, post);
+                if (validation_errors) {
+                    char *error_str = json_dumps(validation_errors, 0);
+                    struct MHD_Response *response =
+                        MHD_create_response_from_buffer(strlen(error_str),
+                                                        error_str,
+                                                        MHD_RESPMEM_PERSISTENT);
+                    MHD_add_response_header(response, "Content-Type", "application/json");
+                    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+                    MHD_destroy_response(response);
+                    return ret;
+                }
+            }
+        } else if (match.type == ROUTE_TYPE_PAGE && match.endpoint.page->fields) {
+            if (post->type == REQUEST_TYPE_POST) {
+                validation_errors = validateFormFields(requestArena, match.endpoint.page->fields, post);
+                if (validation_errors) {
+                    // Add validation errors to pipeline result context
+                    json_t *context = buildRequestContextJson(
+                        connection, requestArena, *con_cls, 
+                        method, url, version, &match.params
+                    );
+                    json_object_update(context, validation_errors);
+                    return handlePageRequest(connection, url, requestArena, context);
+                }
+            }
+        }
+    }
+    
     // Build request context once - AFTER all POST data is processed
     json_t *requestContext = buildRequestContextJson(
         connection, requestArena, *con_cls, 
@@ -188,10 +224,10 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         pipelineResult = executePipeline(ctx, pipeline, requestContext, requestArena);
     }
 
-        // Handle based on route type
+    // Handle based on route type
     switch (match.type) {
         case ROUTE_TYPE_API:
-        return handleApiRequest(connection, match.endpoint.api, method, *con_cls, requestArena, pipelineResult);
+        return handleApiRequest(connection, match.endpoint.api, method, pipelineResult);
 
         case ROUTE_TYPE_PAGE:
         return handlePageRequest(connection, url, requestArena, pipelineResult);

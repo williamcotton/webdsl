@@ -277,7 +277,6 @@ json_t *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                  ApiEndpoint *api, const char *method,
-                                 void *con_cls, Arena *arena,
                                  json_t *pipelineResult) {
   // Handle OPTIONS requests for CORS
   if (strcmp(method, "OPTIONS") == 0) {
@@ -305,20 +304,6 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
         MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
     MHD_destroy_response(response);
     return ret;
-  }
-
-  // For POST requests, validate fields if specified
-  if (api->apiFields && strcmp(method, "POST") == 0) {
-    json_t *validation_error = validatePostFields(arena, api, con_cls);
-    if (validation_error) {
-      char *error_str = json_dumps(validation_error, 0);
-      struct MHD_Response *response = MHD_create_response_from_buffer(
-          strlen(error_str), error_str, MHD_RESPMEM_MUST_FREE);
-      MHD_add_response_header(response, "Content-Type", "application/json");
-      enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
-      MHD_destroy_response(response);
-      return ret;
-    }
   }
 
   // Use the passed-in pipeline result
@@ -354,11 +339,8 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
 
   char *json = json_dumps(apiResponse, 0);
 
-  // Use arena to allocate the response copy
-  size_t json_len = strlen(json);
-
   struct MHD_Response *response =
-      MHD_create_response_from_buffer(json_len, json, MHD_RESPMEM_PERSISTENT);
+      MHD_create_response_from_buffer(strlen(json), json, MHD_RESPMEM_PERSISTENT);
   MHD_add_response_header(response, "Content-Type", "application/json");
 
   // Add CORS headers for API endpoints
