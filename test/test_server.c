@@ -416,8 +416,9 @@ static void test_route_matching(void) {
     Arena *arena = createArena(1024 * 1024);  // 1MB arena
     
     // Create a minimal website for testing
-    WebsiteNode *website = arenaAlloc(arena, sizeof(WebsiteNode));
-    memset(website, 0, sizeof(WebsiteNode));
+    WebsiteNode *website = createTestWebsite(arena);
+    
+    initRequestJsonArena(arena);
     
     // Add a test API endpoint
     ApiEndpoint *api = arenaAlloc(arena, sizeof(ApiEndpoint));
@@ -453,6 +454,7 @@ static void test_route_matching(void) {
     TEST_ASSERT_EQUAL(ROUTE_TYPE_NONE, noMatch.type);
     TEST_ASSERT_NULL(noMatch.endpoint.api);
     
+    stopServer();
     freeArena(arena);
 }
 

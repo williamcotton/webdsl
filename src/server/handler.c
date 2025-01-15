@@ -157,19 +157,28 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         }
     }
 
-    // Check for API endpoint first
-    RouteParams params = {0};
-    ApiEndpoint *api = findApi(url, method, &params, requestArena);
-    if (api) {
-        return handleApiRequest(connection, api, method, url, version, *con_cls, requestArena, ctx, &params);
-    }
-
+    // Check for CSS endpoint first since it's a special case
     if (strcmp(url, "/styles.css") == 0) {
         return handleCssRequest(connection, requestArena);
     }
 
-    return handleMustachePageRequest(connection, api, method, url, version,
-                                     *con_cls, requestArena, ctx);
+    // Find route using unified routing
+    RouteMatch match = findRoute(url, method, requestArena);
+    
+    // Handle based on route type
+    switch (match.type) {
+        case ROUTE_TYPE_API:
+            return handleApiRequest(connection, match.endpoint.api, method, url, version, 
+                                  *con_cls, requestArena, ctx, &match.params);
+        case ROUTE_TYPE_PAGE:
+            return handleMustachePageRequest(connection, NULL, method, url, version,
+                                           *con_cls, requestArena, ctx);
+        case ROUTE_TYPE_NONE:
+            // No route found - return 404
+            return MHD_NO;
+    }
+
+    return MHD_NO;
 }
 
 void handleRequestCompleted(ServerContext *ctx,
@@ -199,3 +208,4 @@ void handleRequestCompleted(ServerContext *ctx,
         *con_cls = NULL;
     }
 }
+
