@@ -757,10 +757,20 @@ static bool loadEmbeddedScripts(lua_State *L) {
         script_count++;
     }
 
+    // If no scripts found, that's fine - return success
+    if (script_count == 0) {
+        return true;
+    }
+
     // Allocate arrays
     g_embedded_scripts.script_buffers = malloc(script_count * sizeof(char*));
     g_embedded_scripts.script_names = malloc(script_count * sizeof(char*));
     if (!g_embedded_scripts.script_buffers || !g_embedded_scripts.script_names) {
+        // Clean up if one allocation succeeded but the other failed
+        free(g_embedded_scripts.script_buffers);
+        free(g_embedded_scripts.script_names);
+        g_embedded_scripts.script_buffers = NULL;
+        g_embedded_scripts.script_names = NULL;
         fprintf(stderr, "Failed to allocate script arrays\n");
         return false;
     }

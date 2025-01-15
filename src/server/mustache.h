@@ -5,7 +5,6 @@
 #include "../ast.h"
 #include "../arena.h"
 #include "server.h"
-#include "route_params.h"
 
 // Initialize mustache subsystem
 void initMustache(ServerContext *ctx);
@@ -14,18 +13,14 @@ void initMustache(ServerContext *ctx);
 char* generateMustacheContent(Arena *arena, const ContentNode *cn, int indent);
 
 // Generate full page with mustache templates
-char *generateFullMustachePage(struct MHD_Connection *connection,
-                               ApiEndpoint *api, const char *method,
-                               const char *url, const char *version,
-                               void *con_cls, Arena *arena,
-                               ServerContext *ctx, PageNode *page,
-                               LayoutNode *layout, RouteParams *params);
+char *generateFullMustachePage(Arena *arena,
+                               PageNode *page,
+                               LayoutNode *layout,
+                               json_t *pipelineResult);
 
 // Request handler for mustache pages
 enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
-                                          ApiEndpoint *api, const char *method,
-                                          const char *url, const char *version,
-                                          void *con_cls, Arena *arena,
-                                          ServerContext *ctx);
+                                          const char *url, Arena *arena,
+                                          json_t *pipelineResult);
 
 #endif // SERVER_MUSTACHE_H

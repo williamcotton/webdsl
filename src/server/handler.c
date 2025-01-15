@@ -3,6 +3,7 @@
 #include "api.h"
 #include "css.h"
 #include "mustache.h"
+#include "pipeline_executor.h"
 #include "../arena.h"
 #include <string.h>
 #include <stdlib.h>
@@ -165,17 +166,46 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Find route using unified routing
     RouteMatch match = findRoute(url, method, requestArena);
     
-    // Handle based on route type
-    switch (match.type) {
-        case ROUTE_TYPE_API:
-            return handleApiRequest(connection, match.endpoint.api, method, url, version, 
-                                  *con_cls, requestArena, ctx, &match.params);
-        case ROUTE_TYPE_PAGE:
-            return handleMustachePageRequest(connection, NULL, method, url, version,
-                                           *con_cls, requestArena, ctx);
-        case ROUTE_TYPE_NONE:
-            // No route found - return 404
-            return MHD_NO;
+    // Build request context once - AFTER all POST data is processed
+    json_t *requestContext = buildRequestContextJson(
+        connection, requestArena, *con_cls, 
+        method, url, version, &match.params
+    );
+    
+    // Execute pipeline if exists
+    json_t *pipelineResult = NULL;
+    PipelineStepNode *pipeline = NULL;
+    
+    // Get pipeline from either API or page
+    if (match.type == ROUTE_TYPE_API && match.endpoint.api->uses_pipeline) {
+        pipeline = match.endpoint.api->pipeline;
+    } else if (match.type == ROUTE_TYPE_PAGE && match.endpoint.page->pipeline) {
+        pipeline = match.endpoint.page->pipeline;
+    }
+    
+    // Execute pipeline once if it exists
+    if (pipeline) {
+        pipelineResult = executePipeline(ctx, pipeline, requestContext, requestArena);
+    }
+    
+    json_decref(requestContext);
+
+    // enum MHD_Result handleApiRequest(
+    //     struct MHD_Connection * connection, ApiEndpoint * api,
+    //     const char *method, void *con_cls, Arena *arena, json_t *pipelineResult)
+
+        // Handle based on route type
+        switch (match.type) {
+    case ROUTE_TYPE_API:
+      return handleApiRequest(connection, match.endpoint.api, method,
+                               *con_cls, requestArena, pipelineResult);
+
+    case ROUTE_TYPE_PAGE:
+      return handleMustachePageRequest(connection, url, requestArena,
+                                       pipelineResult);
+
+    case ROUTE_TYPE_NONE:
+      return MHD_NO;
     }
 
     return MHD_NO;

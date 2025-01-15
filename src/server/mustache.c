@@ -1,11 +1,9 @@
 #include "mustache.h"
 #include "routing.h"
 #include "../stringbuilder.h"
-#include "pipeline_executor.h"
 #include <string.h>
 #include <jansson.h>
 #include "../deps/mustach/mustach-jansson.h"
-#include "api.h"
 
 static ServerContext *serverCtx = NULL;
 
@@ -60,13 +58,10 @@ char* generateMustacheContent(Arena *arena, const ContentNode *cn, int indent) {
     return arenaDupString(arena, StringBuilder_get(sb));
 }
 
-char *generateFullMustachePage(struct MHD_Connection *connection,
-                               ApiEndpoint *api, const char *method,
-                               const char *url, const char *version,
-                               void *con_cls, Arena *arena, ServerContext *ctx,
-                               PageNode *page, LayoutNode *layout,
-                               RouteParams *params) {
-  (void)api;                                
+char *generateFullMustachePage(Arena *arena,
+                               PageNode *page,
+                               LayoutNode *layout,
+                               json_t *pipelineResult) {                             
   StringBuilder *sb = StringBuilder_new(arena);
 
   // Generate layout and page content
@@ -97,26 +92,13 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
   // Get the template string
   const char *template = StringBuilder_get(sb);
 
-  // Execute pipeline to get data
-  json_t *data = NULL;
-  if (page->pipeline) {
-    // Create request context
-    json_t *requestContext =
-        buildRequestContextJson(connection, arena, con_cls, method, url, version, params);
-
-    // Execute pipeline
-    data = executePipeline(ctx, page->pipeline, requestContext, arena);
-    json_decref(requestContext);
-
-    // If we got an error response, create an empty object instead
-    if (data && json_object_get(data, "error")) {
-      json_decref(data);
-      data = json_object();
-    }
-  }
-
+  // Use passed-in pipeline result or create empty object
+  json_t *data = pipelineResult;
   if (!data) {
-    // If no pipeline or pipeline execution failed, create an empty object
+    data = json_object();
+  } else if (json_object_get(data, "error")) {
+    // If we got an error response, create an empty object instead
+    json_decref(data);
     data = json_object();
   }
 
@@ -128,7 +110,7 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
                           Mustach_With_AllExtensions, &result, &result_size);
 
   // Clean up JSON data if we created it
-  if (!data || !page->pipeline) {
+  if (!pipelineResult || json_object_get(pipelineResult, "error")) {
     json_decref(data);
   }
 
@@ -145,10 +127,8 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
 }
 
 enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
-                                          ApiEndpoint *api, const char *method,
-                                          const char *url, const char *version,
-                                          void *con_cls, Arena *arena,
-                                          ServerContext *ctx) {
+                                          const char *url, Arena *arena,
+                                          json_t *pipelineResult) {
   // Find matching page
   RouteParams params = {0};
   PageNode *page = findPage(url, &params, arena);
@@ -169,7 +149,7 @@ enum MHD_Result handleMustachePageRequest(struct MHD_Connection *connection,
   LayoutNode *layout = findLayout(page->layout);
 
   // Generate the page with mustache templates
-  char *html = generateFullMustachePage(connection, api, method, url, version, con_cls, arena, ctx, page, layout, &params);
+  char *html = generateFullMustachePage(arena, page, layout, pipelineResult);
 
   if (page->redirect) {
     struct MHD_Response *response =

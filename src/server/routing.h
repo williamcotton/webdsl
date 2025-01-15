@@ -74,6 +74,7 @@ typedef enum {
 
 typedef struct {
     RouteType type;
+    uint64_t : 32;
     union {
         ApiEndpoint *api;
         PageNode *page;

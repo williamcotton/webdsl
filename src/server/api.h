@@ -15,14 +15,9 @@
 
 // API request handling
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
-                               ApiEndpoint *api,
-                               const char *method,
-                               const char *url,
-                               const char *version,
-                               void *con_cls,
-                               Arena *arena,
-                               ServerContext *ctx,
-                               RouteParams *params);
+                                 ApiEndpoint *api, const char *method,
+                                 void *con_cls, Arena *arena,
+                                 json_t *pipelineResult);
 
 // API response generation
 json_t* generateApiResponse(Arena *arena, 

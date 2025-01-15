@@ -277,9 +277,8 @@ json_t *generateApiResponse(Arena *arena, ApiEndpoint *endpoint, void *con_cls,
 
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                  ApiEndpoint *api, const char *method,
-                                 const char *url, const char *version,
                                  void *con_cls, Arena *arena,
-                                 ServerContext *ctx, RouteParams *params) {
+                                 json_t *pipelineResult) {
   // Handle OPTIONS requests for CORS
   if (strcmp(method, "OPTIONS") == 0) {
     struct MHD_Response *response =
@@ -308,11 +307,22 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     return ret;
   }
 
-  json_t *requestContext =
-      buildRequestContextJson(connection, arena, con_cls, method, url, version, params);
+  // For POST requests, validate fields if specified
+  if (api->apiFields && strcmp(method, "POST") == 0) {
+    json_t *validation_error = validatePostFields(arena, api, con_cls);
+    if (validation_error) {
+      char *error_str = json_dumps(validation_error, 0);
+      struct MHD_Response *response = MHD_create_response_from_buffer(
+          strlen(error_str), error_str, MHD_RESPMEM_MUST_FREE);
+      MHD_add_response_header(response, "Content-Type", "application/json");
+      enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
+      MHD_destroy_response(response);
+      return ret;
+    }
+  }
 
-  // Generate API response with request context
-  json_t *apiResponse = generateApiResponse(arena, api, con_cls, requestContext, ctx);
+  // Use the passed-in pipeline result
+  json_t *apiResponse = pipelineResult;
   if (!apiResponse) {
     const char *error_msg =
         "{ \"error\": \"Internal server error processing pipeline\" }";
