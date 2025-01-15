@@ -1,29 +1,47 @@
 layout {
     name "main"
-    html {
-        <div>
-            <h1>Site Header</h1>
-            <p>Welcome to our website</p>
-            <!-- content -->
-            <p>Footer text</p>
-        </div>
+    mustache {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>{{pageTitle}}</title>
+                <link rel="stylesheet" href="/styles.css">
+            </head>
+            <body>
+                <div>
+                    <h1>Site Header</h1>
+                    <p>Welcome to our website</p>
+                    <!-- content -->
+                    <p>Footer text</p>
+                </div>
+            </body>
+        </html>
     }
 }
 
 layout {
     name "blog"
-    html {
-        <header>
-            <h1>Blog Layout</h1>
-            <nav>
-                <a href="/">Home</a> |
-                <a href="/blog">Blog</a>
-            </nav>
-        </header>
-        <!-- content -->
-        <footer>
-            <p>Blog footer - Copyright 2024</p>
-        </footer>
+    mustache {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>{{pageTitle}}</title>
+                <link rel="stylesheet" href="/styles.css">
+            </head>
+            <body>
+                <header>
+                    <h1>Blog Layout</h1>
+                    <nav>
+                        <a href="/">Home</a> |
+                        <a href="/blog">Blog</a>
+                    </nav>
+                </header>
+                <!-- content -->
+                <footer>
+                    <p>Blog footer - Copyright 2024</p>
+                </footer>
+            </body>
+        </html>
     }
 }
 
@@ -31,7 +49,7 @@ page {
     name "home"
     route "/"
     layout "main"
-    html {
+    mustache {
         <h1>Welcome!</h1>
         <p>
             <a href="/blog">Read our blog</a>
@@ -44,7 +62,7 @@ page {
     name "blog"
     route "/blog"
     layout "blog"
-    html {
+    mustache {
         <article>
             <h1>Latest Posts</h1>
             <p>Check out our latest blog posts!</p>

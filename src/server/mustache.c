@@ -69,25 +69,15 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
   (void)api;                                
   StringBuilder *sb = StringBuilder_new(arena);
 
-  // Create the base HTML structure
+  // Generate layout and page content
   if (!layout) {
-    StringBuilder_append(sb, "<!DOCTYPE html>\n<html>\n<head>\n");
-    StringBuilder_append(sb,
-                         "<link rel=\"stylesheet\" href=\"/styles.css\">\n");
-    StringBuilder_append(sb, "</head>\n<body>\n");
-    char *content = generateMustacheContent(arena, page->contentHead, 1);
+    // Just use the page content directly
+    char *content = generateMustacheContent(arena, page->contentHead, 0);
     StringBuilder_append(sb, "%s", content);
-    StringBuilder_append(sb, "</body>\n</html>");
   } else {
-    // Start with basic HTML structure
-    StringBuilder_append(sb, "<!DOCTYPE html>\n<html>\n<head>\n");
-    StringBuilder_append(sb,
-                         "<link rel=\"stylesheet\" href=\"/styles.css\">\n");
-    StringBuilder_append(sb, "</head>\n<body>\n");
-
     // Generate layout and page content
-    char *layoutHtml = generateMustacheContent(arena, layout->bodyContent, 1);
-    char *pageContent = generateMustacheContent(arena, page->contentHead, 1);
+    char *layoutHtml = generateMustacheContent(arena, layout->bodyContent, 0);
+    char *pageContent = generateMustacheContent(arena, page->contentHead, 0);
 
     // Replace content placeholder in layout with page content
     const char *placeholder = "<!-- content -->";
@@ -102,8 +92,6 @@ char *generateFullMustachePage(struct MHD_Connection *connection,
       StringBuilder_append(sb, "%s", layoutHtml);
       StringBuilder_append(sb, "%s", pageContent);
     }
-
-    StringBuilder_append(sb, "</body>\n</html>");
   }
 
   // Get the template string

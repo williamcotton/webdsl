@@ -15,7 +15,10 @@ page {
         lua {
             local sql = findQuery("getNotes")
             local result = sqlQuery(sql)
-            return { notes = result.rows }
+            return { 
+                notes = result.rows,
+                pageTitle = "Notes"
+            }
         }
     }
     mustache {

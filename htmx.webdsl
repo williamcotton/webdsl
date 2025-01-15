@@ -1,11 +1,13 @@
 layout {
     name "htmx"
-    html {
+    mustache {
+        <!DOCTYPE html>
         <html>
             <head>
                 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
                 <script src="https://cdn.tailwindcss.com"></script>
-                <title>HTMX Demo</title>
+                <title>{{pageTitle}}</title>
+                {{head}}
             </head>
             <body>
                 <!-- content -->
