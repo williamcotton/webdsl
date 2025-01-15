@@ -205,12 +205,6 @@ static PageNode *parsePage(Parser *parser) {
                 consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after success block.");
                 break;
             }
-            case TOKEN_CONTENT: {
-                advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'content'.");
-                page->template = parseTemplate(parser, TOKEN_HTML);
-                break;
-            }
             case TOKEN_REDIRECT: {
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'redirect'.");

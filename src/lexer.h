@@ -10,7 +10,6 @@ typedef enum {
     TOKEN_STYLES,
     TOKEN_ROUTE,
     TOKEN_LAYOUT,
-    TOKEN_CONTENT,
     TOKEN_NAME,
     TOKEN_AUTHOR,
     TOKEN_VERSION,

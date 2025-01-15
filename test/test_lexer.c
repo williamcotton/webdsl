@@ -28,7 +28,7 @@ static void test_lexer_keywords(void) {
     Parser parser = {0};
     parser.arena = createArena(1024);
     
-    const char *input = "website pages page styles route layout content name author version alt layouts port api method executeQuery query sql css mustache";
+    const char *input = "website pages page styles route layout name author version alt layouts port api method executeQuery query sql css mustache";
     initLexer(&lexer, input, &parser);
     
     TokenType expected[] = {
@@ -38,7 +38,6 @@ static void test_lexer_keywords(void) {
         TOKEN_STYLES,
         TOKEN_ROUTE,
         TOKEN_LAYOUT,
-        TOKEN_CONTENT,
         TOKEN_NAME,
         TOKEN_AUTHOR,
         TOKEN_VERSION,

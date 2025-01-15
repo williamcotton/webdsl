@@ -46,38 +46,6 @@ static void test_parse_minimal_website(void) {
     freeArena(parser.arena);
 }
 
-static void test_parse_website_with_page(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  page {\n"
-        "    name \"home\"\n"
-        "    route \"/\"\n"
-        "    layout \"main\"\n"
-        "    content {\n"
-        "      \"content\"\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(0, parser.hadError);
-    TEST_ASSERT_NOT_NULL(website->pageHead);
-    
-    PageNode *page = website->pageHead;
-    TEST_ASSERT_EQUAL_STRING("home", page->identifier);
-    TEST_ASSERT_EQUAL_STRING("/", page->route);
-    TEST_ASSERT_EQUAL_STRING("main", page->layout);
-    TEST_ASSERT_NOT_NULL(page->template);
-    TEST_ASSERT_EQUAL(TEMPLATE_HTML, page->template->type);
-    TEST_ASSERT_EQUAL_STRING("content", page->template->content);
-    
-    freeArena(parser.arena);
-}
-
 static void test_parse_website_with_styles(void) {
     Parser parser;
     const char *input = 
@@ -133,32 +101,6 @@ static void test_parse_website_with_port(void) {
     
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(3000, website->port);
-    
-    freeArena(parser.arena);
-}
-
-static void test_parse_nested_content(void) {
-    Parser parser;
-    const char *input = 
-        "website {\n"
-        "  page {\n"
-        "    name \"test\"\n"
-        "    content {\n"
-        "      div {\n"
-        "        p \"nested\"\n"
-        "        span \"content\"\n"
-        "      }\n"
-        "    }\n"
-        "  }\n"
-        "}";
-    
-    initParser(&parser, input);
-    WebsiteNode *website = parseProgram(&parser);
-    
-    TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_NOT_NULL(website->pageHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead->template);
-    TEST_ASSERT_EQUAL(TEMPLATE_HTML, website->pageHead->template->type);
     
     freeArena(parser.arena);
 }
@@ -786,11 +728,9 @@ int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
     RUN_TEST(test_parse_minimal_website);
-    RUN_TEST(test_parse_website_with_page);
     RUN_TEST(test_parse_website_with_styles);
     RUN_TEST(test_parse_error_handling);
     RUN_TEST(test_parse_website_with_port);
-    RUN_TEST(test_parse_nested_content);
     RUN_TEST(test_parse_error_recovery);
     RUN_TEST(test_parse_invalid_api);
     RUN_TEST(test_parse_website_with_query);

@@ -132,7 +132,6 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("styles", TOKEN_STYLES)
     KW_MATCH("route", TOKEN_ROUTE)
     KW_MATCH("layout", TOKEN_LAYOUT)
-    KW_MATCH("content", TOKEN_CONTENT)
     KW_MATCH("name", TOKEN_NAME)
     KW_MATCH("author", TOKEN_AUTHOR)
     KW_MATCH("version", TOKEN_VERSION)
@@ -344,7 +343,6 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_STYLES: return "STYLES";
         case TOKEN_ROUTE: return "ROUTE";
         case TOKEN_LAYOUT: return "LAYOUT";
-        case TOKEN_CONTENT: return "CONTENT";
         case TOKEN_NAME: return "NAME";
         case TOKEN_AUTHOR: return "AUTHOR";
         case TOKEN_VERSION: return "VERSION";
