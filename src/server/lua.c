@@ -21,12 +21,7 @@
 static void pushJsonToLua(lua_State *L, json_t *json);
 static json_t* luaToJson(lua_State *L, int index);
 static bool loadEmbeddedScripts(lua_State *L);
-
-// Add arena wrapper struct
-typedef struct {
-    Arena *arena;
-    size_t total_allocated;
-} LuaArenaWrapper;
+static int bytecodeWriter(lua_State *L __attribute__((unused)), const void* p, size_t sz, void* ud);
 
 typedef struct LuaChunkEntry {
     const char* code;           // Original Lua code for comparison
@@ -38,6 +33,83 @@ static LuaFileRegistry fileRegistry = {0};
 static LuaChunkEntry* chunkTable[LUA_HASH_TABLE_SIZE] = {0};
 
 static struct ServerContext *g_ctx = NULL;  // Rename global ctx to g_ctx
+
+// Helper function to compile and cache Lua code
+static LuaChunkEntry* compileAndCacheLuaCode(const char* code, const char* name, Arena *arena) {
+    if (!code) return NULL;
+    
+    uint32_t hash = hashString(code) & LUA_HASH_MASK;
+    
+    // Check if already cached
+    LuaChunkEntry* entry = chunkTable[hash];
+    while (entry) {
+        if (strcmp(entry->code, code) == 0) {
+            return entry;
+        }
+        entry = entry->next;
+    }
+    
+    // New chunk - compile and cache it
+    entry = malloc(sizeof(LuaChunkEntry));
+    if (!entry) {
+        fprintf(stderr, "Failed to allocate chunk entry for %s\n", name ? name : "unnamed");
+        return NULL;
+    }
+    
+    // Store code in arena if provided, otherwise use the code pointer directly
+    if (arena) {
+        entry->code = arenaDupString(arena, code);
+        if (!entry->code) {
+            fprintf(stderr, "Failed to copy code for %s\n", name ? name : "unnamed");
+            free(entry);
+            return NULL;
+        }
+    } else {
+        entry->code = code;
+    }
+    
+    entry->bytecode.bytecode = NULL;
+    entry->bytecode.bytecode_len = 0;
+    
+    lua_State *L = luaL_newstate();
+    if (!L) {
+        free(entry);
+        return NULL;
+    }
+    
+    luaL_openlibs(L);
+    
+    if (luaL_loadstring(L, code) != 0) {
+        fprintf(stderr, "Failed to load %s: %s\n", name ? name : "unnamed", lua_tostring(L, -1));
+        lua_close(L);
+        if (arena && entry->code != code) {
+            // free((void*)entry->code);
+        }
+        free(entry);
+        return NULL;
+    }
+    
+    if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
+        fprintf(stderr, "Failed to compile %s\n", name ? name : "unnamed");
+        lua_close(L);
+        free(entry);
+        return NULL;
+    }
+    
+    lua_close(L);
+    
+    // Add to hash table
+    entry->next = chunkTable[hash];
+    chunkTable[hash] = entry;
+    
+    return entry;
+}
+
+// Add arena wrapper struct
+typedef struct {
+    Arena *arena;
+    size_t total_allocated;
+} LuaArenaWrapper;
 
 // Add typedef for Page
 typedef struct PageNode Page;
@@ -274,6 +346,38 @@ static bool loadLuaFile(lua_State *L, const char* filepath) {
         return false;
     }
 
+    // Read the file contents
+    FILE *f = fopen(filepath, "rb");
+    if (!f) {
+        fprintf(stderr, "Failed to open %s\n", filepath);
+        return false;
+    }
+
+    fseek(f, 0, SEEK_END);
+    long filesize = ftell(f);
+    if (filesize < 0) {
+        fclose(f);
+        return false;
+    }
+    size_t size = (size_t)filesize;
+    fseek(f, 0, SEEK_SET);
+
+    char *buffer = malloc(size + 1);
+    if (!buffer) {
+        fclose(f);
+        fprintf(stderr, "Failed to allocate buffer for %s\n", filepath);
+        return false;
+    }
+
+    if (fread(buffer, 1, size, f) != (size_t)size) {
+        free(buffer);
+        fclose(f);
+        fprintf(stderr, "Failed to read %s\n", filepath);
+        return false;
+    }
+    buffer[size] = '\0';
+    fclose(f);
+
     // Check if we already have this file loaded and it's up to date
     for (size_t i = 0; i < fileRegistry.count; i++) {
         if (strcmp(fileRegistry.entries[i].filename, filepath) == 0) {
@@ -283,54 +387,75 @@ static bool loadLuaFile(lua_State *L, const char* filepath) {
                     (const char*)fileRegistry.entries[i].bytecode.bytecode,
                     fileRegistry.entries[i].bytecode.bytecode_len,
                     filepath) != 0) {
+                    free(buffer);
                     return false;
                 }
+                free(buffer);
                 return true;
             }
             break;
         }
     }
 
-    // Load and compile the file
-    if (luaL_loadfile(L, filepath) != 0) {
-        fprintf(stderr, "Failed to load %s: %s\n", filepath, lua_tostring(L, -1));
+    // Compile and cache the code
+    LuaChunkEntry* entry = compileAndCacheLuaCode(buffer, filepath, g_ctx->arena);
+    if (!entry) {
+        free(buffer);
         return false;
     }
 
-    // Create new entry or reuse existing one
-    LuaFileEntry* entry = NULL;
+    // Update file registry
+    LuaFileEntry* file_entry = NULL;
     for (size_t i = 0; i < fileRegistry.count; i++) {
         if (strcmp(fileRegistry.entries[i].filename, filepath) == 0) {
-            entry = &fileRegistry.entries[i];
-            free(entry->bytecode.bytecode);
+            file_entry = &fileRegistry.entries[i];
+            free(file_entry->bytecode.bytecode);
+            free(file_entry->filename);  // Free the old filename
             break;
         }
     }
 
-    if (!entry) {
-        // Need to add new entry
+    if (!file_entry) {
         if (fileRegistry.count >= fileRegistry.capacity) {
             size_t new_capacity = fileRegistry.capacity > 0 ? fileRegistry.capacity * 2 : 1;
             LuaFileEntry* new_entries = realloc(fileRegistry.entries, new_capacity * sizeof(LuaFileEntry));
-            if (!new_entries) return false;
+            if (!new_entries) {
+                free(buffer);
+                return false;
+            }
             fileRegistry.entries = new_entries;
             fileRegistry.capacity = new_capacity;
         }
-        entry = &fileRegistry.entries[fileRegistry.count++];
-        entry->filename = strdup(filepath);
-        if (!entry->filename) return false;
+        file_entry = &fileRegistry.entries[fileRegistry.count++];
+        file_entry->filename = strdup(filepath);
+        if (!file_entry->filename) {
+            free(buffer);
+            return false;
+        }
     }
 
-    entry->bytecode.bytecode = NULL;
-    entry->bytecode.bytecode_len = 0;
-    entry->last_modified = st.st_mtime;
+    // Make a copy of the bytecode
+    file_entry->bytecode.bytecode = malloc(entry->bytecode.bytecode_len);
+    if (!file_entry->bytecode.bytecode) {
+        free(buffer);
+        if (!file_entry->filename) {
+            free(file_entry->filename);
+        }
+        return false;
+    }
+    memcpy(file_entry->bytecode.bytecode, entry->bytecode.bytecode, entry->bytecode.bytecode_len);
+    file_entry->bytecode.bytecode_len = entry->bytecode.bytecode_len;
+    file_entry->last_modified = st.st_mtime;
 
-    // Compile to bytecode
-    if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
-        fprintf(stderr, "Failed to compile %s\n", filepath);
+    // Load using cached bytecode
+    if (luaL_loadbuffer(L, (const char*)entry->bytecode.bytecode,
+                       entry->bytecode.bytecode_len, filepath) != 0) {
+        fprintf(stderr, "Failed to load compiled %s\n", filepath);
+        free(buffer);
         return false;
     }
 
+    free(buffer);
     return true;
 }
 
@@ -454,51 +579,9 @@ static bool compilePipelineStepsHelper(PipelineStepNode* step) {
             
             if (!code) continue;
             
-            uint32_t hash = hashString(code) & LUA_HASH_MASK;
-            
-            // Check if already cached
-            LuaChunkEntry* entry = chunkTable[hash];
-            while (entry) {
-                if (strcmp(entry->code, code) == 0) {
-                    break;
-                }
-                entry = entry->next;
-            }
-            
-            if (!entry) {
-                // New chunk - compile and cache it
-                entry = malloc(sizeof(LuaChunkEntry));
-                if (!entry) return false;
-                
-                entry->code = code;
-                entry->bytecode.bytecode = NULL;
-                entry->bytecode.bytecode_len = 0;
-                
-                lua_State *L = luaL_newstate();
-                if (!L) {
-                    free(entry);
-                    return false;
-                }
-                
-                luaL_openlibs(L);
-                
-                if (luaL_loadstring(L, code) != 0) {
-                    lua_close(L);
-                    free(entry);
-                    return false;
-                }
-                
-                if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
-                    lua_close(L);
-                    free(entry);
-                    return false;
-                }
-                
-                lua_close(L);
-                
-                // Add to hash table
-                entry->next = chunkTable[hash];
-                chunkTable[hash] = entry;
+            // Compile and cache the code
+            if (!compileAndCacheLuaCode(code, step->name ? step->name : "pipeline_step", NULL)) {
+                return false;
             }
         }
         step = step->next;
@@ -515,51 +598,9 @@ static bool compilePipelineSteps(ServerContext *server_ctx) {
     ScriptNode* script = server_ctx->website->scriptHead;
     while (script) {
         if (script->type == FILTER_LUA) {
-            uint32_t hash = hashString(script->code) & LUA_HASH_MASK;
-            
-            // Check if already cached
-            LuaChunkEntry* entry = chunkTable[hash];
-            while (entry) {
-                if (strcmp(entry->code, script->code) == 0) {
-                    break;
-                }
-                entry = entry->next;
-            }
-            
-            if (!entry) {
-                // New chunk - compile and cache it
-                entry = malloc(sizeof(LuaChunkEntry));
-                if (!entry) return false;
-                
-                entry->code = script->code;
-                entry->bytecode.bytecode = NULL;
-                entry->bytecode.bytecode_len = 0;
-                
-                lua_State *L = luaL_newstate();
-                if (!L) {
-                    free(entry);
-                    return false;
-                }
-                
-                luaL_openlibs(L);
-                
-                if (luaL_loadstring(L, script->code) != 0) {
-                    lua_close(L);
-                    free(entry);
-                    return false;
-                }
-                
-                if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
-                    lua_close(L);
-                    free(entry);
-                    return false;
-                }
-                
-                lua_close(L);
-                
-                // Add to hash table
-                entry->next = chunkTable[hash];
-                chunkTable[hash] = entry;
+            // Compile and cache the code
+            if (!compileAndCacheLuaCode(script->code, script->name ? script->name : "named_script", NULL)) {
+                return false;
             }
         }
         script = script->next;
@@ -682,8 +723,16 @@ static bool loadEmbeddedScripts(lua_State *L) {
             const char *name = g_embedded_scripts.script_names[i];
             const char *buffer = g_embedded_scripts.script_buffers[i];
             
-            // Load and execute the script
-            if (luaL_loadstring(L, buffer) != 0) {
+            // Get cached bytecode
+            LuaChunkEntry* entry = compileAndCacheLuaCode(buffer, name, g_ctx->arena);
+            if (!entry) {
+                fprintf(stderr, "Failed to find cached bytecode for embedded script %s\n", name);
+                return false;
+            }
+
+            // Load and execute using cached bytecode
+            if (luaL_loadbuffer(L, (const char*)entry->bytecode.bytecode, 
+                              entry->bytecode.bytecode_len, name) != 0) {
                 fprintf(stderr, "Failed to load embedded script %s: %s\n", 
                         name, lua_tostring(L, -1));
                 return false;
@@ -746,8 +795,16 @@ static bool loadEmbeddedScripts(lua_State *L) {
         g_embedded_scripts.script_buffers[script_idx] = buffer;
         g_embedded_scripts.script_names[script_idx] = script->name;
 
-        // Load and execute the script
-        if (luaL_loadstring(L, buffer) != 0) {
+        // Compile and cache bytecode
+        LuaChunkEntry* entry = compileAndCacheLuaCode(buffer, script->name, g_ctx->arena);
+        if (!entry) {
+            fprintf(stderr, "Failed to compile embedded script %s\n", script->name);
+            return false;
+        }
+
+        // Load and execute using cached bytecode
+        if (luaL_loadbuffer(L, (const char*)entry->bytecode.bytecode, 
+                          entry->bytecode.bytecode_len, script->name) != 0) {
             fprintf(stderr, "Failed to load embedded script %s: %s\n", 
                     script->name, lua_tostring(L, -1));
             return false;
@@ -799,6 +856,7 @@ void cleanupLua(void) {
         while (entry) {
             LuaChunkEntry* next = entry->next;
             free(entry->bytecode.bytecode);
+            // free((void*)entry->code);  // Free the code string
             free(entry);
             entry = next;
         }
