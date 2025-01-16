@@ -7,8 +7,24 @@
 
 static ServerContext *serverCtx = NULL;
 
+// Custom partial handler that uses findPartial
+static int customPartial(const char *name, struct mustach_sbuf *sbuf) {
+    PartialNode *partial = findPartial(name);
+    if (!partial || !partial->template) {
+        return MUSTACH_ERROR_PARTIAL_NOT_FOUND;
+    }
+    
+    // Get the template content
+    sbuf->value = partial->template->content;
+    sbuf->freecb = NULL; // Content is managed by the arena
+    return MUSTACH_OK;
+}
+
 void initMustache(ServerContext *_serverCtx) {
     serverCtx = _serverCtx;
+    
+    // Set up our custom partial handler
+    mustach_wrap_get_partial = customPartial;
 }
 
 char* generateTemplateContent(Arena *arena, const TemplateNode *template, int indent) {

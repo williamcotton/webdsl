@@ -55,6 +55,7 @@ typedef enum {
     TOKEN_PARAMS,
     TOKEN_MUSTACHE,
     TOKEN_REDIRECT,
+    TOKEN_PARTIAL,
 } TokenType;
 
 typedef struct {

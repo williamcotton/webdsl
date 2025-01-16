@@ -25,6 +25,7 @@ static ApiHashEntry *apiTable[HASH_TABLE_SIZE];
 static QueryHashEntry *queryTable[HASH_TABLE_SIZE];
 static TransformHashEntry *transformTable[HASH_TABLE_SIZE];
 static ScriptHashEntry *scriptTable[HASH_TABLE_SIZE];
+static PartialHashEntry *partialTable[HASH_TABLE_SIZE];
 static JQHashEntry *jqTable[HASH_TABLE_SIZE];
 static __thread JQHashEntry **threadJQTable = NULL;
 pthread_key_t jq_key;
@@ -71,6 +72,7 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
     memset(queryTable, 0, sizeof(queryTable));
     memset(transformTable, 0, sizeof(transformTable));
     memset(scriptTable, 0, sizeof(scriptTable));
+    memset(partialTable, 0, sizeof(partialTable));
     memset(jqTable, 0, sizeof(jqTable));
 
     // Build page routes
@@ -135,6 +137,16 @@ void buildRouteMaps(WebsiteNode *website, Arena *arena) {
         entry->script = script;
         entry->next = scriptTable[hash];
         scriptTable[hash] = entry;
+    }
+
+    // Build partial routes
+    for (PartialNode *partial = website->partialHead; partial; partial = partial->next) {
+        uint32_t hash = hashString(partial->name) & HASH_MASK;
+        PartialHashEntry *entry = arenaAlloc(arena, sizeof(PartialHashEntry));
+        entry->name = partial->name;
+        entry->partial = partial;
+        entry->next = partialTable[hash];
+        partialTable[hash] = entry;
     }
 }
 
@@ -346,4 +358,17 @@ RouteMatch findRoute(const char *url, const char *method, Arena *arena) {
     }
     
     return match;
+}
+
+PartialNode* findPartial(const char *name) {
+    uint32_t hash = hashString(name) & HASH_MASK;
+    PartialHashEntry *entry = partialTable[hash];
+    
+    while (entry) {
+        if (strcmp(entry->name, name) == 0) {
+            return entry->partial;
+        }
+        entry = entry->next;
+    }
+    return NULL;
 }

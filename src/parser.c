@@ -24,6 +24,7 @@ static TransformNode* parseTransform(Parser *parser);
 static ScriptNode* parseScript(Parser *parser);
 static IncludeNode* parseInclude(Parser *parser);
 static ResponseBlockNode* parseResponseBlock(Parser *parser);
+static PartialNode* parsePartial(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -862,6 +863,53 @@ static ResponseBlockNode* parseResponseBlock(Parser *parser) {
     return block;
 }
 
+static PartialNode* parsePartial(Parser *parser) {
+    PartialNode *partial = arenaAlloc(parser->arena, sizeof(PartialNode));
+    memset(partial, 0, sizeof(PartialNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'partial'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        switch (parser->current.type) {
+            case TOKEN_NAME: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'name'");
+                partial->name = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_MUSTACHE: {
+                advanceParser(parser);
+                partial->template = parseTemplate(parser, TOKEN_MUSTACHE);
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in partial at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+    }
+    
+    // Validate required fields
+    if (!partial->name) {
+        fputs("Partial must have a name\n", stderr);
+        parser->hadError = 1;
+    }
+    if (!partial->template) {
+        fputs("Partial must have a mustache template\n", stderr);
+        parser->hadError = 1;
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after partial");
+    return partial;
+}
+
 static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
     while (parser->current.type != TOKEN_EOF && 
            parser->current.type != TOKEN_CLOSE_BRACE && 
@@ -1012,6 +1060,22 @@ static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
                         current = current->next;
                     }
                     current->next = script;
+                }
+                break;
+            }
+            case TOKEN_PARTIAL: {
+                advanceParser(parser);
+                PartialNode *partial = parsePartial(parser);
+                if (partial) {
+                    if (!website->partialHead) {
+                        website->partialHead = partial;
+                    } else {
+                        PartialNode *current = website->partialHead;
+                        while (current->next) {
+                            current = current->next;
+                        }
+                        current->next = partial;
+                    }
                 }
                 break;
             }

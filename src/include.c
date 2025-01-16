@@ -150,6 +150,16 @@ bool processInclude(Parser *parser, WebsiteNode *website, const char *filepath, 
                 current->next = included->apiHead;
             }
         }
+
+        if (included->partialHead) {
+            if (!website->partialHead) {
+                website->partialHead = included->partialHead;
+            } else {
+                PartialNode *current = website->partialHead;
+                while (current->next) current = current->next;
+                current->next = included->partialHead;
+            }
+        }
         
         return true;
     }

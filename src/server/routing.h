@@ -47,6 +47,12 @@ typedef struct JQHashEntry {
     struct JQHashEntry *next;
 } JQHashEntry;
 
+typedef struct PartialHashEntry {
+    const char *name;
+    PartialNode *partial;
+    struct PartialHashEntry *next;
+} PartialHashEntry;
+
 // Thread cleanup function for JQ states
 extern pthread_key_t jq_key;
 void jq_thread_cleanup(void *ptr);
@@ -57,6 +63,7 @@ PageMatch* findPageWithParams(const char *url, Arena *arena);
 LayoutNode* findLayout(const char *identifier);
 ApiEndpoint* findApi(const char *url, const char *method, RouteParams *params, Arena *arena);
 QueryNode* findQuery(const char *name);
+PartialNode* findPartial(const char *name);
 jq_state* findOrCreateJQ(const char *filter, Arena *arena);
 void cleanupJQCache(void);
 

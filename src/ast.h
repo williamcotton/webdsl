@@ -178,6 +178,12 @@ typedef struct IncludeNode {
     struct IncludeNode *next;
 } IncludeNode;
 
+typedef struct PartialNode {
+    char *name;
+    TemplateNode *template;  // Will be of type TEMPLATE_MUSTACHE
+    struct PartialNode *next;
+} PartialNode;
+
 typedef struct WebsiteNode {
     char *name;
     char *author;
@@ -193,6 +199,7 @@ typedef struct WebsiteNode {
     QueryNode *queryHead;
     TransformNode *transformHead;
     ScriptNode *scriptHead;
+    PartialNode *partialHead;  // Add partialHead field
     RouteMap *routeMap;
     LayoutMap *layoutMap;
     IncludeNode *includeHead;
