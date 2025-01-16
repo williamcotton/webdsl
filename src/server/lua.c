@@ -615,10 +615,13 @@ static bool compilePipelineSteps(ServerContext *server_ctx) {
         endpoint = endpoint->next;
     }
 
-    // Compile page pipeline steps
+    // Compile page pipeline steps and reference data
     Page* page = server_ctx->website->pageHead;
     while (page) {
         if (page->pipeline && !compilePipelineStepsHelper(page->pipeline)) {
+            return false;
+        }
+        if (page->referenceData && !compilePipelineStepsHelper(page->referenceData)) {
             return false;
         }
         page = page->next;

@@ -291,6 +291,14 @@ enum MHD_Result handleRequest(ServerContext *ctx,
             }
         } else if (match.type == ROUTE_TYPE_PAGE && match.endpoint.page->fields) {
             if (post->type == REQUEST_TYPE_POST) {
+                // Execute reference data before validation if it exists
+                if (match.endpoint.page->referenceData) {
+                    json_t *refData = executePipeline(ctx, match.endpoint.page->referenceData, requestContext, requestArena);
+                    if (refData) {
+                        json_object_update(requestContext, refData);
+                    }
+                }
+                
                 validation_errors = validateFormFields(requestArena, match.endpoint.page->fields, post);
                 if (validation_errors) {
                     json_object_update(requestContext, validation_errors);

@@ -49,6 +49,7 @@ typedef struct PageNode {
     ResponseBlockNode *errorBlock;    // New error block structure
     ResponseBlockNode *successBlock;  // New success block structure
     struct PipelineStepNode *pipeline;
+    struct PipelineStepNode *referenceData;  // Reference data pipeline
     struct PageNode *next;
 } PageNode;
 

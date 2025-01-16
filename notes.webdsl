@@ -187,6 +187,25 @@ page {
     route "/htmx/notes/create"
     method "POST"
     layout "none"
+    
+    referenceData {
+        lua {
+            local sql = findQuery("getEmployees")
+            local result = sqlQuery(sql)
+            
+            -- Mark selected employee if there's a value
+            if body.employee_id then
+                for i, emp in ipairs(result.rows) do
+                    if tostring(emp.id) == tostring(body.employee_id) then
+                        emp.selected = true
+                    end
+                end
+            end
+            
+            return { employees = result.rows }
+        }
+    }
+    
     fields {
         "title" {
             type "string"
@@ -203,12 +222,9 @@ page {
             required true
         }
     }
+    
     pipeline {
         lua {
-            -- First get employees for potential error response
-            local sql = findQuery("getEmployees")
-            local employees = sqlQuery(sql)
-            
             local title = body.title
             local employee_id = body.employee_id
             local date = body.date
@@ -233,11 +249,7 @@ page {
                 }
             end
             
-            -- On failure, return employees for form repopulation
-            return { 
-                error = "Failed to create note",
-                employees = employees.rows
-            }
+            return { error = "Failed to create note" }
         }
     }
     success {
@@ -336,22 +348,26 @@ page {
             local id = params.id
             local sql = findQuery("getNoteById")
             local note = sqlQuery(sql, {id})
+            return { note = note.rows[1] }
+        }
+    }
+    
+    referenceData {
+        lua {
             local sql = findQuery("getEmployees")
-            local employees = sqlQuery(sql)
+            local result = sqlQuery(sql)
             
             -- Mark the currently selected employee
-            for i, emp in ipairs(employees.rows) do
-                if tostring(emp.id) == tostring(note.rows[1].employee_id) then
+            for i, emp in ipairs(result.rows) do
+                if tostring(emp.id) == tostring(note.employee_id) then
                     emp.selected = true
                 end
             end
             
-            return { 
-                note = note.rows[1],
-                employees = employees.rows
-            }
+            return { employees = result.rows }
         }
     }
+    
     mustache {
         <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
             <form hx-post="/htmx/notes/update/{{note.id}}"

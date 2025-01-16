@@ -212,6 +212,11 @@ static PageNode *parsePage(Parser *parser) {
                 page->pipeline = parsePipeline(parser);
                 break;
             }
+            case TOKEN_REFERENCE_DATA: {
+                advanceParser(parser);
+                page->referenceData = parsePipeline(parser);  // Reuse pipeline parser since structure is the same
+                break;
+            }
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
