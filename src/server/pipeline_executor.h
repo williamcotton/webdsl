@@ -6,6 +6,9 @@
 #include "server.h"
 #include <jansson.h>
 
+// Pipeline step executor setup
+void setupStepExecutor(PipelineStepNode *step);
+
 // Execute a single pipeline step
 json_t* executePipelineStep(
     PipelineStepNode *step,

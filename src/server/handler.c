@@ -59,6 +59,139 @@ static enum MHD_Result post_iterator(void *cls,
     return MHD_YES;
 }
 
+static struct PostContext* initializePostContext(Arena *arena, struct MHD_Connection *connection) {
+    struct PostContext *post = arenaAlloc(arena, sizeof(struct PostContext));
+    post->data = NULL;
+    post->size = 0;
+    post->processed = 0;
+    post->raw_json = NULL;
+    post->pp = NULL;
+    post->post_data.connection = connection;
+    post->post_data.error = 0;
+    post->post_data.value_count = 0;
+    post->post_data.arena = arena;
+    post->arena = arena;
+    return post;
+}
+
+static enum MHD_Result setupPostProcessor(struct PostContext *post, struct MHD_Connection *connection, Arena *arena) {
+    const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
+    
+    if (content_type && strstr(content_type, "application/json") != NULL) {
+        post->type = REQUEST_TYPE_JSON_POST;
+    } else {
+        post->type = REQUEST_TYPE_POST;
+        post->pp = MHD_create_post_processor(connection, 32 * 1024, post_iterator, &post->post_data);
+        if (!post->pp) {
+            freeArena(arena);
+            return MHD_NO;
+        }
+    }
+    
+    return MHD_YES;
+}
+
+static struct RequestContext* initializeGetContext(Arena *arena) {
+    struct RequestContext *reqctx = arenaAlloc(arena, sizeof(struct RequestContext));
+    reqctx->arena = arena;
+    reqctx->type = REQUEST_TYPE_GET;
+    return reqctx;
+}
+
+static enum MHD_Result handleJsonPostData(struct PostContext *post, const char *upload_data, size_t *upload_data_size) {
+    // Accumulate JSON data using arena allocation
+    if (!post->raw_json) {
+        post->raw_json = arenaAlloc(post->arena, *upload_data_size + 1);
+        memcpy(post->raw_json, upload_data, *upload_data_size);
+        post->size = *upload_data_size;
+    } else {
+        char *new_buffer = arenaAlloc(post->arena, post->size + *upload_data_size + 1);
+        memcpy(new_buffer, post->raw_json, post->size);
+        memcpy(new_buffer + post->size, upload_data, *upload_data_size);
+        post->raw_json = new_buffer;
+        post->size += *upload_data_size;
+    }
+    post->raw_json[post->size] = '\0';
+    return MHD_YES;
+}
+
+// Helper callback for MHD_get_connection_values
+static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
+                                      const char *key, const char *value) {
+  (void)kind; // Suppress unused parameter warning
+  json_t *obj = (json_t *)cls;
+  json_object_set_new(obj, key, json_string(value));
+  return MHD_YES;
+}
+
+static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
+                                   void *con_cls, const char *method, 
+                                   const char *url, const char *version,
+                                   RouteParams *params) {
+    (void)arena; // Suppress unused parameter warning
+    json_t *context = json_object();
+
+    // Add method, url and version to context
+    json_object_set_new(context, "method", json_string(method));
+    json_object_set_new(context, "url", json_string(url));
+    json_object_set_new(context, "version", json_string(version));
+    
+    // Build query parameters object
+    json_t *query = json_object();
+    MHD_get_connection_values(connection, MHD_GET_ARGUMENT_KIND,
+        jsonKvIterator, query);
+    json_object_set_new(context, "query", query);
+    
+    // Build headers object
+    json_t *headers = json_object();
+    MHD_get_connection_values(connection, MHD_HEADER_KIND,
+        jsonKvIterator, headers);
+    json_object_set_new(context, "headers", headers);
+    
+    // Build cookies object
+    json_t *cookies = json_object();
+    MHD_get_connection_values(connection, MHD_COOKIE_KIND,
+        jsonKvIterator, cookies);
+    json_object_set_new(context, "cookies", cookies);
+
+    // Add params to context
+    json_t *params_obj = json_object();
+    for (int i = 0; i < params->count; i++) {
+        json_object_set_new(params_obj, params->params[i].name, json_string(params->params[i].value));
+    }
+    json_object_set_new(context, "params", params_obj);
+
+    // Build body object
+    json_t *body = json_object();
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post_ctx = con_cls;
+        if (post_ctx) {
+            if (post_ctx->type == REQUEST_TYPE_JSON_POST && post_ctx->raw_json) {
+                // Parse JSON data
+                json_error_t error;
+                json_t *json_body = json_loads(post_ctx->raw_json, 0, &error);
+                if (json_body) {
+                    // Replace the empty body object with the parsed JSON
+                    json_decref(body);
+                    body = json_body;
+                }
+            } else if (post_ctx->type == REQUEST_TYPE_POST) {
+                // Handle form data as before
+                for (size_t i = 0; i < post_ctx->post_data.value_count; i++) {
+                    const char *value = post_ctx->post_data.values[i];
+                    const char *key = post_ctx->post_data.keys[i];
+                    if (value) {
+                        json_object_set_new(body, key, json_string(value));
+                    }
+                }
+            }
+        }
+    }
+    json_object_set_new(context, "body", body);
+
+    return context;
+}
+
 enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
@@ -74,41 +207,16 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         Arena *arena = createArena(1024 * 1024); // 1MB initial size
         
         if (strcmp(method, "POST") == 0) {
-            struct PostContext *post = arenaAlloc(arena, sizeof(struct PostContext));
-            post->data = NULL;
-            post->size = 0;
-            post->processed = 0;
-            post->raw_json = NULL;
-            post->pp = NULL;  // Initialize pp to NULL for all requests
-            post->post_data.connection = connection;
-            post->post_data.error = 0;
-            post->post_data.value_count = 0;
-            post->post_data.arena = arena;
-            post->arena = arena;
-            
-            // Check content type for JSON
-            const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
-            if (content_type && strstr(content_type, "application/json") != NULL) {
-                post->type = REQUEST_TYPE_JSON_POST;
-            } else {
-                post->type = REQUEST_TYPE_POST;
-                post->pp = MHD_create_post_processor(connection,
-                                                   32 * 1024,  // 32k buffer
-                                                   post_iterator,
-                                                   &post->post_data);
-                if (!post->pp) {
-                    freeArena(arena);
-                    return MHD_NO;
-                }
+            struct PostContext *post = initializePostContext(arena, connection);
+            enum MHD_Result result = setupPostProcessor(post, connection, arena);
+            if (result != MHD_YES) {
+                return result;
             }
             *con_cls = post;
             return MHD_YES;
         }
-        // For GET requests, create a simple context with an arena
-        struct RequestContext *reqctx = arenaAlloc(arena, sizeof(struct RequestContext));
-        reqctx->arena = arena;
-        reqctx->type = REQUEST_TYPE_GET;
-        *con_cls = reqctx;
+        
+        *con_cls = initializeGetContext(arena);
         return MHD_YES;
     }
 
@@ -131,19 +239,9 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         
         if (*upload_data_size != 0) {
             if (post->type == REQUEST_TYPE_JSON_POST) {
-                // Accumulate JSON data using arena allocation
-                if (!post->raw_json) {
-                    post->raw_json = arenaAlloc(post->arena, *upload_data_size + 1);
-                    memcpy(post->raw_json, upload_data, *upload_data_size);
-                    post->size = *upload_data_size;
-                } else {
-                    char *new_buffer = arenaAlloc(post->arena, post->size + *upload_data_size + 1);
-                    memcpy(new_buffer, post->raw_json, post->size);
-                    memcpy(new_buffer + post->size, upload_data, *upload_data_size);
-                    post->raw_json = new_buffer;
-                    post->size += *upload_data_size;
+                if (handleJsonPostData(post, upload_data, upload_data_size) != MHD_YES) {
+                    return MHD_NO;
                 }
-                post->raw_json[post->size] = '\0';
             } else {
                 if (MHD_post_process(post->pp, upload_data, *upload_data_size) == MHD_NO) {
                     return MHD_NO;
@@ -165,7 +263,12 @@ enum MHD_Result handleRequest(ServerContext *ctx,
 
     // Find route using unified routing
     RouteMatch match = findRoute(url, method, requestArena);
-    
+
+    // Build request context once - AFTER all POST data is processed
+    json_t *requestContext =
+        buildRequestContextJson(connection, requestArena, *con_cls, method, url,
+                                version, &match.params);
+
     // Early validation for POST requests
     if (strcmp(method, "POST") == 0) {
         struct PostContext *post = *con_cls;
@@ -178,8 +281,8 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                     char *error_str = json_dumps(validation_errors, 0);
                     struct MHD_Response *response =
                         MHD_create_response_from_buffer(strlen(error_str),
-                                                        error_str,
-                                                        MHD_RESPMEM_PERSISTENT);
+                                                      error_str,
+                                                      MHD_RESPMEM_PERSISTENT);
                     MHD_add_response_header(response, "Content-Type", "application/json");
                     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_BAD_REQUEST, response);
                     MHD_destroy_response(response);
@@ -190,23 +293,13 @@ enum MHD_Result handleRequest(ServerContext *ctx,
             if (post->type == REQUEST_TYPE_POST) {
                 validation_errors = validateFormFields(requestArena, match.endpoint.page->fields, post);
                 if (validation_errors) {
-                    // Add validation errors to pipeline result context
-                    json_t *context = buildRequestContextJson(
-                        connection, requestArena, *con_cls, 
-                        method, url, version, &match.params
-                    );
-                    json_object_update(context, validation_errors);
-                    return handlePageRequest(connection, url, requestArena, context);
+                    json_object_update(requestContext, validation_errors);
+                    return handlePageRequest(connection, match.endpoint.page,
+                                             requestArena, requestContext);
                 }
             }
         }
     }
-    
-    // Build request context once - AFTER all POST data is processed
-    json_t *requestContext = buildRequestContextJson(
-        connection, requestArena, *con_cls, 
-        method, url, version, &match.params
-    );
     
     // Execute pipeline if exists
     json_t *pipelineResult = NULL;
@@ -227,16 +320,24 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Handle based on route type
     switch (match.type) {
         case ROUTE_TYPE_API:
-        return handleApiRequest(connection, match.endpoint.api, method, pipelineResult);
+            return handleApiRequest(connection, match.endpoint.api, method, pipelineResult);
 
         case ROUTE_TYPE_PAGE:
-        return handlePageRequest(connection, url, requestArena, pipelineResult);
+          return handlePageRequest(connection, match.endpoint.page, requestArena,
+                                   pipelineResult);
 
         case ROUTE_TYPE_NONE:
-        return MHD_NO;
+            break;
     }
 
-    return MHD_NO;
+    char *not_found = "<html><body><h1>404 Not Found</h1></body></html>";
+    struct MHD_Response *response = MHD_create_response_from_buffer(
+        strlen(not_found), not_found, MHD_RESPMEM_PERSISTENT);
+    enum MHD_Result ret =
+        MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
+    MHD_destroy_response(response);
+
+    return ret;
 }
 
 void handleRequestCompleted(ServerContext *ctx,

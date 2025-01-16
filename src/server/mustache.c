@@ -102,46 +102,29 @@ char *generateFullPage(Arena *arena,
 }
 
 enum MHD_Result handlePageRequest(struct MHD_Connection *connection,
-                                        const char *url, Arena *arena,
-                                        json_t *pipelineResult) {
-    // Find matching page
-    RouteParams params = {0};
-    PageNode *page = findPage(url, &params, arena);
+                                  PageNode *page, Arena *arena,
+                                  json_t *pipelineResult) {
 
-    if (!page) {
-        const char *not_found_text =
-            "<html><body><h1>404 Not Found</h1></body></html>";
-        char *not_found = strdup(not_found_text);
-        struct MHD_Response *response = MHD_create_response_from_buffer(
-            strlen(not_found), not_found, MHD_RESPMEM_MUST_FREE);
-        enum MHD_Result ret =
-            MHD_queue_response(connection, MHD_HTTP_NOT_FOUND, response);
-        MHD_destroy_response(response);
-        return ret;
-    }
+  // Find layout
+  LayoutNode *layout = findLayout(page->layout);
 
-    // Find layout
-    LayoutNode *layout = findLayout(page->layout);
+  // Generate the page with templates
+  char *html = generateFullPage(arena, page, layout, pipelineResult);
 
-    // Generate the page with templates
-    char *html = generateFullPage(arena, page, layout, pipelineResult);
-
-    if (page->redirect) {
-        struct MHD_Response *response =
-            MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-        MHD_add_response_header(response, "Location", page->redirect);
-        enum MHD_Result ret =
-            MHD_queue_response(connection, MHD_HTTP_FOUND, response);
-        MHD_destroy_response(response);
-        return ret;
-    }
-
-    char *html_copy = strdup(html);
-    struct MHD_Response *response = MHD_create_response_from_buffer(
-        strlen(html_copy), html_copy, MHD_RESPMEM_MUST_FREE);
-    MHD_add_response_header(response, "Content-Type", "text/html");
-    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  if (page->redirect) {
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", page->redirect);
+    enum MHD_Result ret =
+        MHD_queue_response(connection, MHD_HTTP_FOUND, response);
     MHD_destroy_response(response);
     return ret;
-}
+  }
 
+  struct MHD_Response *response = MHD_create_response_from_buffer(
+      strlen(html), html, MHD_RESPMEM_PERSISTENT);
+  MHD_add_response_header(response, "Content-Type", "text/html");
+  enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
+  MHD_destroy_response(response);
+  return ret;
+}

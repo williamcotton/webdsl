@@ -1,5 +1,24 @@
 #include "pipeline_executor.h"
+#include "db.h"
+#include "jq.h"
+#include "lua.h"
 #include <string.h>
+
+// Function to set up the executor based on step type
+void setupStepExecutor(PipelineStepNode *step) {
+  switch (step->type) {
+  case STEP_JQ:
+    step->execute = executeJqStep;
+    break;
+  case STEP_LUA:
+    step->execute = executeLuaStep;
+    break;
+  case STEP_SQL:
+  case STEP_DYNAMIC_SQL:
+    step->execute = executeSqlStep;
+    break;
+  }
+}
 
 json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, ServerContext *ctx) {
     if (!step || !step->execute) {
