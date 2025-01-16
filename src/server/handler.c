@@ -367,4 +367,3 @@ void handleRequestCompleted(ServerContext *ctx,
         *con_cls = NULL;
     }
 }
-

@@ -30,17 +30,32 @@ char *generateFullPage(Arena *arena,
                       json_t *pipelineResult) {                             
     StringBuilder *sb = StringBuilder_new(arena);
 
+    // Determine which template to use based on pipeline result
+    TemplateNode *contentTemplate = NULL;
+    
+    // Check for error/errors in pipeline result
+    json_t *error = json_object_get(pipelineResult, "error");
+    json_t *errors = json_object_get(pipelineResult, "errors");
+    if ((error || errors) && page->errorBlock) {
+        contentTemplate = page->errorBlock->template;
+    } else if (!error && !errors && page->successBlock) {
+        contentTemplate = page->successBlock->template;
+    } else {
+        // Fallback to page template if no specific block matches
+        contentTemplate = page->template;
+    }
+
     // Generate layout and page content
     if (!layout) {
-        // Just use the page content directly
-        char *content = generateTemplateContent(arena, page->template, 0);
+        // Just use the content template directly
+        char *content = generateTemplateContent(arena, contentTemplate, 0);
         if (content) {
             StringBuilder_append(sb, "%s", content);
         }
     } else {
-        // Generate layout and page content
+        // Generate layout and content
         char *layoutHtml = generateTemplateContent(arena, layout->bodyTemplate, 0);
-        char *pageContent = generateTemplateContent(arena, page->template, 0);
+        char *pageContent = generateTemplateContent(arena, contentTemplate, 0);
 
         if (layoutHtml) {
             // Replace content placeholder in layout with page content
@@ -72,10 +87,6 @@ char *generateFullPage(Arena *arena,
     json_t *data = pipelineResult;
     if (!data) {
         data = json_object();
-    } else if (json_object_get(data, "error")) {
-        // If we got an error response, create an empty object instead
-        json_decref(data);
-        data = json_object();
     }
 
     // Render the template with mustache
@@ -85,7 +96,7 @@ char *generateFullPage(Arena *arena,
                                 Mustach_With_AllExtensions, &result, &result_size);
 
     // Clean up JSON data if we created it
-    if (!pipelineResult || json_object_get(pipelineResult, "error")) {
+    if (!pipelineResult) {
         json_decref(data);
     }
 

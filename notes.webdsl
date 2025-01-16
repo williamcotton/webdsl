@@ -3,10 +3,63 @@
 query {
     name "getNotes"
     sql {
-        SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id ORDER BY date DESC
+        SELECT notes.*, employees.name as employee_name 
+        FROM notes 
+        JOIN employees ON notes.employee_id = employees.id 
+        ORDER BY date DESC
     }
 }
 
+query {
+    name "getEmployees"
+    sql {
+        SELECT id, name FROM employees ORDER BY name
+    }
+}
+
+query {
+    name "createNote"
+    sql {
+        INSERT INTO notes (title, employee_id, date) 
+        VALUES ($1, $2, $3) 
+        RETURNING id
+    }
+}
+
+query {
+    name "getNote"
+    sql {
+        SELECT notes.*, employees.name as employee_name 
+        FROM notes 
+        JOIN employees ON notes.employee_id = employees.id 
+        WHERE notes.id = $1
+    }
+}
+
+query {
+    name "getNoteById"
+    sql {
+        SELECT * FROM notes WHERE id = $1
+    }
+}
+
+query {
+    name "updateNote"
+    sql {
+        UPDATE notes 
+        SET title = $1, employee_id = $2, date = $3 
+        WHERE id = $4
+    }
+}
+
+query {
+    name "deleteNote"
+    sql {
+        DELETE FROM notes WHERE id = $1
+    }
+}
+
+// Main notes list page
 page {
     name "notes-list"
     route "/htmx/notes"
@@ -26,7 +79,6 @@ page {
             <div class="container mx-auto">
                 <div class="flex items-center justify-between mb-4">
                     <h1 class="text-3xl font-semibold text-gray-800">Notes</h1>
-                    <!-- New Note Button -->
                     <button class="bg-indigo-500 hover:bg-indigo-600 text-white px-5 py-2 rounded shadow transition-colors"
                             hx-get="/htmx/notes/new"
                             hx-target="#dialog">
@@ -67,13 +119,6 @@ page {
     }
 }
 
-query {
-    name "getEmployees"
-    sql {
-        SELECT id, name FROM employees ORDER BY name
-    }
-} 
-
 // New note form
 page {
     name "notes-new"
@@ -89,20 +134,22 @@ page {
     mustache {
         <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
             <form hx-post="/htmx/notes/create" 
-                  hx-target="#notes-list"
-                  hx-swap="afterbegin"
+                  hx-target="#dialog"
                   class="space-y-4">
                 <h2 class="text-2xl font-semibold text-gray-800">New Note</h2>
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Title</label>
-                    <input type="text" name="title" required
+                    <input type="text" 
+                           name="title" 
+                           required
                            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Employee</label>
-                    <select name="employee_id" required
+                    <select name="employee_id" 
+                            required
                             class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         {{#employees}}
                         <option value="{{id}}">{{name}}</option>
@@ -112,7 +159,9 @@ page {
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Date</label>
-                    <input type="date" name="date" required
+                    <input type="date" 
+                           name="date" 
+                           required
                            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 
@@ -124,25 +173,11 @@ page {
                     </button>
                     <button type="submit" 
                             class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded shadow transition-colors">
-                        Create
+                        Create Note
                     </button>
                 </div>
             </form>
         </div>
-    }
-}
-
-query {
-    name "createNote"
-    sql {
-        INSERT INTO notes (title, employee_id, date) VALUES ($1, $2, $3) RETURNING id
-    }
-}
-
-query {
-    name "getNote"
-    sql {
-        SELECT notes.*, employees.name as employee_name FROM notes JOIN employees ON notes.employee_id = employees.id WHERE notes.id = $1
     }
 }
 
@@ -170,6 +205,9 @@ page {
     }
     pipeline {
         lua {
+            -- First get employees for potential error response
+            local sql = findQuery("getEmployees")
+            local employees = sqlQuery(sql)
             
             local title = body.title
             local employee_id = body.employee_id
@@ -181,41 +219,110 @@ page {
             if result.rows and result.rows[1] then
                 local sql = findQuery("getNote")
                 local note = sqlQuery(sql, {result.rows[1].id})
-                return { note = note.rows[1] }
+                
+                -- On success, clear dialog and add note to list
+                return { 
+                    note = note.rows[1],
+                    oob = {
+                        ["#dialog"] = "",
+                        ["#notes-list"] = {
+                            action = "afterbegin",
+                            content = note.rows[1]
+                        }
+                    }
+                }
             end
-            return { error = "Failed to create note" }
+            
+            -- On failure, return employees for form repopulation
+            return { 
+                error = "Failed to create note",
+                employees = employees.rows
+            }
         }
     }
-    mustache {
-        {{#note}}
-        <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center mb-2">
-            <div>
-                <h3 class="font-semibold text-gray-900">{{title}}</h3>
-                <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
+    success {
+        mustache {
+            {{#note}}
+            <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center mb-2">
+                <div>
+                    <h3 class="font-semibold text-gray-900">{{title}}</h3>
+                    <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button class="text-indigo-600 hover:text-indigo-800 font-medium"
+                            hx-get="/htmx/notes/edit/{{id}}"
+                            hx-target="#dialog">
+                        Edit
+                    </button>
+                    <button class="text-red-600 hover:text-red-800 font-medium"
+                            hx-delete="/htmx/notes/delete/{{id}}"
+                            hx-target="#note-{{id}}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Are you sure you want to delete this note?">
+                        Delete
+                    </button>
+                </div>
             </div>
-            <div class="flex space-x-2">
-                <button class="text-indigo-600 hover:text-indigo-800 font-medium"
-                        hx-get="/htmx/notes/edit/{{id}}"
-                        hx-target="#dialog">
-                    Edit
-                </button>
-                <button class="text-red-600 hover:text-red-800 font-medium"
-                        hx-delete="/htmx/notes/delete/{{id}}"
-                        hx-target="#note-{{id}}"
-                        hx-swap="outerHTML"
-                        hx-confirm="Are you sure you want to delete this note?">
-                    Delete
-                </button>
-            </div>
-        </div>
-        {{/note}}
+            {{/note}}
+        }
     }
-}
-
-query {
-    name "getNoteById"
-    sql {
-        SELECT * FROM notes WHERE id = $1
+    error {
+        mustache {
+            <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
+                <form hx-post="/htmx/notes/create" 
+                      hx-target="#dialog"
+                      class="space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-800">New Note</h2>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Title</label>
+                        <input type="text" 
+                               name="title" 
+                               value="{{values.title}}"
+                               class="w-full p-2 border {{#errors.title}}border-red-300{{/errors.title}} {{^errors.title}}border-gray-300{{/errors.title}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        {{#errors.title}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.title}}</p>
+                        {{/errors.title}}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Employee</label>
+                        <select name="employee_id" 
+                                class="w-full p-2 border {{#errors.employee_id}}border-red-300{{/errors.employee_id}} {{^errors.employee_id}}border-gray-300{{/errors.employee_id}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            {{#employees}}
+                            <option value="{{id}}" {{#selected}}selected{{/selected}}>{{name}}</option>
+                            {{/employees}}
+                        </select>
+                        {{#errors.employee_id}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.employee_id}}</p>
+                        {{/errors.employee_id}}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Date</label>
+                        <input type="date" 
+                               name="date" 
+                               value="{{values.date}}"
+                               class="w-full p-2 border {{#errors.date}}border-red-300{{/errors.date}} {{^errors.date}}border-gray-300{{/errors.date}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        {{#errors.date}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.date}}</p>
+                        {{/errors.date}}
+                    </div>
+                    
+                    <div class="flex justify-end space-x-2">
+                        <button type="button"
+                                class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded transition-colors"
+                                onclick="document.getElementById('dialog').innerHTML='';">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded shadow transition-colors">
+                            Create Note
+                        </button>
+                    </div>
+                </form>
+            </div>
+        }
     }
 }
 
@@ -232,10 +339,9 @@ page {
             local sql = findQuery("getEmployees")
             local employees = sqlQuery(sql)
             
-            --  Mark the currently selected employee 
-            local noteEmployeeId = note.rows[1].employee_id
+            -- Mark the currently selected employee
             for i, emp in ipairs(employees.rows) do
-                if tostring(emp.id) == tostring(noteEmployeeId) then
+                if tostring(emp.id) == tostring(note.rows[1].employee_id) then
                     emp.selected = true
                 end
             end
@@ -250,32 +356,34 @@ page {
         <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
             <form hx-post="/htmx/notes/update/{{note.id}}"
                   hx-target="#note-{{note.id}}"
-                  hx-swap="outerHTML"
                   class="space-y-4">
                 <h2 class="text-2xl font-semibold text-gray-800">Edit Note</h2>
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Title</label>
-                    <input type="text" name="title" required
+                    <input type="text" 
+                           name="title" 
+                           required
                            value="{{note.title}}"
                            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Employee</label>
-                    <select name="employee_id" required
+                    <select name="employee_id" 
+                            required
                             class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                         {{#employees}}
-                        <option value="{{id}}" {{#selected}}selected{{/selected}}>
-                            {{name}}
-                        </option>
+                        <option value="{{id}}" {{#selected}}selected{{/selected}}>{{name}}</option>
                         {{/employees}}
                     </select>
                 </div>
                 
                 <div>
                     <label class="block text-gray-700 mb-1">Date</label>
-                    <input type="date" name="date" required
+                    <input type="date" 
+                           name="date" 
+                           required
                            value="{{note.date}}"
                            class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
@@ -296,20 +404,28 @@ page {
     }
 }
 
-query {
-    name "updateNote"
-    sql {
-        UPDATE notes SET title = $1, employee_id = $2, date = $3 WHERE id = $4
-    }
-}
-
-
 // Update note endpoint
 page {
     name "notes-update"
     route "/htmx/notes/update/:id"
     method "POST"
     layout "none"
+    fields {
+        "title" {
+            type "string"
+            required true
+            length 10..100
+        }
+        "date" {
+            type "string"
+            required true
+            format "date"
+        }
+        "employee_id" {
+            type "number"
+            required true
+        }
+    }
     pipeline {
         lua {
             local id = params.id
@@ -322,39 +438,99 @@ page {
             
             local sql = findQuery("getNote")
             local note = sqlQuery(sql, {id})
-            return { note = note.rows[1] }
+            
+            -- On success, clear dialog and update note
+            return { 
+                note = note.rows[1],
+                oob = {
+                    ["#dialog"] = ""
+                }
+            }
         }
     }
-    mustache {
-        {{#note}}
-        <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center mb-2">
-            <div>
-                <h3 class="font-semibold text-gray-900">{{title}}</h3>
-                <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
+    success {
+        mustache {
+            {{#note}}
+            <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center">
+                <div>
+                    <h3 class="font-semibold text-gray-900">{{title}}</h3>
+                    <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button class="text-indigo-600 hover:text-indigo-800 font-medium"
+                            hx-get="/htmx/notes/edit/{{id}}"
+                            hx-target="#dialog">
+                        Edit
+                    </button>
+                    <button class="text-red-600 hover:text-red-800 font-medium"
+                            hx-delete="/htmx/notes/delete/{{id}}"
+                            hx-target="#note-{{id}}"
+                            hx-swap="outerHTML"
+                            hx-confirm="Are you sure you want to delete this note?">
+                        Delete
+                    </button>
+                </div>
             </div>
-            <div class="flex space-x-2">
-                <button class="text-indigo-600 hover:text-indigo-800 font-medium"
-                        hx-get="/htmx/notes/edit/{{id}}"
-                        hx-target="#dialog">
-                    Edit
-                </button>
-                <button class="text-red-600 hover:text-red-800 font-medium"
-                        hx-delete="/htmx/notes/delete/{{id}}"
-                        hx-target="#note-{{id}}"
-                        hx-swap="outerHTML"
-                        hx-confirm="Are you sure you want to delete this note?">
-                    Delete
-                </button>
-            </div>
-        </div>
-        {{/note}}
+            {{/note}}
+        }
     }
-}
-
-query {
-    name "deleteNote"
-    sql {
-        DELETE FROM notes WHERE id = $1
+    error {
+        mustache {
+            <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
+                <form hx-post="/htmx/notes/update/{{note.id}}"
+                      hx-target="#dialog"
+                      class="space-y-4">
+                    <h2 class="text-2xl font-semibold text-gray-800">Edit Note</h2>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Title</label>
+                        <input type="text" 
+                               name="title" 
+                               value="{{values.title}}"
+                               class="w-full p-2 border {{#errors.title}}border-red-300{{/errors.title}} {{^errors.title}}border-gray-300{{/errors.title}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        {{#errors.title}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.title}}</p>
+                        {{/errors.title}}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Employee</label>
+                        <select name="employee_id" 
+                                class="w-full p-2 border {{#errors.employee_id}}border-red-300{{/errors.employee_id}} {{^errors.employee_id}}border-gray-300{{/errors.employee_id}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                            {{#employees}}
+                            <option value="{{id}}" {{#selected}}selected{{/selected}}>{{name}}</option>
+                            {{/employees}}
+                        </select>
+                        {{#errors.employee_id}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.employee_id}}</p>
+                        {{/errors.employee_id}}
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-1">Date</label>
+                        <input type="date" 
+                               name="date" 
+                               value="{{values.date}}"
+                               class="w-full p-2 border {{#errors.date}}border-red-300{{/errors.date}} {{^errors.date}}border-gray-300{{/errors.date}} rounded focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        {{#errors.date}}
+                        <p class="mt-1 text-sm text-red-600">{{errors.date}}</p>
+                        {{/errors.date}}
+                    </div>
+                    
+                    <div class="flex justify-end space-x-2">
+                        <button type="button"
+                                class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded transition-colors"
+                                onclick="document.getElementById('dialog').innerHTML='';">
+                            Cancel
+                        </button>
+                        <button type="submit"
+                                class="bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded shadow transition-colors">
+                            Update
+                        </button>
+                    </div>
+                </form>
+            </div>
+        }
     }
 }
 

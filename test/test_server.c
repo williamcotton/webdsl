@@ -1,7 +1,6 @@
 #include "../test/unity/unity.h"
 #include "../src/server/server.h"
 #include "../src/server/handler.h"
-#include "../src/server/api.h"
 #include "../src/server/routing.h"
 #include "../src/server/db.h"
 #include "test_runners.h"
