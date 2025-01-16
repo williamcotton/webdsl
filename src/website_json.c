@@ -1,9 +1,17 @@
 #include "website_json.h"
+#include "ast.h"
 #include <jansson.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 #pragma clang diagnostic pop
 #include <string.h>
+
+// Forward declarations
+static json_t* templateNodeToJson(const TemplateNode* node);
+static json_t* layoutToJson(const LayoutNode* layout);
+static json_t* responseBlockToJson(const ResponseBlockNode* block);
+static json_t* apiFieldsToJson(const ApiField* fields);
+static json_t* pipelineToJson(const PipelineStepNode* pipeline);
 
 static json_t* templateNodeToJson(const TemplateNode* node) {
     if (!node) return NULL;
@@ -38,31 +46,32 @@ static json_t* layoutToJson(const LayoutNode* layout) {
     return layouts;
 }
 
-static json_t* pageToJson(const PageNode* page) {
-    if (!page) return NULL;
+static json_t* pageNodeToJson(const PageNode* current) {
+    if (!current) return json_null();
     
     json_t* pages = json_array();
-    const PageNode* current = page;
     
     while (current) {
-        json_t* page_obj = json_object();
-        if (current->identifier) json_object_set_new(page_obj, "identifier", json_string(current->identifier));
-        if (current->route) json_object_set_new(page_obj, "route", json_string(current->route));
-        if (current->layout) json_object_set_new(page_obj, "layout", json_string(current->layout));
-        if (current->title) json_object_set_new(page_obj, "title", json_string(current->title));
-        if (current->description) json_object_set_new(page_obj, "description", json_string(current->description));
-        if (current->method) json_object_set_new(page_obj, "method", json_string(current->method));
+        json_t* page = json_object();
+        if (current->identifier) json_object_set_new(page, "name", json_string(current->identifier));
+        if (current->route) json_object_set_new(page, "route", json_string(current->route));
+        if (current->layout) json_object_set_new(page, "layout", json_string(current->layout));
+        if (current->title) json_object_set_new(page, "title", json_string(current->title));
+        if (current->description) json_object_set_new(page, "description", json_string(current->description));
+        if (current->method) json_object_set_new(page, "method", json_string(current->method));
+        if (current->redirect) json_object_set_new(page, "redirect", json_string(current->redirect));
         
-        json_t* content = templateNodeToJson(current->template);
-        if (content) json_object_set_new(page_obj, "content", content);
+        json_t* error = responseBlockToJson(current->errorBlock);
+        if (error) json_object_set_new(page, "error", error);
         
-        json_t* error = templateNodeToJson(current->errorTemplate);
-        if (error) json_object_set_new(page_obj, "error", error);
+        json_t* success = responseBlockToJson(current->successBlock);
+        if (success) json_object_set_new(page, "success", success);
         
-        json_t* success = templateNodeToJson(current->successTemplate);
-        if (success) json_object_set_new(page_obj, "success", success);
+        if (current->template) json_object_set_new(page, "template", templateNodeToJson(current->template));
+        if (current->fields) json_object_set_new(page, "fields", apiFieldsToJson(current->fields));
+        if (current->pipeline) json_object_set_new(page, "pipeline", pipelineToJson(current->pipeline));
         
-        json_array_append_new(pages, page_obj);
+        json_array_append_new(pages, page);
         current = current->next;
     }
     
@@ -70,17 +79,37 @@ static json_t* pageToJson(const PageNode* page) {
 }
 
 static json_t* pipelineToJson(const PipelineStepNode* pipeline) {
-    if (!pipeline) return NULL;
+    if (!pipeline) return json_null();
     
     json_t* steps = json_array();
     const PipelineStepNode* current = pipeline;
     
     while (current) {
         json_t* step = json_object();
-        json_object_set_new(step, "type", json_integer(current->type));
-        if (current->code) json_object_set_new(step, "code", json_string(current->code));
-        if (current->name) json_object_set_new(step, "name", json_string(current->name));
+        
+        switch (current->type) {
+            case STEP_JQ:
+                json_object_set_new(step, "type", json_string("jq"));
+                break;
+            case STEP_LUA:
+                json_object_set_new(step, "type", json_string("lua"));
+                break;
+            case STEP_SQL:
+                json_object_set_new(step, "type", json_string("sql"));
+                break;
+            case STEP_DYNAMIC_SQL:
+                json_object_set_new(step, "type", json_string("dynamic_sql"));
+                break;
+        }
+        
+        if (current->code) {
+            json_object_set_new(step, "code", json_string(current->code));
+        }
+        if (current->name) {
+            json_object_set_new(step, "name", json_string(current->name));
+        }
         json_object_set_new(step, "is_dynamic", json_boolean(current->is_dynamic));
+        
         json_array_append_new(steps, step);
         current = current->next;
     }
@@ -123,25 +152,28 @@ static json_t* styleBlocksToJson(const StyleBlockNode* blocks) {
 }
 
 static json_t* apiFieldsToJson(const ApiField* fields) {
-    if (!fields) return NULL;
+    if (!fields) return json_null();
     
-    json_t* fields_array = json_array();
+    json_t* json = json_object();
     const ApiField* current = fields;
     
     while (current) {
         json_t* field = json_object();
-        if (current->name) json_object_set_new(field, "name", json_string(current->name));
         if (current->type) json_object_set_new(field, "type", json_string(current->type));
         if (current->format) json_object_set_new(field, "format", json_string(current->format));
         json_object_set_new(field, "required", json_boolean(current->required));
-        json_object_set_new(field, "minLength", json_integer(current->minLength));
-        json_object_set_new(field, "maxLength", json_integer(current->maxLength));
+        if (current->minLength || current->maxLength) {
+            json_t* length = json_object();
+            json_object_set_new(length, "min", json_integer(current->minLength));
+            json_object_set_new(length, "max", json_integer(current->maxLength));
+            json_object_set_new(field, "length", length);
+        }
         
-        json_array_append_new(fields_array, field);
+        json_object_set_new(json, current->name, field);
         current = current->next;
     }
     
-    return fields_array;
+    return json;
 }
 
 static json_t* apiEndpointsToJson(const ApiEndpoint* endpoints) {
@@ -295,6 +327,19 @@ static json_t* includeNodesToJson(const IncludeNode* includes) {
     return includes_array;
 }
 
+static json_t* responseBlockToJson(const ResponseBlockNode* block) {
+    if (!block) return json_null();
+    
+    json_t* json = json_object();
+    if (block->redirect) {
+        json_object_set_new(json, "redirect", json_string(block->redirect));
+    }
+    if (block->template) {
+        json_object_set_new(json, "template", templateNodeToJson(block->template));
+    }
+    return json;
+}
+
 char* websiteToJson(const WebsiteNode* website) {
     if (!website) return NULL;
     
@@ -307,7 +352,7 @@ char* websiteToJson(const WebsiteNode* website) {
     if (website->databaseUrl) json_object_set_new(root, "databaseUrl", json_string(website->databaseUrl));
     json_object_set_new(root, "port", json_integer(website->port));
     
-    json_t* pages = pageToJson(website->pageHead);
+    json_t* pages = pageNodeToJson(website->pageHead);
     if (pages) json_object_set_new(root, "pages", pages);
     
     json_t* styles = styleBlocksToJson(website->styleHead);

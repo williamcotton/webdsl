@@ -23,6 +23,7 @@ static PipelineStepNode* parsePipeline(Parser *parser);
 static TransformNode* parseTransform(Parser *parser);
 static ScriptNode* parseScript(Parser *parser);
 static IncludeNode* parseInclude(Parser *parser);
+static ResponseBlockNode* parseResponseBlock(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -191,21 +192,16 @@ static PageNode *parsePage(Parser *parser) {
             }
             case TOKEN_ERROR: {
                 advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'error'.");
-                consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
-                page->errorTemplate = parseTemplate(parser, TOKEN_MUSTACHE);
-                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after error block.");
+                page->errorBlock = parseResponseBlock(parser);
                 break;
             }
             case TOKEN_SUCCESS: {
                 advanceParser(parser);
-                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'success'.");
-                consume(parser, TOKEN_MUSTACHE, "Expected 'mustache' after '{'.");
-                page->successTemplate = parseTemplate(parser, TOKEN_MUSTACHE);
-                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after success block.");
+                page->successBlock = parseResponseBlock(parser);
                 break;
             }
             case TOKEN_REDIRECT: {
+                // Legacy redirect support
                 advanceParser(parser);
                 consume(parser, TOKEN_STRING, "Expected string after 'redirect'.");
                 page->redirect = copyString(parser, parser->previous.lexeme);
@@ -231,6 +227,14 @@ static PageNode *parsePage(Parser *parser) {
     }
 
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after page block.");
+    
+    // Handle legacy redirect by creating a success block
+    if (page->redirect && !page->successBlock) {
+        page->successBlock = arenaAlloc(parser->arena, sizeof(ResponseBlockNode));
+        memset(page->successBlock, 0, sizeof(ResponseBlockNode));
+        page->successBlock->redirect = page->redirect;
+    }
+    
     return page;
 }
 
@@ -797,6 +801,60 @@ static IncludeNode* parseInclude(Parser *parser) {
     include->filepath = copyString(parser, parser->previous.lexeme);
     
     return include;
+}
+
+static ResponseBlockNode* parseResponseBlock(Parser *parser) {
+    ResponseBlockNode *block = arenaAlloc(parser->arena, sizeof(ResponseBlockNode));
+    memset(block, 0, sizeof(ResponseBlockNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after response block");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE &&
+           parser->current.type != TOKEN_EOF && !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_REDIRECT: {
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'redirect'");
+                block->redirect = copyString(parser, parser->previous.lexeme);
+                break;
+            }
+            case TOKEN_MUSTACHE: {
+                if (block->redirect) {
+                    fputs("Cannot have both redirect and template in response block\n", stderr);
+                    parser->hadError = 1;
+                    break;
+                }
+                advanceParser(parser);
+                block->template = parseTemplate(parser, TOKEN_MUSTACHE);
+                break;
+            }
+            case TOKEN_HTML: {
+                if (block->redirect) {
+                    fputs("Cannot have both redirect and template in response block\n", stderr);
+                    parser->hadError = 1;
+                    break;
+                }
+                advanceParser(parser);
+                block->template = parseTemplate(parser, TOKEN_HTML);
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in response block at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after response block");
+    return block;
 }
 
 static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {

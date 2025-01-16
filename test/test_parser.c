@@ -643,7 +643,6 @@ static void test_parse_page_with_error_success_templates(void) {
         "}";
     
     initParser(&parser, input);
-    
     WebsiteNode *website = parseProgram(&parser);
     
     TEST_ASSERT_NOT_NULL(website);
@@ -651,14 +650,105 @@ static void test_parse_page_with_error_success_templates(void) {
     
     // Check error template
     TEST_ASSERT_NOT_NULL(website->pageHead);
-    TEST_ASSERT_NOT_NULL(website->pageHead->errorTemplate);
-    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->errorTemplate->type);
-    TEST_ASSERT_TRUE(strstr(website->pageHead->errorTemplate->content, "Error: {{message}}") != NULL);
+    TEST_ASSERT_NOT_NULL(website->pageHead->errorBlock);
+    TEST_ASSERT_NOT_NULL(website->pageHead->errorBlock->template);
+    TEST_ASSERT_NULL(website->pageHead->errorBlock->redirect);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->errorBlock->template->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->errorBlock->template->content, "Error: {{message}}") != NULL);
     
     // Check success template
-    TEST_ASSERT_NOT_NULL(website->pageHead->successTemplate);
-    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->successTemplate->type);
-    TEST_ASSERT_TRUE(strstr(website->pageHead->successTemplate->content, "Success: {{message}}") != NULL);
+    TEST_ASSERT_NOT_NULL(website->pageHead->successBlock);
+    TEST_ASSERT_NOT_NULL(website->pageHead->successBlock->template);
+    TEST_ASSERT_NULL(website->pageHead->successBlock->redirect);
+    TEST_ASSERT_EQUAL(TEMPLATE_MUSTACHE, website->pageHead->successBlock->template->type);
+    TEST_ASSERT_TRUE(strstr(website->pageHead->successBlock->template->content, "Success: {{message}}") != NULL);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_page_with_redirects(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"test\"\n"
+        "    route \"/test\"\n"
+        "    error {\n"
+        "      redirect \"/error\"\n"
+        "    }\n"
+        "    success {\n"
+        "      redirect \"/success\"\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check error redirect
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->errorBlock);
+    TEST_ASSERT_NULL(website->pageHead->errorBlock->template);
+    TEST_ASSERT_EQUAL_STRING("/error", website->pageHead->errorBlock->redirect);
+    
+    // Check success redirect
+    TEST_ASSERT_NOT_NULL(website->pageHead->successBlock);
+    TEST_ASSERT_NULL(website->pageHead->successBlock->template);
+    TEST_ASSERT_EQUAL_STRING("/success", website->pageHead->successBlock->redirect);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_page_with_legacy_redirect(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"test\"\n"
+        "    route \"/test\"\n"
+        "    redirect \"/legacy\"\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    
+    // Check that legacy redirect was converted to success block
+    TEST_ASSERT_NOT_NULL(website->pageHead);
+    TEST_ASSERT_NOT_NULL(website->pageHead->successBlock);
+    TEST_ASSERT_NULL(website->pageHead->successBlock->template);
+    TEST_ASSERT_EQUAL_STRING("/legacy", website->pageHead->successBlock->redirect);
+    
+    freeArena(parser.arena);
+}
+
+static void test_parse_invalid_response_block(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  page {\n"
+        "    name \"test\"\n"
+        "    route \"/test\"\n"
+        "    error {\n"
+        "      redirect \"/error\"\n"
+        "      mustache {\n"
+        "        <div>Error</div>\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(1, parser.hadError);  // Should error due to both redirect and template
     
     freeArena(parser.arena);
 }
@@ -744,6 +834,9 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_page_with_pipeline);
     RUN_TEST(test_parse_include_errors);
     RUN_TEST(test_parse_page_with_error_success_templates);
+    RUN_TEST(test_parse_page_with_redirects);
+    RUN_TEST(test_parse_page_with_legacy_redirect);
+    RUN_TEST(test_parse_invalid_response_block);
     RUN_TEST(test_parse_website_with_content);
     RUN_TEST(test_parse_layout_with_content);
     return UNITY_END();

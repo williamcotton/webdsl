@@ -31,6 +31,11 @@ typedef struct TemplateNode {
     char *content;
 } TemplateNode;
 
+typedef struct ResponseBlockNode {
+    char *redirect;           // Optional redirect URL
+    TemplateNode *template;   // Optional template (mutually exclusive with redirect)
+} ResponseBlockNode;
+
 typedef struct PageNode {
     char *identifier;
     char *route;
@@ -39,10 +44,10 @@ typedef struct PageNode {
     char *description;
     char *method;
     struct ApiField *fields;
-    char *redirect;
+    char *redirect;          // Deprecated - kept for backward compatibility
     TemplateNode *template;
-    TemplateNode *errorTemplate;
-    TemplateNode *successTemplate;
+    ResponseBlockNode *errorBlock;    // New error block structure
+    ResponseBlockNode *successBlock;  // New success block structure
     struct PipelineStepNode *pipeline;
     struct PageNode *next;
 } PageNode;
