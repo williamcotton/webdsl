@@ -872,6 +872,8 @@ static PartialNode* parsePartial(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE && 
            parser->current.type != TOKEN_EOF && 
            !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
             case TOKEN_NAME: {
                 advanceParser(parser);
@@ -894,6 +896,7 @@ static PartialNode* parsePartial(Parser *parser) {
                 break;
             }
         }
+        #pragma clang diagnostic pop
     }
     
     // Validate required fields

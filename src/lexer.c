@@ -86,35 +86,78 @@ static Token rawBlock(Lexer *lexer) {
     advance(lexer);
     
     // Mark the start of content after the brace
-    lexer->start = lexer->current;
+    const char *contentStart = lexer->current;
     
     int braceCount = 1;
     int startLine = lexer->line;
     
+    // First pass - find the end and count size needed
+    const char *current = contentStart;
+    size_t size = 0;
+    int isStartOfLine = 1;
+    
+    // Find the end of the block first
     while (!isAtEnd(lexer) && braceCount > 0) {
-        if (peek(lexer) == '{') {
-            braceCount++;
-        } else if (peek(lexer) == '}') {
-            braceCount--;
-        } else if (peek(lexer) == '\n') {
-            lexer->line++;
-        }
-        
-        if (braceCount > 0) {
-            advance(lexer);
-        }
+        char c = peek(lexer);
+        if (c == '{') braceCount++;
+        else if (c == '}') braceCount--;
+        advance(lexer);
     }
     
     if (braceCount > 0) {
         return errorToken(lexer->parser, "Unterminated raw block.", startLine);
     }
     
-    // Create token before consuming closing brace
-    Token token = makeToken(lexer, TOKEN_RAW_BLOCK);
+    // Now count the actual size needed
+    current = contentStart;
+    const char *end = lexer->current - 1; // exclude the closing brace
+    isStartOfLine = 1;
     
-    // Consume the closing brace
-    advance(lexer);
+    while (current < end) {
+        char c = *current;
+        if (isStartOfLine && (c == ' ' || c == '\t')) {
+            // Skip leading whitespace
+        } else {
+            if (c == '\n') {
+                isStartOfLine = 1;
+                size++;
+            } else {
+                isStartOfLine = 0;
+                size++;
+            }
+        }
+        current++;
+    }
     
+    // Create token
+    Token token;
+    token.type = TOKEN_RAW_BLOCK;
+    token.line = startLine;
+    
+    // Allocate new memory for the trimmed content
+    char *trimmed = arenaAlloc(lexer->parser->arena, size + 1);
+    current = contentStart;
+    size_t pos = 0;
+    isStartOfLine = 1;
+    
+    // Copy the content with leading whitespace removed
+    while (current < end) {
+        char c = *current;
+        if (isStartOfLine && (c == ' ' || c == '\t')) {
+            // Skip leading whitespace
+        } else {
+            if (c == '\n') {
+                isStartOfLine = 1;
+            } else {
+                isStartOfLine = 0;
+            }
+            trimmed[pos++] = c;
+        }
+        current++;
+    }
+    trimmed[pos] = '\0';
+    
+    token.lexeme = trimmed;
     return token;
 }
 
