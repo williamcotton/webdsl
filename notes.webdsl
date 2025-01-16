@@ -236,16 +236,10 @@ page {
                 local sql = findQuery("getNote")
                 local note = sqlQuery(sql, {result.rows[1].id})
                 
-                -- On success, clear dialog and add note to list
+                -- Return just the note data for the success template
                 return { 
                     note = note.rows[1],
-                    oob = {
-                        ["#dialog"] = "",
-                        ["#notes-list"] = {
-                            action = "afterbegin",
-                            content = note.rows[1]
-                        }
-                    }
+                    closeDialog = true
                 }
             end
             
@@ -254,28 +248,28 @@ page {
     }
     success {
         mustache {
-            {{#note}}
-            <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center mb-2">
-                <div>
-                    <h3 class="font-semibold text-gray-900">{{title}}</h3>
-                    <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
-                </div>
-                <div class="flex space-x-2">
-                    <button class="text-indigo-600 hover:text-indigo-800 font-medium"
-                            hx-get="/htmx/notes/edit/{{id}}"
-                            hx-target="#dialog">
-                        Edit
-                    </button>
-                    <button class="text-red-600 hover:text-red-800 font-medium"
-                            hx-delete="/htmx/notes/delete/{{id}}"
-                            hx-target="#note-{{id}}"
-                            hx-swap="outerHTML"
-                            hx-confirm="Are you sure you want to delete this note?">
-                        Delete
-                    </button>
+            <div id="notes-list-prepend" hx-swap-oob="afterbegin:#notes-list">
+                <div id="note-{{note.id}}" class="bg-white p-4 rounded shadow flex justify-between items-center mb-2">
+                    <div>
+                        <h3 class="font-semibold text-gray-900">{{note.title}}</h3>
+                        <p class="text-sm text-gray-500">By {{note.employee_name}} on {{note.date}}</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button class="text-indigo-600 hover:text-indigo-800 font-medium"
+                                hx-get="/htmx/notes/edit/{{note.id}}"
+                                hx-target="#dialog">
+                            Edit
+                        </button>
+                        <button class="text-red-600 hover:text-red-800 font-medium"
+                                hx-delete="/htmx/notes/delete/{{note.id}}"
+                                hx-target="#note-{{note.id}}"
+                                hx-swap="outerHTML"
+                                hx-confirm="Are you sure you want to delete this note?">
+                            Delete
+                        </button>
+                    </div>
                 </div>
             </div>
-            {{/note}}
         }
     }
     error {
@@ -283,6 +277,7 @@ page {
             <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
                 <form hx-post="/htmx/notes/create" 
                       hx-target="#dialog"
+                      hx-target-error="#dialog"
                       class="space-y-4">
                     <h2 class="text-2xl font-semibold text-gray-800">New Note</h2>
                     
@@ -348,30 +343,29 @@ page {
             local id = params.id
             local sql = findQuery("getNoteById")
             local note = sqlQuery(sql, {id})
-            return { note = note.rows[1] }
-        }
-    }
-    
-    referenceData {
-        lua {
+            
+            -- Get employees for the form
             local sql = findQuery("getEmployees")
-            local result = sqlQuery(sql)
+            local employees = sqlQuery(sql)
             
             -- Mark the currently selected employee
-            for i, emp in ipairs(result.rows) do
-                if tostring(emp.id) == tostring(note.employee_id) then
+            for i, emp in ipairs(employees.rows) do
+                if tostring(emp.id) == tostring(note.rows[1].employee_id) then
                     emp.selected = true
                 end
             end
             
-            return { employees = result.rows }
+            return { 
+                note = note.rows[1],
+                employees = employees.rows
+            }
         }
     }
     
     mustache {
         <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
             <form hx-post="/htmx/notes/update/{{note.id}}"
-                  hx-target="#note-{{note.id}}"
+                  hx-target="#dialog"
                   class="space-y-4">
                 <h2 class="text-2xl font-semibold text-gray-800">Edit Note</h2>
                 
@@ -426,6 +420,25 @@ page {
     route "/htmx/notes/update/:id"
     method "POST"
     layout "none"
+    
+    referenceData {
+        lua {
+            local sql = findQuery("getEmployees")
+            local result = sqlQuery(sql)
+            
+            -- Mark selected employee if there's a value
+            if body.employee_id then
+                for i, emp in ipairs(result.rows) do
+                    if tostring(emp.id) == tostring(body.employee_id) then
+                        emp.selected = true
+                    end
+                end
+            end
+            
+            return { employees = result.rows }
+        }
+    }
+    
     fields {
         "title" {
             type "string"
@@ -442,6 +455,7 @@ page {
             required true
         }
     }
+    
     pipeline {
         lua {
             local id = params.id
@@ -455,45 +469,39 @@ page {
             local sql = findQuery("getNote")
             local note = sqlQuery(sql, {id})
             
-            -- On success, clear dialog and update note
-            return { 
-                note = note.rows[1],
-                oob = {
-                    ["#dialog"] = ""
-                }
-            }
+            return { note = note.rows[1] }
         }
     }
     success {
         mustache {
-            {{#note}}
-            <div id="note-{{id}}" class="bg-white p-4 rounded shadow flex justify-between items-center">
-                <div>
-                    <h3 class="font-semibold text-gray-900">{{title}}</h3>
-                    <p class="text-sm text-gray-500">By {{employee_name}} on {{date}}</p>
-                </div>
-                <div class="flex space-x-2">
-                    <button class="text-indigo-600 hover:text-indigo-800 font-medium"
-                            hx-get="/htmx/notes/edit/{{id}}"
-                            hx-target="#dialog">
-                        Edit
-                    </button>
-                    <button class="text-red-600 hover:text-red-800 font-medium"
-                            hx-delete="/htmx/notes/delete/{{id}}"
-                            hx-target="#note-{{id}}"
-                            hx-swap="outerHTML"
-                            hx-confirm="Are you sure you want to delete this note?">
-                        Delete
-                    </button>
+            <div id="note-{{note.id}}-update" hx-swap-oob="outerHTML:#note-{{note.id}}">
+                <div id="note-{{note.id}}" class="bg-white p-4 rounded shadow flex justify-between items-center">
+                    <div>
+                        <h3 class="font-semibold text-gray-900">{{note.title}}</h3>
+                        <p class="text-sm text-gray-500">By {{note.employee_name}} on {{note.date}}</p>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button class="text-indigo-600 hover:text-indigo-800 font-medium"
+                                hx-get="/htmx/notes/edit/{{note.id}}"
+                                hx-target="#dialog">
+                            Edit
+                        </button>
+                        <button class="text-red-600 hover:text-red-800 font-medium"
+                                hx-delete="/htmx/notes/delete/{{note.id}}"
+                                hx-target="#note-{{note.id}}"
+                                hx-swap="outerHTML"
+                                hx-confirm="Are you sure you want to delete this note?">
+                            Delete
+                        </button>
+                    </div>
                 </div>
             </div>
-            {{/note}}
         }
     }
     error {
         mustache {
             <div class="bg-white p-6 rounded shadow max-w-md mx-auto">
-                <form hx-post="/htmx/notes/update/{{note.id}}"
+                <form hx-post="/htmx/notes/update/{{params.id}}"
                       hx-target="#dialog"
                       class="space-y-4">
                     <h2 class="text-2xl font-semibold text-gray-800">Edit Note</h2>
