@@ -92,7 +92,6 @@ static Token rawBlock(Lexer *lexer) {
     int startLine = lexer->line;
     
     // First pass - find the end and count size needed
-    const char *current = contentStart;
     size_t size = 0;
     int isStartOfLine = 1;
     
@@ -109,7 +108,7 @@ static Token rawBlock(Lexer *lexer) {
     }
     
     // Now count the actual size needed
-    current = contentStart;
+    const char *current = contentStart;
     const char *end = lexer->current - 1; // exclude the closing brace
     isStartOfLine = 1;
     
