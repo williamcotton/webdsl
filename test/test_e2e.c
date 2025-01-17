@@ -1164,6 +1164,49 @@ static void test_json_post_endpoint(void) {
     free(response_data);
     free(headers);
     
+    // Test validation failures
+    const char *invalid_json_data = "{\n"
+        "    \"name\": \"\",\n"
+        "    \"age\": \"not a number\",\n"
+        "    \"email\": \"not-an-email\"\n"
+        "}";
+    
+    response_data = makeJsonPostRequest(
+        "http://localhost:3456/api/test/json",
+        invalid_json_data,
+        &response_code,
+        &headers
+    );
+    
+    // Verify response code for validation error
+    TEST_ASSERT_EQUAL(400, response_code);
+    TEST_ASSERT_NOT_NULL(headers);
+    TEST_ASSERT_NOT_NULL(strstr(headers, "Content-Type: application/json"));
+    
+    // Use standard malloc/free for JSON parsing
+    json_set_alloc_funcs(malloc, free);
+    
+    // Parse and verify error response JSON
+    response = json_loads(response_data, 0, &error);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify error response structure
+    TEST_ASSERT_FALSE(json_boolean_value(json_object_get(response, "success")));
+    
+    json_t *errors = json_object_get(response, "errors");
+    TEST_ASSERT_NOT_NULL(errors);
+    TEST_ASSERT_TRUE(json_is_object(errors));
+    
+    // Verify specific field validation errors
+    TEST_ASSERT_NOT_NULL(json_object_get(errors, "name"));
+    TEST_ASSERT_NOT_NULL(json_object_get(errors, "age")); 
+    TEST_ASSERT_NOT_NULL(json_object_get(errors, "email"));
+    
+    // Clean up validation test
+    json_decref(response);
+    free(response_data);
+    free(headers);
+    
     // Stop server and clean up
     stopServer();
     freeArena(parser.arena);
