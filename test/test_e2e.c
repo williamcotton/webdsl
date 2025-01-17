@@ -363,7 +363,7 @@ static void test_full_website_lifecycle(void) {
     // Ensure clean state
     stopServer();
     remove(TEST_FILE);
-    sleep(1);
+    
     
     // Write initial config
     writeConfig(TEST_CONFIG);
@@ -375,7 +375,7 @@ static void test_full_website_lifecycle(void) {
     TEST_ASSERT_EQUAL_STRING("E2E Test Site", website->name);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Test basic GET request to pipeline endpoint
     json_t *response = makeRequest("http://localhost:3456/api/test/pipeline", "GET", NULL, NULL);
@@ -396,14 +396,14 @@ static void test_full_website_lifecycle(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_database_integration(void) {
     // Ensure clean state
     stopServer();
     remove(TEST_FILE);
-    sleep(1);
+    
     
     // Write config
     writeConfig(TEST_CONFIG);
@@ -413,7 +413,7 @@ static void test_database_integration(void) {
     WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
     TEST_ASSERT_NOT_NULL(website);
     
-    sleep(1);
+    
     
     // Test prepared statement caching by making same query multiple times
     for (int i = 0; i < 5; i++) {
@@ -431,14 +431,14 @@ static void test_database_integration(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_pipeline_processing(void) {
     // Ensure clean state
     stopServer();
     remove(TEST_FILE);
-    sleep(1);
+    
     
     // Write config
     writeConfig(TEST_CONFIG);
@@ -448,7 +448,7 @@ static void test_pipeline_processing(void) {
     WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
     TEST_ASSERT_NOT_NULL(website);
     
-    sleep(1);
+    
     
     // Test pipeline with query parameters
     json_t *response = makeRequest(
@@ -472,14 +472,14 @@ static void test_pipeline_processing(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_api_features(void) {
     // Ensure clean state
     stopServer();
     remove(TEST_FILE);
-    sleep(1);
+    
     
     // Write config
     writeConfig(TEST_CONFIG);
@@ -489,7 +489,7 @@ static void test_api_features(void) {
     WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
     TEST_ASSERT_NOT_NULL(website);
     
-    sleep(1);
+    
     
     // Test CORS headers
     char *headers = NULL;
@@ -510,7 +510,7 @@ static void test_api_features(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static const char *TEST_INCLUDE_CONFIG = 
@@ -586,7 +586,7 @@ void test_includes_functionality(void) {
     TEST_ASSERT_EQUAL_STRING("Include Test Site", website->name);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Test included API endpoint
     char *headers = NULL;
@@ -609,7 +609,7 @@ void test_includes_functionality(void) {
     remove(teams_path);
     remove(main_path);
     rmdir(dir_path);
-    sleep(1);
+    
 }
 
 static void test_posts_endpoint(void) {
@@ -622,7 +622,7 @@ static void test_posts_endpoint(void) {
     TEST_ASSERT_NOT_NULL(website);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Test GET request to posts endpoint
     json_t *response = makeRequest("http://localhost:3456/api/v1/posts", "GET", NULL, NULL);
@@ -670,7 +670,7 @@ static void test_posts_endpoint(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_sql_query_endpoint(void) {
@@ -683,7 +683,7 @@ static void test_sql_query_endpoint(void) {
     TEST_ASSERT_NOT_NULL(website);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Test GET request to SQL endpoint
     json_t *response = makeRequest("http://localhost:3456/api/test/sql", "GET", NULL, NULL);
@@ -720,7 +720,7 @@ static void test_sql_query_endpoint(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_mustache_template_page(void) {
@@ -792,7 +792,7 @@ static void test_mustache_template_page(void) {
     TEST_ASSERT_EQUAL_STRING("Mustache Test Site", website->name);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Make request to mustache template page
     ResponseBuffer response = {0};
@@ -820,7 +820,7 @@ static void test_mustache_template_page(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_page_post_handler(void) {
@@ -869,7 +869,7 @@ static void test_page_post_handler(void) {
     TEST_ASSERT_NOT_NULL(website);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Prepare POST data
     const char *post_data = "message=Hello%20World";
@@ -893,7 +893,7 @@ static void test_page_post_handler(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_page_redirect(void) {
@@ -943,7 +943,7 @@ static void test_page_redirect(void) {
     TEST_ASSERT_NOT_NULL(website);
     
     // Give server time to start
-    sleep(1);
+    
 
     // Prepare POST data
     const char *post_data = "message=Hello%20World";
@@ -969,7 +969,7 @@ static void test_page_redirect(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_route_params(void) {
@@ -1017,7 +1017,7 @@ static void test_route_params(void) {
     TEST_ASSERT_EQUAL_STRING("Route Params Test", website->name);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Test first route with parameters
     json_t *response = makeRequest("http://localhost:3456/api/notes/123/comments/456", "GET", NULL, NULL);
@@ -1053,7 +1053,7 @@ static void test_route_params(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 static void test_json_post_endpoint(void) {
@@ -1112,7 +1112,7 @@ static void test_json_post_endpoint(void) {
     TEST_ASSERT_EQUAL_STRING("JSON POST Test", website->name);
     
     // Give server time to start
-    sleep(1);
+    
     
     // Prepare JSON POST data
     const char *json_data = "{\n"
@@ -1168,7 +1168,7 @@ static void test_json_post_endpoint(void) {
     stopServer();
     freeArena(parser.arena);
     remove(TEST_FILE);
-    sleep(1);
+    
 }
 
 int run_e2e_tests(void) {
