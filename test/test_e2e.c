@@ -261,6 +261,67 @@ static char* makePostRequest(const char *url, const char *post_data, long *respo
     return response.data;
 }
 
+// Helper to make JSON POST requests
+static char* makeJsonPostRequest(const char *url, const char *json_data, long *response_code_out, char **headers_out) {
+    CURL *curl = curl_easy_init();
+    if (!curl) return NULL;
+    
+    ResponseBuffer response = {0};
+    response.data = malloc(1);
+    response.size = 0;
+    
+    ResponseBuffer header_response = {0};
+    header_response.data = malloc(1);
+    header_response.size = 0;
+    
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_data);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0L); // Don't follow redirects
+    
+    // If headers are requested, capture them
+    if (headers_out) {
+        curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, writeCallback);
+        curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&header_response);
+    }
+    
+    CURLcode res = curl_easy_perform(curl);
+    
+    curl_slist_free_all(headers);
+    
+    if (res != CURLE_OK) {
+        free(response.data);
+        free(header_response.data);
+        curl_easy_cleanup(curl);
+        return NULL;
+    }
+    
+    if (response_code_out) {
+        curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, response_code_out);
+    }
+    
+    if (headers_out) {
+        *headers_out = header_response.data;
+    } else {
+        free(header_response.data);
+    }
+    
+    curl_easy_cleanup(curl);
+    
+    // For empty responses, return NULL
+    if (response.size == 0) {
+        free(response.data);
+        return NULL;
+    }
+    
+    return response.data;
+}
+
 // Helper to make HTTP requests and return raw response
 static char* makeRawRequest(const char *url, ResponseBuffer *response_out) {
     CURL *curl = curl_easy_init();
@@ -995,6 +1056,121 @@ static void test_route_params(void) {
     sleep(1);
 }
 
+static void test_json_post_endpoint(void) {
+    // Write initial config with JSON POST endpoint
+    const char *config = 
+        "website {\n"
+        "    name \"JSON POST Test\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/test/json\"\n"
+        "        method \"POST\"\n"
+        "        fields {\n"
+        "            \"name\" {\n"
+        "                type \"string\"\n"
+        "                required true\n"
+        "                length 2..50\n"
+        "            }\n"
+        "            \"age\" {\n"
+        "                type \"number\"\n"
+        "                required true\n"
+        "            }\n"
+        "            \"email\" {\n"
+        "                type \"string\"\n"
+        "                format \"email\"\n"
+        "                required true\n"
+        "            }\n"
+        "        }\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    success: true,\n"
+        "                    data: {\n"
+        "                        name: .body.name,\n"
+        "                        age: (.body.age | tonumber),\n"
+        "                        email: .body.email,\n"
+        "                        processed: true\n"
+        "                    },\n"
+        "                    request: {\n"
+        "                        method: .method,\n"
+        "                        url: .url\n"
+        "                    }\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL_STRING("JSON POST Test", website->name);
+    
+    // Give server time to start
+    sleep(1);
+    
+    // Prepare JSON POST data
+    const char *json_data = "{\n"
+        "    \"name\": \"John Doe\",\n"
+        "    \"age\": 30,\n"
+        "    \"email\": \"john@example.com\"\n"
+        "}";
+    
+    // Make JSON POST request
+    long response_code;
+    char *headers = NULL;
+    char *response_data = makeJsonPostRequest(
+        "http://localhost:3456/api/test/json",
+        json_data,
+        &response_code,
+        &headers
+    );
+    
+    // Verify response code and headers
+    TEST_ASSERT_EQUAL(200, response_code);
+    TEST_ASSERT_NOT_NULL(headers);
+    TEST_ASSERT_NOT_NULL(strstr(headers, "Content-Type: application/json"));
+    
+    // Use standard malloc/free for JSON parsing
+    json_set_alloc_funcs(malloc, free);
+    
+    // Parse and verify response JSON
+    json_error_t error;
+    json_t *response = json_loads(response_data, 0, &error);
+    TEST_ASSERT_NOT_NULL(response);
+    
+    // Verify response structure
+    TEST_ASSERT_TRUE(json_boolean_value(json_object_get(response, "success")));
+    
+    json_t *data = json_object_get(response, "data");
+    TEST_ASSERT_NOT_NULL(data);
+    TEST_ASSERT_EQUAL_STRING("John Doe", json_string_value(json_object_get(data, "name")));
+    TEST_ASSERT_EQUAL(30, json_number_value(json_object_get(data, "age")));
+    TEST_ASSERT_EQUAL_STRING("john@example.com", json_string_value(json_object_get(data, "email")));
+    TEST_ASSERT_TRUE(json_boolean_value(json_object_get(data, "processed")));
+    
+    json_t *request = json_object_get(response, "request");
+    TEST_ASSERT_NOT_NULL(request);
+    TEST_ASSERT_EQUAL_STRING("POST", json_string_value(json_object_get(request, "method")));
+    TEST_ASSERT_EQUAL_STRING("/api/test/json", json_string_value(json_object_get(request, "url")));
+    
+    // Clean up
+    json_decref(response);
+    free(response_data);
+    free(headers);
+    
+    // Stop server and clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+    sleep(1);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -1008,5 +1184,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_page_post_handler);
     RUN_TEST(test_page_redirect);
     RUN_TEST(test_route_params);
+    RUN_TEST(test_json_post_endpoint);
     return UNITY_END();
 }
