@@ -1214,6 +1214,191 @@ static void test_json_post_endpoint(void) {
     
 }
 
+static void test_page_post_with_reference_data(void) {
+    // Write initial config with POST handler page that has reference data
+    const char *config = 
+        "website {\n"
+        "    name \"Page POST Reference Test\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    page {\n"
+        "        route \"/test/form-with-ref\"\n"
+        "        method \"POST\"\n"
+        "        layout \"main\"\n"
+        "        fields {\n"
+        "            \"message\" {\n"
+        "                type \"string\"\n"
+        "                required true\n"
+        "                length 5..50\n"
+        "            }\n"
+        "            \"category\" {\n"
+        "                type \"string\"\n"
+        "                required true\n"
+        "            }\n"
+        "        }\n"
+        "        referenceData {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    categories: [\n"
+        "                        { id: \"1\", name: \"Category 1\" },\n"
+        "                        { id: \"2\", name: \"Category 2\" },\n"
+        "                        { id: \"3\", name: \"Category 3\" }\n"
+        "                    ]\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                {\n"
+        "                    message: .body.message,\n"
+        "                    category: .body.category,\n"
+        "                    method: .method,\n"
+        "                    url: .url\n"
+        "                }\n"
+        "            }\n"
+        "        }\n"
+        "        mustache {\n"
+        "            <div class=\"result\">\n"
+        "                <h1>Form Processed</h1>\n"
+        "                <p>Message: {{message}}</p>\n"
+        "                <p>Category: {{category}}</p>\n"
+        "                <p>Method: {{method}}</p>\n"
+        "                <p>URL: {{url}}</p>\n"
+        "            </div>\n"
+        "        }\n"
+        "        error {\n"
+        "            mustache {\n"
+        "                <div class=\"error-form\">\n"
+        "                    <h1>Form Error</h1>\n"
+        "                    <form method=\"post\">\n"
+        "                        <div>\n"
+        "                            <label>Message:</label>\n"
+        "                            <input type=\"text\" name=\"message\" value=\"{{values.message}}\">\n"
+        "                            {{#errors.message}}<p class=\"error\">{{errors.message}}</p>{{/errors.message}}\n"
+        "                        </div>\n"
+        "                        <div>\n"
+        "                            <label>Category:</label>\n"
+        "                            <select name=\"category\">\n"
+        "                                {{#categories}}\n"
+        "                                <option value=\"{{id}}\" {{#selected}}selected{{/selected}}>{{name}}</option>\n"
+        "                                {{/categories}}\n"
+        "                            </select>\n"
+        "                            {{#errors.category}}<p class=\"error\">{{errors.category}}</p>{{/errors.category}}\n"
+        "                        </div>\n"
+        "                        <button type=\"submit\">Submit</button>\n"
+        "                    </form>\n"
+        "                </div>\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    
+    
+    // Test 1: Invalid submission (message too short)
+    const char *invalid_post_data = "message=Hi&category=1";
+    
+    long response_code;
+    char *response_data = makePostRequest("http://localhost:3456/test/form-with-ref", 
+                                        invalid_post_data, &response_code, NULL);
+    TEST_ASSERT_NOT_NULL(response_data);
+    TEST_ASSERT_EQUAL(200, response_code);
+    
+    // Verify error response contains reference data and validation errors
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<div class=\"error-form\">"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "Category 1"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "Category 2"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "Category 3"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "value=\"Hi\""));  // Original value preserved
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "class=\"error\"")); // Error message shown
+    
+    free(response_data);
+    
+    // Test 2: Valid submission
+    const char *valid_post_data = "message=Hello+World&category=2";
+    
+    response_data = makePostRequest("http://localhost:3456/test/form-with-ref", 
+                                  valid_post_data, &response_code, NULL);
+    TEST_ASSERT_NOT_NULL(response_data);
+    TEST_ASSERT_EQUAL(200, response_code);
+    
+    // Verify success response
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>Form Processed</h1>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Message: Hello World</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Category: 2</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>Method: POST</p>"));
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<p>URL: /test/form-with-ref</p>"));
+    
+    // Clean up
+    free(response_data);
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+}
+
+static void test_not_found_route(void) {
+    // Write initial config with just a basic website setup
+    const char *config = 
+        "website {\n"
+        "    name \"404 Test Site\"\n"
+        "    port 3456\n"
+        "    database \"postgresql://localhost/express-test?gssencmode=disable\"\n"
+        "\n"
+        "    page {\n"
+        "        route \"/home\"\n"
+        "        layout \"main\"\n"
+        "        mustache {\n"
+        "            <h1>Home</h1>\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+    
+    writeConfig(config);
+    
+    // Parse and start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    
+    // Give server time to start
+    
+    
+    // Test non-existent route
+    long response_code;
+    char *headers = NULL;
+    char *response_data = makePostRequest("http://localhost:3456/this-route-does-not-exist", 
+                                        "", &response_code, &headers);
+    
+    // Verify 404 response
+    TEST_ASSERT_EQUAL(404, response_code);
+    TEST_ASSERT_NOT_NULL(response_data);
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>404 Not Found</h1>"));
+    
+    free(response_data);
+    free(headers);
+    
+    // Also test with GET request to ensure both methods return 404
+    response_data = makeRawRequest("http://localhost:3456/another-non-existent-route", NULL);
+    TEST_ASSERT_NOT_NULL(response_data);
+    TEST_ASSERT_NOT_NULL(strstr(response_data, "<h1>404 Not Found</h1>"));
+    
+    free(response_data);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -1225,8 +1410,10 @@ int run_e2e_tests(void) {
     RUN_TEST(test_sql_query_endpoint);
     RUN_TEST(test_mustache_template_page);
     RUN_TEST(test_page_post_handler);
+    RUN_TEST(test_page_post_with_reference_data);
     RUN_TEST(test_page_redirect);
     RUN_TEST(test_route_params);
     RUN_TEST(test_json_post_endpoint);
+    RUN_TEST(test_not_found_route);
     return UNITY_END();
 }
