@@ -202,11 +202,13 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                             void **con_cls) {
     (void)version; (void)ctx;
 
+    bool isPost = strcmp(method, "POST") == 0;
+
     // First call for this connection
     if (*con_cls == NULL) {
         Arena *arena = createArena(1024 * 1024); // 1MB initial size
         
-        if (strcmp(method, "POST") == 0) {
+        if (isPost) {
             struct PostContext *post = initializePostContext(arena, connection);
             enum MHD_Result result = setupPostProcessor(post, connection, arena);
             if (result != MHD_YES) {
@@ -222,7 +224,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
 
     // Get the arena from the context
     Arena *requestArena;
-    if (strcmp(method, "POST") == 0) {
+    if (isPost) {
         struct PostContext *post = *con_cls;
         requestArena = post->arena;
     } else {
@@ -234,7 +236,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     initRequestJsonArena(requestArena);
 
     // Handle POST data
-    if (strcmp(method, "POST") == 0) {
+    if (isPost) {
         struct PostContext *post = *con_cls;
         
         if (*upload_data_size != 0) {
@@ -270,7 +272,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                                 version, &match.params);
 
     // Early validation for POST requests
-    if (strcmp(method, "POST") == 0) {
+    if (isPost) {
         struct PostContext *post = *con_cls;
         json_t *validation_errors = NULL;
         
