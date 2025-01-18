@@ -59,6 +59,25 @@ query {
     }
 }
 
+layout {
+    name "notesLayout"
+    mustache {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+                <script src="https://cdn.tailwindcss.com"></script>
+                <link rel="stylesheet" href="/styles.css">
+                <title>{{pageTitle}}</title>
+                {{head}}
+            </head>
+            <body>
+                <!-- content -->
+            </body>
+        </html>
+    }
+}
+
 partial {
     name "note-item"
     mustache {
@@ -89,7 +108,7 @@ partial {
 page {
     name "notes-list"
     route "/htmx/notes"
-    layout "htmx"
+    layout "notesLayout"
     pipeline {
         lua {
             local sql = findQuery("getNotes")
