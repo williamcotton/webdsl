@@ -45,6 +45,7 @@ LIBS = -lmicrohttpd -L$(PG_LIBDIR) -lpq -ljansson -ljq $(LUA_LIB) -lcurl $(PLATF
 # Combine all CFLAGS
 CFLAGS = $(BASE_CFLAGS) $(PG_INCLUDE) $(LUA_INCLUDE) -DBUILD_ENV=$(BUILD_ENV)
 DEV_CFLAGS = -g -O0 $(SANITIZE_FLAGS)
+PROD_CFLAGS = -O3 -march=native -flto -DNDEBUG
 
 PROJECT_SRC = $(wildcard src/*/*.c) $(wildcard src/*.c)
 MAIN_SRC = src/main.c
@@ -63,6 +64,11 @@ endif
 .PHONY: start
 start: $(BUILD_DIR)/webdsl
 	$(BUILD_DIR)/webdsl
+
+.PHONY: production
+production: generate-scripts
+	mkdir -p $(BUILD_DIR)
+	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(PROD_CFLAGS) $(LIBS)
 
 $(BUILD_DIR)/webdsl: generate-scripts
 	mkdir -p $(BUILD_DIR)
