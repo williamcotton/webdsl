@@ -2,7 +2,11 @@
 
 # WebDSL
 
-WebDSL is an experimental domain-specific language and server implementation for building web applications with integrated PostgreSQL database support. It provides a declarative way to define websites with layouts, pages, styles, and API endpoints.
+WebDSL is an experimental domain-specific language and server implementation for building web applications with integrated PostgreSQL, Lua, jq, and mustache. It provides a mainly declarative way to define websites with pages and API endpoints.
+
+## Examples
+
+### API Endpoint
 
 ```webdsl
 website {
@@ -20,11 +24,73 @@ website {
 }
 ```
 
+### HTMX Demo
+
+```webdsl
+layout {
+    name "htmx"
+    mustache {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+                <script src="https://cdn.tailwindcss.com"></script>
+                <link rel="stylesheet" href="/styles.css">
+                <title>{{pageTitle}}</title>
+                {{head}}
+            </head>
+            <body class="bg-gray-100 min-h-screen">
+                <div class="container mx-auto px-4 py-8">
+                    <!-- content -->
+                </div>
+            </body>
+        </html>
+    }
+}
+
+page {
+    name "htmx-demo"
+    route "/htmx"
+    layout "htmx"
+    html {
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6">HTMX Demo</h1>
+            <button hx-get="/htmx/time" 
+                    hx-target="#time-container" 
+                    hx-swap="innerHTML"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out mb-4">
+                Click for Server Time
+            </button>
+            <div id="time-container" class="p-4 bg-gray-50 rounded-md text-gray-600">
+                Click the button to load the time...
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "htmx-time"
+    route "/htmx/time"
+    pipeline {
+        lua {
+            local time = os.date("%H:%M:%S")
+            return {
+                time = time
+            }
+        }
+    }
+    mustache {
+        <div class="font-medium">
+            The server time is: <strong class="text-blue-600">{{time}}</strong>
+        </div>
+    }
+} 
+```
+
 ## Features
 
 - Declarative configuration for routes, layouts, and pages
 - Component-based templating with content placeholders and hot reloading
-- Built-in CSS styling with both raw and structured syntax support
 - Modular file organization with include system
 - Mustache templates with conditional rendering and loops
 
@@ -42,7 +108,6 @@ website {
 - Automatic pagination with metadata
 - Prepared statement caching
 - Direct SQL execution in Lua
-- Transaction support
 
 ### Development Features
 - Memory-safe arena allocation
@@ -69,7 +134,7 @@ To update to the latest version:
 brew reinstall webdsl
 ```
 
-## Quick Start
+## Building From Source
 
 ### Prerequisites
 
@@ -209,14 +274,6 @@ fields {
    - Dynamic SQL queries can be built and executed
    - Multiple transformations can be chained
 5. Return final JSON response
-
-### Key Components
-- Thread-local filter caching
-- Connection pooling with health checks
-- Prepared statement caching
-- Arena-based memory management
-- Hot reload support
-- CORS and security headers
 
 ## Documentation
 
