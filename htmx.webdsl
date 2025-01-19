@@ -10,8 +10,10 @@ layout {
                 <title>{{pageTitle}}</title>
                 {{head}}
             </head>
-            <body>
-                <!-- content -->
+            <body class="bg-gray-100 min-h-screen">
+                <div class="container mx-auto px-4 py-8">
+                    <!-- content -->
+                </div>
             </body>
         </html>
     }
@@ -22,14 +24,15 @@ page {
     route "/htmx"
     layout "htmx"
     html {
-        <div>
-            <h1>HTMX Demo</h1>
+        <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-6">HTMX Demo</h1>
             <button hx-get="/htmx/time" 
                     hx-target="#time-container" 
-                    hx-swap="innerHTML">
+                    hx-swap="innerHTML"
+                    class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md transition duration-200 ease-in-out mb-4">
                 Click for Server Time
             </button>
-            <div id="time-container">
+            <div id="time-container" class="p-4 bg-gray-50 rounded-md text-gray-600">
                 Click the button to load the time...
             </div>
         </div>
@@ -48,8 +51,8 @@ page {
         }
     }
     mustache {
-        <div>
-            The server time is: <strong>{{time}}</strong>
+        <div class="font-medium">
+            The server time is: <strong class="text-blue-600">{{time}}</strong>
         </div>
     }
 } 
