@@ -64,15 +64,14 @@ endif
 .PHONY: start
 start: $(BUILD_DIR)/webdsl
 	$(BUILD_DIR)/webdsl
-
-.PHONY: production
-production: generate-scripts
+	
+$(BUILD_DIR)/webdsl: generate-scripts
 	mkdir -p $(BUILD_DIR)
 	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(PROD_CFLAGS) $(LIBS)
 
-$(BUILD_DIR)/webdsl: generate-scripts
+$(BUILD_DIR)/webdsl-dev: generate-scripts
 	mkdir -p $(BUILD_DIR)
-	$(CC) -o $(BUILD_DIR)/webdsl $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LIBS)
+	$(CC) -o $(BUILD_DIR)/webdsl-dev $(MAIN_SRC) $(SRC) $(CFLAGS) $(DEV_CFLAGS) -DERR_STACKTRACE $(LIBS)
 
 .PHONY: test
 test:
