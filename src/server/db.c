@@ -189,7 +189,7 @@ static void freeResult(PGresult *result) {
 
 void closeDatabase(Database *db) {
     if (!db) return;
-    
+
     pthread_mutex_lock(&db->stmt_lock);
     
     // Clear statement cache (no need to free since using arena)
@@ -197,7 +197,9 @@ void closeDatabase(Database *db) {
     
     pthread_mutex_unlock(&db->stmt_lock);
     pthread_mutex_destroy(&db->stmt_lock);
-    closeConnectionPool(db->pool);
+    if (db->pool) {
+        closeConnectionPool(db->pool);
+    }
 }
 
 json_t* resultToJson(PGresult *result, const char *sql) {

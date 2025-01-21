@@ -36,12 +36,13 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
     // Initialize database connection
     if (website->databaseUrl) {
         serverCtx->db = initDatabase(arena, website->databaseUrl);
-    }
-    if (!serverCtx->db) {
-        fprintf(stderr, "Failed to connect to database: %s\n",
-                website->databaseUrl ? website->databaseUrl
-                                   : "no database URL configured");
-        exit(1);
+        if (!serverCtx->db) {
+            fprintf(stderr, "Failed to connect to database: %s\n", website->databaseUrl);
+            exit(1);
+        }
+    } else {
+        serverCtx->db = NULL;
+        fprintf(stderr, "No database URL configured - running without database\n");
     }
 
     // Initialize subsystems
