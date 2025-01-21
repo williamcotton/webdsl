@@ -4,7 +4,7 @@
 
 WebDSL is an experimental domain-specific language and server implementation for building web applications with integrated PostgreSQL, Lua, jq, and mustache. It provides a mainly declarative way to define websites with pages and API endpoints.
 
-## Examples
+## Example
 
 ### API Endpoint
 
@@ -22,37 +22,21 @@ website {
         }
     }
 }
-```
 
+http://localhost:3123/api/v1/team?id=2
+=> {"data": [{"id": "2", "name": "product"}]}
+```
 ### HTMX Demo
 
 ```webdsl
-layout {
-    name "htmx"
-    mustache {
-        <!DOCTYPE html>
-        <html>
-            <head>
-                <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-                <script src="https://cdn.tailwindcss.com"></script>
-                <link rel="stylesheet" href="/styles.css">
-                <title>{{pageTitle}}</title>
-                {{head}}
-            </head>
-            <body class="bg-gray-100 min-h-screen">
-                <div class="container mx-auto px-4 py-8">
-                    <!-- content -->
-                </div>
-            </body>
-        </html>
-    }
-}
-
 page {
     name "htmx-demo"
     route "/htmx"
     layout "htmx"
-    html {
+    pipeline {
+        jq { { pageTitle: "HTMX Demo" } }
+    }
+    mustache {
         <div class="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-8">
             <h1 class="text-3xl font-bold text-gray-800 mb-6">HTMX Demo</h1>
             <button hx-get="/htmx/time" 
@@ -72,19 +56,33 @@ page {
     name "htmx-time"
     route "/htmx/time"
     pipeline {
-        lua {
-            local time = os.date("%H:%M:%S")
-            return {
-                time = time
-            }
-        }
+        lua { return { time =  os.date("%H:%M:%S") } }
     }
     mustache {
-        <div class="font-medium">
-            The server time is: <strong class="text-blue-600">{{time}}</strong>
-        </div>
+        <div class="font-medium">The server time is: <strong class="text-blue-600">{{time}}</strong></div>
     }
-} 
+}
+
+layout {
+    name "htmx"
+    mustache {
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+                <script src="https://cdn.tailwindcss.com"></script>
+                <link rel="stylesheet" href="/styles.css">
+                <title>{{pageTitle}}</title>
+            </head>
+            <body class="bg-gray-100 min-h-screen">
+                <div class="container mx-auto px-4 py-8">
+                    <!-- content -->
+                </div>
+            </body>
+        </html>
+    }
+}
+
 ```
 
 ## Features
