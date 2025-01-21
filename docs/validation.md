@@ -1,22 +1,34 @@
 # Validation Rules Guide
 
-## Field Types
+WebDSL provides a comprehensive validation system for form fields and API inputs.
 
-### String Validation
+## Basic Validation Structure
+
+```webdsl
+fields {
+    "fieldName" {
+        type "string"
+        required true
+        // additional rules
+    }
+}
+```
+
+## Data Types
+
+### String
 ```webdsl
 fields {
     "username" {
         type "string"
         required true
-        length 3..20
-        validate {
-            match "[a-zA-Z0-9_]+"
-        }
+        length 3..50
+        pattern "^[a-zA-Z0-9_]+$"
     }
 }
 ```
 
-### Number Validation
+### Number
 ```webdsl
 fields {
     "age" {
@@ -29,179 +41,132 @@ fields {
 }
 ```
 
-## Format Types
-
-### Email
+### Boolean
 ```webdsl
-"email" {
-    type "string"
-    format "email"
+fields {
+    "active" {
+        type "boolean"
+        required true
+    }
 }
 ```
 
-### URL
+### Array
 ```webdsl
-"website" {
-    type "string"
-    format "url"
+fields {
+    "tags" {
+        type "array"
+        minItems 1
+        maxItems 10
+    }
 }
 ```
 
-### Date
+### Object
 ```webdsl
-"birthdate" {
-    type "string"
-    format "date"  // YYYY-MM-DD
-}
-```
-
-### Time
-```webdsl
-"appointment" {
-    type "string"
-    format "time"  // HH:MM or HH:MM:SS
-}
-```
-
-### Phone
-```webdsl
-"phone" {
-    type "string"
-    format "phone"
-}
-```
-
-### UUID
-```webdsl
-"id" {
-    type "string"
-    format "uuid"
-}
-```
-
-### IPv4
-```webdsl
-"ip_address" {
-    type "string"
-    format "ipv4"
+fields {
+    "address" {
+        type "object"
+        required true
+        fields {
+            "street" {
+                type "string"
+                required true
+            }
+            "city" {
+                type "string"
+                required true
+            }
+        }
+    }
 }
 ```
 
 ## Validation Rules
 
-### Length Constraints
-```webdsl
-"password" {
-    type "string"
-    length 8..64
-}
-```
+### Common Rules
+- `required` - Field must be present and non-empty
+- `type` - Data type validation
+- `default` - Default value if not provided
 
-### Pattern Matching
+### String Rules
+- `length` - String length range (e.g., `length 5..100`)
+- `minLength` - Minimum string length
+- `maxLength` - Maximum string length
+- `pattern` - Regular expression pattern
+- `format` - Predefined format validation
+- `enum` - Value must be one of specified options
+
+### Number Rules
+- `range` - Numeric range (e.g., `range 0..100`)
+- `min` - Minimum value
+- `max` - Maximum value
+- `multipleOf` - Must be multiple of value
+
+### Array Rules
+- `minItems` - Minimum array length
+- `maxItems` - Maximum array length
+- `uniqueItems` - All items must be unique
+
+### Object Rules
+- `required` - Required fields
+- `additionalProperties` - Allow/disallow additional fields
+
+## Predefined Formats
+
+### Email
 ```webdsl
-"username" {
-    type "string"
-    validate {
-        match "^[a-z][a-z0-9_]{2,19}$"
+fields {
+    "email" {
+        type "string"
+        required true
+        format "email"
     }
 }
 ```
 
-### Numeric Range
+### Date
 ```webdsl
-"score" {
-    type "number"
-    validate {
-        range 0..100
+fields {
+    "birthdate" {
+        type "string"
+        required true
+        format "date"
     }
 }
 ```
 
-### Required Fields
+### URL
 ```webdsl
-"email" {
-    type "string"
-    required true
-    format "email"
-}
-```
-
-## Complex Validation Examples
-
-### User Registration
-```webdsl
-api {
-    route "/api/v1/users"
-    method "POST"
-    fields {
-        "username" {
-            type "string"
-            required true
-            length 3..20
-            validate {
-                match "^[a-zA-Z][a-zA-Z0-9_]*$"
-            }
-        }
-        "email" {
-            type "string"
-            required true
-            format "email"
-        }
-        "password" {
-            type "string"
-            required true
-            length 8..64
-            validate {
-                match "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]"
-            }
-        }
-        "age" {
-            type "number"
-            required true
-            validate {
-                range 13..120
-            }
-        }
-        "phone" {
-            type "string"
-            format "phone"
-        }
+fields {
+    "website" {
+        type "string"
+        format "url"
     }
 }
 ```
 
-### Product Creation
+### Other Formats
+- `time` - Time string (HH:MM:SS)
+- `datetime` - ISO 8601 datetime
+- `ipv4` - IPv4 address
+- `ipv6` - IPv6 address
+- `uuid` - UUID string
+
+## Custom Validation
+
+### Using Lua
 ```webdsl
-api {
-    route "/api/v1/products"
-    method "POST"
-    fields {
-        "name" {
-            type "string"
-            required true
-            length 2..100
-        }
-        "sku" {
-            type "string"
-            required true
-            validate {
-                match "^[A-Z0-9]{6,10}$"
+fields {
+    "customField" {
+        type "string"
+        validate {
+            lua {
+                if not isValid(value) then
+                    return "Invalid value"
+                end
+                return nil
             }
-        }
-        "price" {
-            type "number"
-            required true
-            validate {
-                range 0..1000000
-            }
-        }
-        "description" {
-            type "string"
-            length 0..1000
-        }
-        "website" {
-            type "string"
-            format "url"
         }
     }
 }
@@ -209,36 +174,59 @@ api {
 
 ## Error Handling
 
-Validation errors are returned as JSON:
+### Basic Error Template
+```webdsl
+error {
+    mustache {
+        <div class="errors">
+            {{#errors}}
+                <p class="error">{{field}}: {{message}}</p>
+            {{/errors}}
+        </div>
+    }
+}
+```
 
-```json
-{
-    "errors": {
-        "username": "Must be between 3 and 20 characters",
-        "email": "Invalid email format",
-        "age": "Must be between 13 and 120"
+### Field-Specific Errors
+```webdsl
+error {
+    mustache {
+        <form>
+            <div class="field">
+                <input name="email" value="{{values.email}}"
+                       class="{{#errors.email}}error{{/errors.email}}">
+                {{#errors.email}}
+                    <span class="error-message">{{errors.email}}</span>
+                {{/errors.email}}
+            </div>
+        </form>
     }
 }
 ```
 
 ## Best Practices
 
-1. Always validate user input
-2. Use appropriate format types
-3. Set reasonable length limits
-4. Use specific error messages
-5. Combine multiple validation rules
-6. Document validation requirements
-7. Test edge cases
-8. Use consistent validation patterns
+1. **Input Sanitization**
+   - Always validate and sanitize user input
+   - Use appropriate data types
+   - Apply length restrictions where applicable
 
-## Security Considerations
+2. **Error Messages**
+   - Provide clear, user-friendly error messages
+   - Include field names in error messages
+   - Use consistent error formatting
 
-1. Validate on both client and server
-2. Sanitize input after validation
-3. Use appropriate data types
-4. Implement rate limiting
-5. Log validation failures
-6. Use secure password rules
-7. Validate file uploads
-8. Check content types 
+3. **Security**
+   - Validate on both client and server side
+   - Use appropriate formats for sensitive data
+   - Implement rate limiting for validation attempts
+
+4. **Performance**
+   - Use built-in validators when possible
+   - Keep custom validation logic simple
+   - Cache validation results when appropriate
+
+5. **Maintainability**
+   - Group related validations
+   - Use consistent validation patterns
+   - Document custom validation rules 

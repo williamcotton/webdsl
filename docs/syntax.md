@@ -1,303 +1,185 @@
 # WebDSL Syntax Guide
 
+WebDSL is a domain-specific language designed for building web applications. This guide covers the core syntax elements and structures.
+
 ## Basic Structure
 
-A WebDSL file consists of a root `website` block containing various configuration sections:
-
+### Website Configuration
 ```webdsl
 website {
-    // Website configuration
     name "My Website"
-    author "John Smith"
+    author "John Smith" 
     version "1.0"
     port 3123
     database "postgresql://localhost/mydb"
-
-    // Content sections
-    layouts { ... }
-    pages { ... }
-    styles { ... }
-    api { ... }
-    query { ... }
+    include "other-file.webdsl"
 }
 ```
 
-## Layouts
-
-Layouts define reusable page templates:
-
-```webdsl
-layouts {
-    "main" {
-        html {
-            <html>
-                <head>
-                    <title>My Site</title>
-                </head>
-                <body>
-                    <!-- content -->
-                </body>
-            </html>
-        }
-    }
-}
-```
-
-The `<!-- content -->` marker indicates where page content will be inserted.
-
-## Pages
-
-Pages define routes and content:
-
-```webdsl
-pages {
-    page "home" {
-        route "/"
-        layout "main"
-        content {
-            h1 "Welcome"
-            p "Content here"
-        }
-    }
-
-    page "about" {
-        route "/about"
-        layout "main"
-        html {
-            <div class="about">
-                <h1>About Us</h1>
-            </div>
-        }
-    }
-}
-```
-
-## Mustache Templates
-
-Pages can use Mustache templates with dynamic data:
-
+### Pages
 ```webdsl
 page {
-    name "employees"
-    route "/employees"
+    name "page-name"
+    route "/path"
+    layout "layout-name"
+    method "GET"  // Optional, defaults to GET
     pipeline {
-        jq {
-            {
-                employees: .data[0].rows,
-                hasEmployees: (.data[0].rows | length > 0)
-            }
-        }
+        // Data processing steps
     }
     mustache {
-        <h2>Employees</h2>
-        {{#hasEmployees}}
-        <ul>
-            {{#employees}}
-            <li>{{name}}</li>
-            {{/employees}}
-        </ul>
-        {{/hasEmployees}}
-        {{^hasEmployees}}
-        <p>No employees found.</p>
-        {{/hasEmployees}}
+        // Template content
     }
 }
 ```
 
-### Template Features
-- Conditional rendering with `{{#condition}}` and `{{^condition}}`
-- Loop iteration with `{{#array}}`
-- Variable interpolation with `{{variable}}`
-- Nested object access with `{{object.property}}`
-
-## Enhanced Layout System
-
-### Content Placeholders
+### Layouts
 ```webdsl
 layout {
-    name "master"
-    html {
+    name "layout-name"
+    mustache {
+        <!DOCTYPE html>
         <html>
             <head>
-                <title>{{title}}</title>
+                <title>{{pageTitle}}</title>
             </head>
             <body>
-                <nav>
-                    <!-- Navigation content -->
-                </nav>
                 <!-- content -->
-                <footer>
-                    <!-- Footer content -->
-                </footer>
             </body>
         </html>
     }
 }
 ```
 
-### Layout Inheritance
+### API Endpoints
 ```webdsl
-page {
-    name "blog"
-    route "/blog"
-    layout "master"  // Inherits from master layout
-    content {
-        // Page-specific content
+api {
+    route "/api/v1/resource"
+    method "GET"
+    pipeline {
+        // Processing steps
     }
 }
 ```
 
-## File Organization
+## Pipeline Components
 
-### Include System
+### JQ Transformations
 ```webdsl
-website {
-    include "api.webdsl"    // Include API definitions
-    include "pages.webdsl"  // Include page definitions
+jq {
+    {
+        data: (.rows | map({id: .id, name: .name})),
+        metadata: {
+            total: .total_count,
+            offset: .offset
+        }
+    }
 }
 ```
 
-This allows for modular organization of:
-- API endpoints
-- Page definitions
-- Layout templates
-- Query definitions
-- Style definitions
+### Lua Scripts
+```webdsl
+lua {
+    local result = sqlQuery("SELECT * FROM table")
+    return {
+        data = result.rows
+    }
+}
+```
+
+### SQL Queries
+```webdsl
+sql {
+    SELECT * FROM table
+    WHERE id = $1
+}
+```
+
+## Field Validation
+```webdsl
+fields {
+    "email" {
+        type "string"
+        required true
+        format "email"
+    }
+    "age" {
+        type "number"
+        validate {
+            range 13..120
+        }
+    }
+}
+```
+
+## Partials
+```webdsl
+partial {
+    name "component-name"
+    mustache {
+        // Reusable template content
+    }
+}
+```
 
 ## Styles
-
-CSS can be defined in two ways:
-
-### Structured Blocks
-```webdsl
-styles {
-    "body" {
-        "background-color" "#fff"
-        "color" "#000"
-    }
-}
-```
-
-### Raw CSS
 ```webdsl
 styles {
     css {
         body {
-            background: #fff;
-            color: #000;
+            background: #ffffff;
+            color: #333;
         }
     }
 }
 ```
 
-## Content Elements
-
-Content can be defined using:
-
-### Basic Elements
+## Query Builder
 ```webdsl
-h1 "Title"
-p "Paragraph"
-div {
-    // Nested content
+lua {
+    local qb = querybuilder.new()
+    local result = qb
+        :select("*")
+        :from("table")
+        :where_if(condition, "field = ?", value)
+        :limit(limit)
+        :offset(offset)
+        :build()
 }
 ```
 
-### Links
+## Reference Data
 ```webdsl
-link "/about" "About Us"
-```
-
-### Images
-```webdsl
-image "/logo.png" "Company Logo"
-```
-
-### Raw HTML
-```webdsl
-html {
-    <div class="custom">
-        <span>Custom HTML</span>
-    </div>
-}
-```
-
-## Comments
-
-Single-line comments:
-```webdsl
-// This is a comment
-```
-
-## Best Practices
-
-1. Use meaningful identifiers for pages and layouts
-2. Keep layouts focused on structure
-3. Use raw HTML blocks sparingly
-4. Prefer structured CSS when possible
-5. Group related pages together
-6. Use consistent indentation
-7. Comment complex configurations
-
-## Common Patterns
-
-### Master Layout
-```webdsl
-layouts {
-    "master" {
-        html {
-            <html>
-                <head>
-                    <title>Site Title</title>
-                    <meta charset="utf-8">
-                    <meta name="viewport" content="width=device-width">
-                </head>
-                <body>
-                    <nav>
-                        <a href="/">Home</a>
-                        <a href="/about">About</a>
-                    </nav>
-                    <!-- content -->
-                    <footer>
-                        <p>Copyright 2024</p>
-                    </footer>
-                </body>
-            </html>
-        }
+referenceData {
+    lua {
+        // Data available to templates
+        return { key = value }
     }
 }
 ```
 
-### Form Page
+## Success/Error Handlers
 ```webdsl
-page "contact" {
-    route "/contact"
-    layout "master"
-    html {
-        <form action="/api/contact" method="POST">
-            <div class="form-group">
-                <label for="name">Name:</label>
-                <input type="text" id="name" name="name" required>
-            </div>
-            <div class="form-group">
-                <label for="email">Email:</label>
-                <input type="email" id="email" name="email" required>
-            </div>
-            <button type="submit">Send</button>
-        </form>
+success {
+    mustache {
+        // Template for success response
+    }
+}
+
+error {
+    mustache {
+        // Template for error response
     }
 }
 ```
 
-### Responsive Layout
+## HTMX Integration
+WebDSL has built-in support for HTMX attributes:
 ```webdsl
-styles {
-    css {
-        @media (max-width: 768px) {
-            .container {
-                padding: 10px;
-            }
-        }
-    }
+mustache {
+    <button hx-get="/api/endpoint" 
+            hx-target="#element"
+            hx-swap="innerHTML">
+        Click me
+    </button>
 }
 ``` 
