@@ -155,7 +155,7 @@ website {
 
     page {
         route "/"
-        mustache { <p>Hello World</p> }
+        html { <p>Hello World</p> }
     }
 }
 ```
