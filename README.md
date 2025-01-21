@@ -152,7 +152,6 @@ make build/webdsl
 ```webdsl
 website {
     port 3123
-    database "postgresql://localhost/test"
 
     page {
         route "/"
