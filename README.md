@@ -84,37 +84,6 @@ layout {
 }
 
 ```
-
-## Features
-
-- Declarative configuration for routes, layouts, and pages
-- Component-based templating with content placeholders and hot reloading
-- Modular file organization with include system
-- Mustache templates with conditional rendering and loops
-
-### API Features
-- REST API endpoints with field validation
-- Pipeline-based request processing
-- Reusable script and transform blocks
-- JQ and Lua transformation steps
-- External API integration with fetch support
-- Comprehensive request context access (query, headers, body)
-
-### Database Features
-- Native PostgreSQL integration with connection pooling
-- Query builder with fluent interface
-- Automatic pagination with metadata
-- Prepared statement caching
-- Direct SQL execution in Lua
-
-### Development Features
-- Memory-safe arena allocation
-- Thread-safe request handling
-- Live configuration reloading
-- Comprehensive validation rules
-- Detailed error messages
-- Hot module reloading
-
 ## Installation
 
 ### Using Homebrew (macOS)
@@ -182,29 +151,12 @@ make build/webdsl
 ### Basic Website Structure
 ```webdsl
 website {
-    name "My Website"
-    author "John Smith" 
-    version "1.0"
     port 3123
-    database "postgresql://localhost/mydb"
-}
-```
+    database "postgresql://localhost/test"
 
-### Page Definition
-```webdsl
-page "home" {
-    route "/"
-    layout "main"
-    content {
-        h1 "Welcome!"
-        p "This is my homepage"
-        div {
-            h2 "Features"
-            ul {
-                li "Easy to use"
-                li "Fast and reliable"
-            }
-        }
+    page {
+        route "/"
+        mustache { <p>Hello World</p> }
     }
 }
 ```
