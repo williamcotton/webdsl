@@ -256,6 +256,59 @@ static enum MHD_Result handleLogoutRequest(struct MHD_Connection *connection) {
     return ret;
 }
 
+// Add with other handlers
+static enum MHD_Result handleRegisterRequest(struct MHD_Connection *connection, struct PostContext *post) {
+    const char *login = NULL;
+    const char *password = NULL;
+    const char *confirm_password = NULL;
+
+    // Get form data
+    for (size_t i = 0; i < post->post_data.value_count; i++) {
+        const char *key = post->post_data.keys[i];
+        const char *value = post->post_data.values[i];
+        if (strcmp(key, "login") == 0) {
+            login = value;
+        } else if (strcmp(key, "password") == 0) {
+            password = value;
+        } else if (strcmp(key, "confirm_password") == 0) {
+            confirm_password = value;
+        }
+    }
+
+    // Print registration attempt for now
+    printf("Registration attempt - login: %s\n", login ? login : "null");
+    
+    // Basic validation
+    if (!login || !password || !confirm_password) {
+        // TODO: Return error page
+        return MHD_NO;
+    }
+    
+    if (strcmp(password, confirm_password) != 0) {
+        // TODO: Return error page with "Passwords don't match"
+        return MHD_NO;
+    }
+
+    // Create mock session token
+    const char *token = "mock_session_123";
+    
+    // Create empty response for redirect
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+    
+    // Set session cookie
+    char cookie[256];
+    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict", token);
+    MHD_add_response_header(response, "Set-Cookie", cookie);
+    
+    // Redirect to home page
+    MHD_add_response_header(response, "Location", "/");
+    
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    
+    return ret;
+}
+
 enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
@@ -329,6 +382,11 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         // Handle logout endpoint
         if (strcmp(url, "/logout") == 0) {
             return handleLogoutRequest(connection);
+        }
+        
+        // Handle register endpoint
+        if (strcmp(url, "/register") == 0) {
+            return handleRegisterRequest(connection, post);
         }
     }
 

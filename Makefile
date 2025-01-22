@@ -40,7 +40,7 @@ else ifeq ($(PLATFORM),DARWIN)
 endif
 
 # Common library flags
-LIBS = -lmicrohttpd -L$(PG_LIBDIR) -lpq -ljansson -ljq $(LUA_LIB) -lcurl $(PLATFORM_LIBS)
+LIBS = -lmicrohttpd -L$(PG_LIBDIR) -lpq -ljansson -ljq $(LUA_LIB) -lcurl -largon2 $(PLATFORM_LIBS)
 
 # Combine all CFLAGS
 CFLAGS = $(BASE_CFLAGS) $(PG_INCLUDE) $(LUA_INCLUDE) -DBUILD_ENV=$(BUILD_ENV)

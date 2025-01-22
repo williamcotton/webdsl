@@ -127,6 +127,26 @@ PGresult* executeParameterizedQuery(Database *db, const char *sql,
     return executePreparedStatement(db, sql, values, value_count);
 }
 
+static const char *INIT_TABLES_SQL = 
+    "SET client_min_messages TO WARNING;"
+    "CREATE TABLE IF NOT EXISTS users ("
+    "    id SERIAL PRIMARY KEY,"
+    "    login VARCHAR(255) UNIQUE NOT NULL,"
+    "    password_hash VARCHAR(255) NOT NULL,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
+    ");"
+    
+    "CREATE TABLE IF NOT EXISTS sessions ("
+    "    id SERIAL PRIMARY KEY,"
+    "    user_id INTEGER REFERENCES users(id),"
+    "    token VARCHAR(255) UNIQUE NOT NULL,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL"
+    ");"
+    
+    "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
+    "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);";
+
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {
         fputs("Database arena or connection info cannot be NULL\n", stderr);
@@ -153,10 +173,20 @@ Database* initDatabase(Arena *arena, const char *conninfo) {
     }
     printf("Database connection pool initialized\n");
     
+    // Create tables if they don't exist
+    PGresult *result = executeQuery(db, INIT_TABLES_SQL);
+    if (!result) {
+        fprintf(stderr, "Failed to create database tables\n");
+        closeDatabase(db);
+        return NULL;
+    }
+    PQclear(result);
+    printf("Database tables initialized\n");
+    
     return db;
 }
 
-static PGresult* executeQuery(Database *db, const char *query) {
+PGresult* executeQuery(Database *db, const char *query) {
     if (!db || !query) {
         fputs("Invalid database or query\n", stderr);
         return NULL;
