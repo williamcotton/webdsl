@@ -124,17 +124,27 @@ static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
   return MHD_YES;
 }
 
+static bool isLoggedIn(struct MHD_Connection *connection) {
+    const char *session = MHD_lookup_connection_value(connection, 
+                                                    MHD_COOKIE_KIND, 
+                                                    "session");
+    return session != NULL;
+}
+
 static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version,
                                    RouteParams *params) {
-    (void)arena; // Suppress unused parameter warning
+    (void)arena;
     json_t *context = json_object();
 
     // Add method, url and version to context
     json_object_set_new(context, "method", json_string(method));
     json_object_set_new(context, "url", json_string(url));
     json_object_set_new(context, "version", json_string(version));
+    
+    // Add auth status to context
+    json_object_set_new(context, "isLoggedIn", json_boolean(isLoggedIn(connection)));
     
     // Build query parameters object
     json_t *query = json_object();
@@ -228,6 +238,24 @@ static enum MHD_Result handleLoginRequest(struct MHD_Connection *connection, str
     return ret;
 }
 
+// Add with other handlers
+static enum MHD_Result handleLogoutRequest(struct MHD_Connection *connection) {
+    // Create empty response for redirect
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+    
+    // Clear session cookie by setting it to empty with immediate expiry
+    MHD_add_response_header(response, "Set-Cookie", 
+                          "session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
+    
+    // Redirect to home page
+    MHD_add_response_header(response, "Location", "/");
+    
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    
+    return ret;
+}
+
 enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
@@ -296,6 +324,11 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         // Handle login endpoint after all POST data is processed
         if (strcmp(url, "/login") == 0) {
             return handleLoginRequest(connection, post);
+        }
+        
+        // Handle logout endpoint
+        if (strcmp(url, "/logout") == 0) {
+            return handleLogoutRequest(connection);
         }
     }
 
