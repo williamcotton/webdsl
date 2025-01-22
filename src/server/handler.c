@@ -192,6 +192,42 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     return context;
 }
 
+static enum MHD_Result handleLoginRequest(struct MHD_Connection *connection, struct PostContext *post) {
+    const char *login = NULL;
+    const char *password = NULL;
+
+    // get login and password from post data
+    for (size_t i = 0; i < post->post_data.value_count; i++) {
+        const char *key = post->post_data.keys[i];
+        const char *value = post->post_data.values[i];
+        if (strcmp(key, "login") == 0) {
+            login = value;
+        } else if (strcmp(key, "password") == 0) {
+            password = value;
+        }
+    }
+
+    
+    // Create empty response for redirect
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+
+    // create session token
+    const char *token = "mock_session_123";
+    
+    // Set session cookie
+    char cookie[256];
+    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict", token);
+    MHD_add_response_header(response, "Set-Cookie", cookie);
+    
+    // Set redirect header
+    MHD_add_response_header(response, "Location", "/");
+    
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    
+    return ret;
+}
+
 enum MHD_Result handleRequest(ServerContext *ctx,
                             struct MHD_Connection *connection,
                             const char *url,
@@ -255,6 +291,11 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         
         if (post->post_data.error) {
             return MHD_NO;
+        }
+        
+        // Handle login endpoint after all POST data is processed
+        if (strcmp(url, "/login") == 0) {
+            return handleLoginRequest(connection, post);
         }
     }
 
