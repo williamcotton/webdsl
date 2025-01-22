@@ -133,37 +133,3 @@ pipeline {
     }
 }
 ```
-
-## Transaction Support
-
-WebDSL handles transactions automatically for each request. All SQL operations within a request pipeline are executed within a single transaction.
-
-## Error Handling
-
-Database errors are automatically caught and handled:
-
-```webdsl
-pipeline {
-    sql {
-        INSERT INTO users (email) VALUES ($1)
-    }
-    error {
-        mustache {
-            <div class="error">
-                {{#errors.database}}
-                    <p>Database error: {{message}}</p>
-                {{/errors.database}}
-            </div>
-        }
-    }
-}
-```
-
-## Best Practices
-
-1. Always use parameterized queries to prevent SQL injection
-2. Use the query builder for complex queries
-3. Implement pagination for large result sets
-4. Handle database errors gracefully
-5. Use prepared statements for frequently executed queries
-6. Keep transactions short and focused 
