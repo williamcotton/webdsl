@@ -108,7 +108,6 @@ char *generateFullPage(Arena *arena,
     // Render the template with mustache
     char *result = NULL;
     size_t result_size = 0;
-    printf("data: %s\n", json_dumps(data, JSON_INDENT(2)));
     int rc = mustach_jansson_mem(template, strlen(template), data,
                                 Mustach_With_AllExtensions, &result, &result_size);
 

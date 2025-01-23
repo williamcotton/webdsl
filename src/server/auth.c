@@ -106,14 +106,10 @@ static char* urlEncode(Arena *arena, const char *str) {
 
 static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                          const char *location,
-                                         const char *error,
-                                         Arena *arena) {
-    // URL encode the error message
-    char *encoded_error = urlEncode(arena, error);
-
+                                         const char *error_key) {
     // Create redirect URL with error parameter
     char redirect_url[512];
-    snprintf(redirect_url, sizeof(redirect_url), "%s?error=%s", location, encoded_error);
+    snprintf(redirect_url, sizeof(redirect_url), "%s?error=%s", location, error_key);
 
     struct MHD_Response *response =
         MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
@@ -142,7 +138,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     }
 
     if (!login || !password) {
-        return redirectWithError(connection, "/login", "Email and password are required", post->arena);
+        return redirectWithError(connection, "/login", "missing-fields");
     }
 
     // Look up user in database
@@ -154,7 +150,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     if (!result || PQntuples(result) == 0) {
         fprintf(stderr, "Login failed - user not found: %s\n", login);
         if (result) PQclear(result);
-        return redirectWithError(connection, "/login", "Invalid email or password", post->arena);
+        return redirectWithError(connection, "/login", "invalid-credentials");
     }
 
     // Get stored password hash and user ID
@@ -165,7 +161,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     // Verify password
     if (!verifyPassword(password, storedHash)) {
         fprintf(stderr, "Login failed - incorrect password for: %s\n", login);
-        return redirectWithError(connection, "/login", "Invalid email or password", post->arena);
+        return redirectWithError(connection, "/login", "invalid-credentials");
     }
 
     printf("Login successful for user: %s (id: %s)\n", login, userId);
@@ -173,7 +169,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     // Create session
     char *token = createSession(ctx, post->arena, userId);
     if (!token) {
-        return redirectWithError(connection, "/login", "Failed to create session", post->arena);
+        return redirectWithError(connection, "/login", "server-error");
     }
     
     // Create empty response for redirect
