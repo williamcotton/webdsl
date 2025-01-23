@@ -155,7 +155,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     
     // Set session cookie
     char cookie[256];
-    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict", token);
+    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
     // Set redirect header
@@ -300,7 +300,7 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     
     // Set session cookie
     char cookie[256];
-    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict", token);
+    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
     // Redirect to home page
