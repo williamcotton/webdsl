@@ -360,6 +360,15 @@ char* websiteToJson(Arena *arena, const WebsiteNode* website) {
         json_object_set_new(root, "port", json_integer(portNum));
     }
     
+    if (website->auth) {
+        json_t* auth = json_object();
+        char *salt = resolveString(arena, &website->auth->salt);
+        if (salt) {
+            json_object_set_new(auth, "salt", json_string(salt));
+        }
+        json_object_set_new(root, "auth", auth);
+    }
+    
     json_t* pages = pageNodeToJson(website->pageHead);
     if (pages) json_object_set_new(root, "pages", pages);
     

@@ -25,6 +25,7 @@ static ScriptNode* parseScript(Parser *parser);
 static IncludeNode* parseInclude(Parser *parser);
 static ResponseBlockNode* parseResponseBlock(Parser *parser);
 static PartialNode* parsePartial(Parser *parser);
+static AuthNode* parseAuth(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -913,6 +914,46 @@ static PartialNode* parsePartial(Parser *parser) {
     return partial;
 }
 
+static AuthNode* parseAuth(Parser *parser) {
+    AuthNode *auth = arenaAlloc(parser->arena, sizeof(AuthNode));
+    memset(auth, 0, sizeof(AuthNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'auth'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
+        switch (parser->current.type) {
+            case TOKEN_SALT: {
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    auth->salt = makeEnvVar(parser->arena, parser->current.lexeme + 1);  // Skip the $ prefix
+                    advanceParser(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string or environment variable after 'salt'");
+                    auth->salt = makeString(parser->arena, parser->previous.lexeme);
+                }
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Parse error at line %d: Unexpected token in auth block.\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+        #pragma clang diagnostic pop
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after auth block");
+    return auth;
+}
+
 static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
     while (parser->current.type != TOKEN_EOF && 
            parser->current.type != TOKEN_CLOSE_BRACE && 
@@ -946,6 +987,11 @@ static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
                     }
                     current->next = layout;
                 }
+                break;
+            }
+            case TOKEN_AUTH: {
+                advanceParser(parser);
+                website->auth = parseAuth(parser);
                 break;
             }
             case TOKEN_STYLES: {
@@ -1179,6 +1225,11 @@ WebsiteNode *parseProgram(Parser *parser) {
                     consume(parser, TOKEN_STRING, "Expected string after 'database'.");
                     website->databaseUrl = makeString(parser->arena, parser->previous.lexeme);
                 }
+                break;
+            }
+            case TOKEN_AUTH: {
+                advanceParser(parser);
+                website->auth = parseAuth(parser);
                 break;
             }
             default:

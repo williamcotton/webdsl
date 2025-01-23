@@ -5,6 +5,10 @@ website {
     port $PORT
     database $DATABASE_URL
 
+    auth {
+        salt $SALT
+    }
+
     include "api.webdsl"
     include "pages.webdsl"
     include "htmx.webdsl"

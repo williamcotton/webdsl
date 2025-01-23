@@ -16,6 +16,7 @@
 // Forward declare the struct
 struct PipelineStepNode;
 struct ServerContext;
+struct AuthNode;  // Add forward declaration
 
 // Add function pointer type for step execution
 typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, struct ServerContext *ctx);
@@ -185,6 +186,10 @@ typedef struct PartialNode {
     struct PartialNode *next;
 } PartialNode;
 
+typedef struct AuthNode {
+    Value salt;  // Salt for password hashing as environment variable
+} AuthNode;
+
 typedef struct WebsiteNode {
     char *name;
     char *author;
@@ -192,6 +197,7 @@ typedef struct WebsiteNode {
     char *baseUrl;
     Value databaseUrl;
     Value port;
+    AuthNode *auth;  // Authentication configuration
     PageNode *pageHead;
     StyleBlockNode *styleHead;
     LayoutNode *layoutHead;
@@ -199,7 +205,7 @@ typedef struct WebsiteNode {
     QueryNode *queryHead;
     TransformNode *transformHead;
     ScriptNode *scriptHead;
-    PartialNode *partialHead;  // Add partialHead field
+    PartialNode *partialHead;
     RouteMap *routeMap;
     LayoutMap *layoutMap;
     IncludeNode *includeHead;

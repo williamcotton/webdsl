@@ -11,9 +11,15 @@
 #include "auth.h"
 #include <microhttpd.h>
 
-static bool verifyPassword(const char *password, const char *storedHash) {
+static bool verifyPassword(const char *password, const char *storedHash, const char *configSalt) {
     uint8_t hash[32];
-    uint8_t salt[16] = {0}; // Same fixed salt as in hashPassword
+    uint8_t salt[16] = {0}; // Salt from config
+    
+    // Convert hex salt string to bytes
+    for (size_t i = 0; i < 16 && configSalt[i*2] && configSalt[i*2+1]; i++) {
+        char hex[3] = {configSalt[i*2], configSalt[i*2+1], '\0'};
+        salt[i] = (uint8_t)strtol(hex, NULL, 16);
+    }
     
     int result = argon2id_hash_raw(
         2,      // iterations
@@ -103,6 +109,17 @@ static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
 enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post) {
     const char *login = NULL;
     const char *password = NULL;
+    const char *salt = NULL;
+
+    // Get salt from website config
+    if (ctx->website && ctx->website->auth) {
+        salt = resolveString(post->arena, &ctx->website->auth->salt);
+    }
+    
+    if (!salt) {
+        fprintf(stderr, "No salt configured in website auth block\n");
+        return redirectWithError(connection, "/login", "server-error");
+    }
 
     // get login and password from post data
     for (size_t i = 0; i < post->post_data.value_count; i++) {
@@ -137,7 +154,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     PQclear(result);
 
     // Verify password
-    if (!verifyPassword(password, storedHash)) {
+    if (!verifyPassword(password, storedHash, salt)) {
         fprintf(stderr, "Login failed - incorrect password for: %s\n", login);
         return redirectWithError(connection, "/login", "invalid-credentials");
     }
@@ -197,9 +214,15 @@ enum MHD_Result handleLogoutRequest(ServerContext *ctx, struct MHD_Connection *c
     return ret;
 }
 
-static char* hashPassword(Arena *arena, const char *password) {
+static char* hashPassword(Arena *arena, const char *password, const char *configSalt) {
     uint8_t hash[32];
-    uint8_t salt[16] = {0}; // In production, generate random salt
+    uint8_t salt[16] = {0}; // Salt from config
+    
+    // Convert hex salt string to bytes
+    for (size_t i = 0; i < 16 && configSalt[i*2] && configSalt[i*2+1]; i++) {
+        char hex[3] = {configSalt[i*2], configSalt[i*2+1], '\0'};
+        salt[i] = (uint8_t)strtol(hex, NULL, 16);
+    }
     
     int result = argon2id_hash_raw(
         2,      // iterations
@@ -220,6 +243,7 @@ static char* hashPassword(Arena *arena, const char *password) {
     for (size_t i = 0; i < sizeof(hash); i++) {
         snprintf(&hashStr[i * 2], 3, "%02x", hash[i]);
     }
+    hashStr[64] = '\0';
     
     return hashStr;
 }
@@ -228,6 +252,17 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     const char *login = NULL;
     const char *password = NULL;
     const char *confirm_password = NULL;
+    const char *salt = NULL;
+
+    // Get salt from website config
+    if (ctx->website && ctx->website->auth) {
+        salt = resolveString(post->arena, &ctx->website->auth->salt);
+    }
+    
+    if (!salt) {
+        fprintf(stderr, "No salt configured in website auth block\n");
+        return redirectWithError(connection, "/register", "server-error");
+    }
 
     // Get form data
     for (size_t i = 0; i < post->post_data.value_count; i++) {
@@ -268,7 +303,7 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     PQclear(checkResult);
 
     // Hash password
-    char *passwordHash = hashPassword(post->arena, password);
+    char *passwordHash = hashPassword(post->arena, password, salt);
     if (!passwordHash) {
         return redirectWithError(connection, "/register", "server-error");
     }

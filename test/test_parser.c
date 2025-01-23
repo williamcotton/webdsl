@@ -815,6 +815,27 @@ static void test_parse_layout_with_content(void) {
     freeArena(parser.arena);
 }
 
+static void test_parse_website_with_auth(void) {
+    Parser parser;
+    const char *input = 
+        "website {\n"
+        "  auth {\n"
+        "    salt $AUTH_SALT\n"
+        "  }\n"
+        "}";
+    
+    initParser(&parser, input);
+    WebsiteNode *website = parseProgram(&parser);
+    
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL(0, parser.hadError);
+    TEST_ASSERT_NOT_NULL(website->auth);
+    TEST_ASSERT_EQUAL(VALUE_ENV_VAR, website->auth->salt.type);
+    TEST_ASSERT_EQUAL_STRING("AUTH_SALT", website->auth->salt.as.envVarName);
+    
+    freeArena(parser.arena);
+}
+
 int run_parser_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_parser_init);
@@ -840,5 +861,6 @@ int run_parser_tests(void) {
     RUN_TEST(test_parse_invalid_response_block);
     RUN_TEST(test_parse_website_with_content);
     RUN_TEST(test_parse_layout_with_content);
+    RUN_TEST(test_parse_website_with_auth);
     return UNITY_END();
 }
