@@ -82,28 +82,6 @@ static char* createSession(ServerContext *ctx, Arena *arena, const char *userId)
     return sessionToken;
 }
 
-static char* urlEncode(Arena *arena, const char *str) {
-    const char *hex = "0123456789ABCDEF";
-    const char *p;
-    char *buf = arenaAlloc(arena, strlen(str) * 3 + 1);
-    char *pbuf = buf;
-    
-    for (p = str; *p; p++) {
-        if ((*p >= 'A' && *p <= 'Z') ||
-            (*p >= 'a' && *p <= 'z') ||
-            (*p >= '0' && *p <= '9') ||
-            *p == '-' || *p == '_' || *p == '.' || *p == '~') {
-            *pbuf++ = *p;
-        } else {
-            *pbuf++ = '%';
-            *pbuf++ = hex[(*p >> 4) & 15];
-            *pbuf++ = hex[*p & 15];
-        }
-    }
-    *pbuf = '\0';
-    return buf;
-}
-
 static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                          const char *location,
                                          const char *error_key) {
@@ -251,37 +229,47 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
         }
     }
 
-    // Print registration attempt for now
-    printf("Registration attempt - login: %s\n", login ? login : "null");
-    
     // Basic validation
     if (!login || !password || !confirm_password) {
-        // TODO: Return error page
-        return MHD_NO;
+        return redirectWithError(connection, "/register", "missing-fields");
     }
     
     if (strcmp(password, confirm_password) != 0) {
-        // TODO: Return error page with "Passwords don't match"
-        return MHD_NO;
+        return redirectWithError(connection, "/register", "password-mismatch");
     }
+
+    // Check if user already exists
+    const char *values[] = {login};
+    PGresult *checkResult = executeParameterizedQuery(ctx->db,
+        "SELECT id FROM users WHERE login = $1",
+        values, 1);
+
+    if (!checkResult) {
+        return redirectWithError(connection, "/register", "server-error");
+    }
+
+    if (PQntuples(checkResult) > 0) {
+        PQclear(checkResult);
+        return redirectWithError(connection, "/register", "email-taken");
+    }
+    PQclear(checkResult);
 
     // Hash password
     char *passwordHash = hashPassword(post->arena, password);
-    printf("Password hash: %s\n", passwordHash);
     if (!passwordHash) {
-        return MHD_NO;
+        return redirectWithError(connection, "/register", "server-error");
     }
 
     // Insert user into database
-    const char *values[] = {login, passwordHash};
+    const char *insertValues[] = {login, passwordHash};
     PGresult *result = executeParameterizedQuery(ctx->db,
         "INSERT INTO users (login, password_hash) VALUES ($1, $2) RETURNING id",
-        values, 2);
+        insertValues, 2);
 
     if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Failed to create user account\n");
         if (result) PQclear(result);
-        return MHD_NO;
+        return redirectWithError(connection, "/register", "server-error");
     }
 
     // Get the new user's ID
@@ -291,7 +279,7 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     // Create session
     char *token = createSession(ctx, post->arena, userId);
     if (!token) {
-        return MHD_NO;
+        return redirectWithError(connection, "/register", "server-error");
     }
     
     // Create empty response for redirect
