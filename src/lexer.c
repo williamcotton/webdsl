@@ -376,6 +376,14 @@ static Token rawStringLiteral(Lexer *lexer) {
     return makeToken(lexer, TOKEN_RAW_STRING);
 }
 
+static Token envVar(Lexer *lexer) {
+    // Skip the $ we just consumed
+    while (isAlpha(peek(lexer)) || isDigit(peek(lexer)) || peek(lexer) == '_') {
+        advance(lexer);
+    }
+    return makeToken(lexer, TOKEN_ENV_VAR);
+}
+
 const char* getTokenTypeName(TokenType type) {
     switch (type) {
         case TOKEN_WEBSITE: return "WEBSITE";
@@ -429,6 +437,7 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_SUCCESS: return "SUCCESS";
         case TOKEN_REFERENCE_DATA: return "REFERENCE_DATA";
         case TOKEN_PARTIAL: return "PARTIAL";
+        case TOKEN_ENV_VAR: return "ENV_VAR";
     }
     return "INVALID";
 }
@@ -462,6 +471,9 @@ Token getNextToken(Lexer *lexer) {
 
     Token token;
     switch (c) {
+        case '$':
+            token = envVar(lexer);
+            break;
         case '{': 
             // Check if we just returned a HTML, SQL, JQ or LUA token
             if (lexer->previous.type == TOKEN_JQ || 

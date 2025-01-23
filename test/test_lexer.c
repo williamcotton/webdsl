@@ -788,6 +788,46 @@ static void test_lexer_error_success_blocks(void) {
     freeArena(parser.arena);
 }
 
+static void test_lexer_env_vars(void) {
+    Lexer lexer;
+    Parser parser = {0};
+    parser.arena = createArena(1024);
+    
+    const char *input = "port $PORT database $DATABASE_URL version $VERSION";
+    initLexer(&lexer, input, &parser);
+    
+    TokenType expected[] = {
+        TOKEN_PORT,
+        TOKEN_ENV_VAR,
+        TOKEN_DATABASE,
+        TOKEN_ENV_VAR,
+        TOKEN_VERSION,
+        TOKEN_ENV_VAR
+    };
+    
+    const char *expectedStrings[] = {
+        NULL,           // TOKEN_PORT
+        "$PORT",
+        NULL,           // TOKEN_DATABASE
+        "$DATABASE_URL",
+        NULL,           // TOKEN_VERSION
+        "$VERSION"
+    };
+    
+    for (size_t i = 0; i < sizeof(expected) / sizeof(expected[0]); i++) {
+        Token token = getNextToken(&lexer);
+        TEST_ASSERT_EQUAL(expected[i], token.type);
+        if (expectedStrings[i] != NULL) {
+            TEST_ASSERT_EQUAL_STRING(expectedStrings[i], token.lexeme);
+        }
+    }
+    
+    Token eof = getNextToken(&lexer);
+    TEST_ASSERT_EQUAL(TOKEN_EOF, eof.type);
+    
+    freeArena(parser.arena);
+}
+
 int run_lexer_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_lexer_init);
@@ -811,5 +851,6 @@ int run_lexer_tests(void) {
     RUN_TEST(test_lexer_mustache_block);
     RUN_TEST(test_lexer_include);
     RUN_TEST(test_lexer_error_success_blocks);
+    RUN_TEST(test_lexer_env_vars);
     return UNITY_END();
 }
