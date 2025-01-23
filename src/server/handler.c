@@ -390,12 +390,16 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         pipelineResult = context;
     }
 
+    
+
     // Handle based on route type
     switch (match.type) {
         case ROUTE_TYPE_API:
             return handleApiRequest(connection, match.endpoint.api, method, pipelineResult);
 
         case ROUTE_TYPE_PAGE:
+          // add requestContext to pipelineResult
+          json_object_set_new(pipelineResult, "request", json_deep_copy(requestContext));
           return handlePageRequest(connection, match.endpoint.page, requestArena,
                                    pipelineResult);
 

@@ -96,8 +96,7 @@ api {
                     offset: (.data[0].rows | map(select(.type == "metadata")) | .[0].offset),
                     limit: (.data[0].rows | map(select(.type == "metadata")) | .[0].limit),
                     has_more: (.data[0].rows | map(select(.type == "metadata")) | .[0].has_more)
-                },
-                request: .
+                }
             }
         }
     }
@@ -148,8 +147,7 @@ api {
                     name: .data[0].rows[0].name,
                     email: .data[0].rows[0].email,
                     team_id: .data[0].rows[0].team_id
-                },
-                request: .
+                }
             }
         }
     }
