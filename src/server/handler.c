@@ -308,7 +308,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         
         // Handle logout endpoint
         if (strcmp(url, "/logout") == 0) {
-            return handleLogoutRequest(connection);
+            return handleLogoutRequest(ctx, connection);
         }
         
         // Handle register endpoint

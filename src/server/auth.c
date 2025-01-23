@@ -167,7 +167,20 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     return ret;
 }
 
-enum MHD_Result handleLogoutRequest(struct MHD_Connection *connection) {
+enum MHD_Result handleLogoutRequest(ServerContext *ctx, struct MHD_Connection *connection) {
+    // Get session cookie
+    const char *cookie = MHD_lookup_connection_value(connection, MHD_COOKIE_KIND, "session");
+    if (cookie) {
+        // Delete session from database
+        const char *values[] = {cookie};
+        PGresult *result = executeParameterizedQuery(ctx->db,
+            "DELETE FROM sessions WHERE token = $1",
+            values, 1);
+        if (result) {
+            PQclear(result);
+        }
+    }
+    
     // Create empty response for redirect
     struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
     

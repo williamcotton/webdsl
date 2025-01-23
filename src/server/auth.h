@@ -6,7 +6,7 @@
 
 enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post);
 
-enum MHD_Result handleLogoutRequest(struct MHD_Connection *connection);
+enum MHD_Result handleLogoutRequest(ServerContext *ctx, struct MHD_Connection *connection);
 
 enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post);
 
