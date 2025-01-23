@@ -1150,24 +1150,35 @@ WebsiteNode *parseProgram(Parser *parser) {
             }
             case TOKEN_PORT: {
                 advanceParser(parser);
-                if (parser->current.type != TOKEN_NUMBER) {
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    website->port = makeEnvVar(parser->arena, parser->current.lexeme + 1);  // Skip the $ prefix
+                    advanceParser(parser);
+                } else if (parser->current.type == TOKEN_NUMBER) {
+                    int portNum;
+                    if (!parsePort(parser->current.lexeme, &portNum)) {
+                        fprintf(stderr, "Invalid port number: %s (must be between 1 and 65535)\n", 
+                                parser->current.lexeme);
+                        parser->hadError = 1;
+                        break;
+                    }
+                    website->port = makeNumber(portNum);
+                    advanceParser(parser);
+                } else {
                     fputs("Expected number after 'port'.\n", stderr);
                     parser->hadError = 1;
                     break;
                 }
-                if (!parsePort(parser->current.lexeme, &website->port)) {
-                    fprintf(stderr, "Invalid port number: %s (must be between 1 and 65535)\n", 
-                            parser->current.lexeme);
-                    parser->hadError = 1;
-                    break;
-                }
-                advanceParser(parser);
                 break;
             }
             case TOKEN_DATABASE: {
                 advanceParser(parser);
-                consume(parser, TOKEN_STRING, "Expected string after 'database'.");
-                website->databaseUrl = copyString(parser, parser->previous.lexeme);
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    website->databaseUrl = makeEnvVar(parser->arena, parser->current.lexeme + 1);  // Skip the $ prefix
+                    advanceParser(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string after 'database'.");
+                    website->databaseUrl = makeString(parser->arena, parser->previous.lexeme);
+                }
                 break;
             }
             default:

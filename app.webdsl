@@ -2,8 +2,8 @@ website {
     name "My Awesome Site"
     author "John Smith"
     version "1.0"
-    port 3123
-    database "postgresql://localhost/express-test"
+    port $PORT
+    database $DATABASE_URL
 
     include "api.webdsl"
     include "pages.webdsl"

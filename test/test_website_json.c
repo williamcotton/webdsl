@@ -41,7 +41,7 @@ static void test_website_to_json(void) {
     TEST_ASSERT_NOT_NULL(website);
     TEST_ASSERT_EQUAL(0, parser.hadError);
     
-    char *json = websiteToJson(website);
+    char *json = websiteToJson(parser.arena, website);
     TEST_ASSERT_NOT_NULL(json);
     
     // Parse the JSON string

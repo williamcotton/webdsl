@@ -34,10 +34,16 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
     buildRouteMaps(website, arena);
 
     // Initialize database connection
-    if (website->databaseUrl) {
-        serverCtx->db = initDatabase(arena, website->databaseUrl);
-        if (!serverCtx->db) {
-            fprintf(stderr, "Failed to connect to database: %s\n", website->databaseUrl);
+    if (website->databaseUrl.type != VALUE_NULL) {
+        char *resolvedUrl = resolveString(arena, &website->databaseUrl);
+        if (resolvedUrl) {
+            serverCtx->db = initDatabase(arena, resolvedUrl);
+            if (!serverCtx->db) {
+                fprintf(stderr, "Failed to connect to database: %s\n", resolvedUrl);
+                exit(1);
+            }
+        } else {
+            fprintf(stderr, "Failed to resolve database URL\n");
             exit(1);
         }
     } else {
@@ -57,7 +63,21 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
     }
 
     // Get port number from website definition, default to 8080 if not specified
-    uint16_t port = website->port > 0 ? (uint16_t)website->port : 8080;
+    uint16_t port = 8080;  // Default port
+    if (website->port.type != VALUE_NULL) {
+        int portNum;
+        if (resolveNumber(&website->port, &portNum)) {
+            if (portNum > 0 && portNum <= 65535) {
+                port = (uint16_t)portNum;
+            } else {
+                fprintf(stderr, "Invalid port number: %d (must be between 1 and 65535)\n", portNum);
+                exit(1);
+            }
+        } else {
+            fprintf(stderr, "Failed to resolve port number\n");
+            exit(1);
+        }
+    }
 
     serverCtx->daemon = MHD_start_daemon(MHD_USE_POLL_INTERNAL_THREAD | MHD_USE_INTERNAL_POLLING_THREAD, port,
                             NULL, NULL, 

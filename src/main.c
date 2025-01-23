@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <jansson.h>
 #include "website.h"
+#include "../deps/dotenv-c/dotenv.h"
 
 #define MAX_PATH_LENGTH 4096
 #define MAX_INCLUDES 100  // Maximum number of files to track
@@ -122,6 +123,8 @@ int main(int argc, char* argv[]) {
         return 64;
     }
 
+    env_load(".", true);
+
     Parser parser = {0};  // Zero initialize all fields
     WebsiteNode* website = NULL;
     ModificationTracker mod_tracker = {0};
@@ -130,7 +133,7 @@ int main(int argc, char* argv[]) {
     if (json_output) {
         website = parseWebsite(&parser, webdsl_path);
         if (website != NULL) {
-            char* json_str = websiteToJson(website);
+            char* json_str = websiteToJson(parser.arena, website);
             // char* json_str = json_dumps(json, JSON_INDENT(2));
             if (json_str) {
                 printf("%s\n", json_str);

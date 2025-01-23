@@ -340,7 +340,7 @@ static json_t* responseBlockToJson(const ResponseBlockNode* block) {
     return json;
 }
 
-char* websiteToJson(const WebsiteNode* website) {
+char* websiteToJson(Arena *arena, const WebsiteNode* website) {
     if (!website) return NULL;
     
     json_t* root = json_object();
@@ -349,8 +349,16 @@ char* websiteToJson(const WebsiteNode* website) {
     if (website->author) json_object_set_new(root, "author", json_string(website->author));
     if (website->version) json_object_set_new(root, "version", json_string(website->version));
     if (website->baseUrl) json_object_set_new(root, "baseUrl", json_string(website->baseUrl));
-    if (website->databaseUrl) json_object_set_new(root, "databaseUrl", json_string(website->databaseUrl));
-    json_object_set_new(root, "port", json_integer(website->port));
+    
+    char *dbUrl = resolveString(arena, &website->databaseUrl);
+    if (dbUrl) {
+        json_object_set_new(root, "databaseUrl", json_string(dbUrl));
+    }
+    
+    int portNum;
+    if (resolveNumber(&website->port, &portNum)) {
+        json_object_set_new(root, "port", json_integer(portNum));
+    }
     
     json_t* pages = pageNodeToJson(website->pageHead);
     if (pages) json_object_set_new(root, "pages", pages);

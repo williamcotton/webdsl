@@ -100,7 +100,8 @@ static void test_parse_website_with_port(void) {
     WebsiteNode *website = parseProgram(&parser);
     
     TEST_ASSERT_NOT_NULL(website);
-    TEST_ASSERT_EQUAL(3000, website->port);
+    TEST_ASSERT_EQUAL(VALUE_NUMBER, website->port.type);
+    TEST_ASSERT_EQUAL(3000, website->port.as.number);
     
     freeArena(parser.arena);
 }

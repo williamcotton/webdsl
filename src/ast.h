@@ -11,6 +11,7 @@
 #include <jansson.h>
 #pragma clang diagnostic pop
 #include "arena.h"
+#include "value.h"
 
 // Forward declare the struct
 struct PipelineStepNode;
@@ -189,9 +190,8 @@ typedef struct WebsiteNode {
     char *author;
     char *version;
     char *baseUrl;
-    char *databaseUrl;
-    int port;
-    int _padding;
+    Value databaseUrl;
+    Value port;
     PageNode *pageHead;
     StyleBlockNode *styleHead;
     LayoutNode *layoutHead;
