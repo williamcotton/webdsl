@@ -9,6 +9,7 @@
 #include "server.h"
 #include "db.h"
 #include "auth.h"
+#include <microhttpd.h>
 
 static bool verifyPassword(const char *password, const char *storedHash) {
     uint8_t hash[32];
@@ -81,6 +82,50 @@ static char* createSession(ServerContext *ctx, Arena *arena, const char *userId)
     return sessionToken;
 }
 
+static char* urlEncode(Arena *arena, const char *str) {
+    const char *hex = "0123456789ABCDEF";
+    const char *p;
+    char *buf = arenaAlloc(arena, strlen(str) * 3 + 1);
+    char *pbuf = buf;
+    
+    for (p = str; *p; p++) {
+        if ((*p >= 'A' && *p <= 'Z') ||
+            (*p >= 'a' && *p <= 'z') ||
+            (*p >= '0' && *p <= '9') ||
+            *p == '-' || *p == '_' || *p == '.' || *p == '~') {
+            *pbuf++ = *p;
+        } else {
+            *pbuf++ = '%';
+            *pbuf++ = hex[(*p >> 4) & 15];
+            *pbuf++ = hex[*p & 15];
+        }
+    }
+    *pbuf = '\0';
+    return buf;
+}
+
+static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
+                                         const char *location,
+                                         const char *error,
+                                         Arena *arena) {
+    // URL encode the error message
+    char *encoded_error = urlEncode(arena, error);
+
+    // Create redirect URL with error parameter
+    char redirect_url[512];
+    snprintf(redirect_url, sizeof(redirect_url), "%s?error=%s", location, encoded_error);
+
+    struct MHD_Response *response =
+        MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", redirect_url);
+
+    enum MHD_Result ret =
+        MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+
+    return ret;
+}
+
 enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post) {
     const char *login = NULL;
     const char *password = NULL;
@@ -97,8 +142,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     }
 
     if (!login || !password) {
-        // TODO: Return error page
-        return MHD_NO;
+        return redirectWithError(connection, "/login", "Email and password are required", post->arena);
     }
 
     // Look up user in database
@@ -110,20 +154,18 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     if (!result || PQntuples(result) == 0) {
         fprintf(stderr, "Login failed - user not found: %s\n", login);
         if (result) PQclear(result);
-        // TODO: Return error page
-        return MHD_NO;
+        return redirectWithError(connection, "/login", "Invalid email or password", post->arena);
     }
 
-    // Get stored password hash and user ID - copy them since we need them after PQclear
-    char *storedHash = arenaDupString(post->arena, PQgetvalue(result, 0, 1));  // password_hash is column 1
-    char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));      // id is column 0
+    // Get stored password hash and user ID
+    char *storedHash = arenaDupString(post->arena, PQgetvalue(result, 0, 1));
+    char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
     // Verify password
     if (!verifyPassword(password, storedHash)) {
         fprintf(stderr, "Login failed - incorrect password for: %s\n", login);
-        // TODO: Return error page
-        return MHD_NO;
+        return redirectWithError(connection, "/login", "Invalid email or password", post->arena);
     }
 
     printf("Login successful for user: %s (id: %s)\n", login, userId);
@@ -131,7 +173,7 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     // Create session
     char *token = createSession(ctx, post->arena, userId);
     if (!token) {
-        return MHD_NO;
+        return redirectWithError(connection, "/login", "Failed to create session", post->arena);
     }
     
     // Create empty response for redirect
