@@ -42,7 +42,8 @@ jobs:
           uthash-dev \
           libbsd-dev \
           libcurl4-openssl-dev \
-          valgrind
+          valgrind \
+          libargon2-dev
 
     - name: Run linter
       run: make lint
@@ -84,8 +85,8 @@ jobs:
           uthash \
           libbsd \
           openssl \
-          curl
-
+          curl \
+          argon2
     - name: Start PostgreSQL
       run: |
         brew services start postgresql@14
