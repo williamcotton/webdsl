@@ -125,14 +125,40 @@ static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
   return MHD_YES;
 }
 
-static bool isLoggedIn(struct MHD_Connection *connection) {
-    const char *session = MHD_lookup_connection_value(connection, 
-                                                    MHD_COOKIE_KIND, 
-                                                    "session");
-    return session != NULL;
+static json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
+    const char *sessionToken = MHD_lookup_connection_value(connection, 
+                                                         MHD_COOKIE_KIND, 
+                                                         "session");
+    if (!sessionToken) {
+        return NULL;
+    }
+
+    // Look up valid session and user
+    const char *values[] = {sessionToken};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT u.id, u.login, u.created_at "
+        "FROM sessions s "
+        "JOIN users u ON u.id = s.user_id "
+        "WHERE s.token = $1 "
+        "AND s.expires_at > NOW()",
+        values, 1);
+
+    if (!result || PQntuples(result) == 0) {
+        if (result) PQclear(result);
+        return NULL;
+    }
+
+    // Create user object
+    json_t *user = json_object();
+    json_object_set_new(user, "id", json_string(PQgetvalue(result, 0, 0)));
+    json_object_set_new(user, "login", json_string(PQgetvalue(result, 0, 1)));
+    json_object_set_new(user, "created_at", json_string(PQgetvalue(result, 0, 2)));
+
+    PQclear(result);
+    return user;
 }
 
-static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena *arena, 
+static json_t* buildRequestContextJson(ServerContext *ctx, struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version,
                                    RouteParams *params) {
@@ -144,8 +170,14 @@ static json_t* buildRequestContextJson(struct MHD_Connection *connection, Arena 
     json_object_set_new(context, "url", json_string(url));
     json_object_set_new(context, "version", json_string(version));
     
-    // Add auth status to context
-    json_object_set_new(context, "isLoggedIn", json_boolean(isLoggedIn(connection)));
+    // Add user to context if logged in
+    json_t *user = getUser(ctx, connection);
+    if (user) {
+        json_object_set_new(context, "user", user);
+        json_object_set_new(context, "isLoggedIn", json_true());
+    } else {
+        json_object_set_new(context, "isLoggedIn", json_false());
+    }
     
     // Build query parameters object
     json_t *query = json_object();
@@ -231,6 +263,50 @@ static bool verifyPassword(const char *password, const char *storedHash) {
     return strcmp(hashStr, storedHash) == 0;
 }
 
+// Add helper function for creating sessions
+static char* createSession(ServerContext *ctx, Arena *arena, const char *userId) {
+    // Generate a random session token using urandom
+    uint8_t random_bytes[32];
+    FILE *urandom = fopen("/dev/urandom", "rb");
+    if (!urandom) {
+        fprintf(stderr, "Failed to open /dev/urandom\n");
+        return NULL;
+    }
+    
+    if (fread(random_bytes, 1, sizeof(random_bytes), urandom) != sizeof(random_bytes)) {
+        fprintf(stderr, "Failed to read from /dev/urandom\n");
+        fclose(urandom);
+        return NULL;
+    }
+    fclose(urandom);
+    
+    // Convert random bytes to hex string
+    char token[65];
+    for (size_t i = 0; i < sizeof(random_bytes); i++) {
+        sprintf(&token[i*2], "%02x", random_bytes[i]);
+    }
+    token[64] = '\0';
+    
+    // Insert session with expiration time
+    const char *values[] = {userId, token};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "INSERT INTO sessions (user_id, token, expires_at) "
+        "VALUES ($1, $2, NOW() + INTERVAL '24 hours') RETURNING token",
+        values, 2);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to create session\n");
+        if (result) PQclear(result);
+        return NULL;
+    }
+
+    // Get the token back and store it in the arena
+    char *sessionToken = arenaDupString(arena, PQgetvalue(result, 0, 0));
+    PQclear(result);
+    
+    return sessionToken;
+}
+
 static enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post) {
     const char *login = NULL;
     const char *password = NULL;
@@ -278,11 +354,14 @@ static enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connect
 
     printf("Login successful for user: %s (id: %s)\n", login, userId);
     
+    // Create session
+    char *token = createSession(ctx, post->arena, userId);
+    if (!token) {
+        return MHD_NO;
+    }
+    
     // Create empty response for redirect
     struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
-
-    // create session token
-    const char *token = "mock_session_123";
     
     // Set session cookie
     char cookie[256];
@@ -396,11 +475,14 @@ static enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Conn
     }
 
     // Get the new user's ID
-    const char *userId = PQgetvalue(result, 0, 0);
+    char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
-    // Create mock session token
-    const char *token = "mock_session_123";
+    // Create session
+    char *token = createSession(ctx, post->arena, userId);
+    if (!token) {
+        return MHD_NO;
+    }
     
     // Create empty response for redirect
     struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
@@ -510,7 +592,7 @@ enum MHD_Result handleRequest(ServerContext *ctx,
 
     // Build request context once - AFTER all POST data is processed
     json_t *requestContext =
-        buildRequestContextJson(connection, requestArena, *con_cls, method, url,
+        buildRequestContextJson(ctx, connection, requestArena, *con_cls, method, url,
                                 version, &match.params);
 
     // Early validation for POST requests
@@ -567,6 +649,10 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Execute pipeline once if it exists
     if (pipeline) {
         pipelineResult = executePipeline(ctx, pipeline, requestContext, requestArena);
+    } else {
+        json_t *context = json_object();
+        json_object_set_new(context, "request", json_deep_copy(requestContext));
+        pipelineResult = context;
     }
 
     // Handle based on route type

@@ -27,18 +27,19 @@ layout {
                                     </div>
                                 </div>
                                 <div class="flex items-center">
-                                    {{#isLoggedIn}}
+                                    {{#request.isLoggedIn}}
+                                    <p>Logged in as {{request.user.login}}</p>
                                     <form action="/logout" method="POST" class="ml-6">
                                         <button type="submit" class="text-gray-900">
                                             Sign out
                                         </button>
                                     </form>
-                                    {{/isLoggedIn}}
-                                    {{^isLoggedIn}}
+                                    {{/request.isLoggedIn}}
+                                    {{^request.isLoggedIn}}
                                     <a href="/login" class="text-gray-900">
                                         Sign in
                                     </a>
-                                    {{/isLoggedIn}}
+                                    {{/request.isLoggedIn}}
                                 </div>
                             </div>
                         </div>
@@ -57,14 +58,6 @@ page {
     name "home"
     route "/"
     layout "main"
-    pipeline {
-        jq {
-            {
-                pageTitle: "Home",
-                isLoggedIn: .isLoggedIn
-            }
-        }
-    }
     mustache {
         <h1>Welcome!</h1>
         <p>
@@ -78,14 +71,6 @@ page {
     name "blog"
     route "/blog"
     layout "main"
-    pipeline {
-        jq {
-            {
-                pageTitle: "Home",
-                isLoggedIn: .isLoggedIn
-            }
-        }
-    }
     mustache {
         <article>
             <h1>Latest Posts</h1>
