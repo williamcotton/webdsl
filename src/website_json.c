@@ -12,6 +12,7 @@ static json_t* layoutToJson(const LayoutNode* layout);
 static json_t* responseBlockToJson(const ResponseBlockNode* block);
 static json_t* apiFieldsToJson(const ApiField* fields);
 static json_t* pipelineToJson(const PipelineStepNode* pipeline);
+static json_t* partialsToJson(const PartialNode* partials);
 
 static json_t* templateNodeToJson(const TemplateNode* node) {
     if (!node) return NULL;
@@ -340,6 +341,24 @@ static json_t* responseBlockToJson(const ResponseBlockNode* block) {
     return json;
 }
 
+static json_t* partialsToJson(const PartialNode* partials) {
+    if (!partials) return NULL;
+    
+    json_t* partials_array = json_array();
+    const PartialNode* current = partials;
+    
+    while (current) {
+        json_t* partial = json_object();
+        if (current->name) json_object_set_new(partial, "name", json_string(current->name));
+        if (current->template) json_object_set_new(partial, "template", templateNodeToJson(current->template));
+        
+        json_array_append_new(partials_array, partial);
+        current = current->next;
+    }
+    
+    return partials_array;
+}
+
 char* websiteToJson(Arena *arena, const WebsiteNode* website) {
     if (!website) return NULL;
     
@@ -398,6 +417,9 @@ char* websiteToJson(Arena *arena, const WebsiteNode* website) {
     
     json_t* includes = includeNodesToJson(website->includeHead);
     if (includes) json_object_set_new(root, "includes", includes);
+    
+    json_t* partials = partialsToJson(website->partialHead);
+    if (partials) json_object_set_new(root, "partials", partials);
     
     char* json_str = json_dumps(root, JSON_INDENT(2));
     json_decref(root);

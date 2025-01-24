@@ -17,6 +17,12 @@ static void test_website_to_json(void) {
         "  author \"Test Author\"\n"
         "  version \"1.0\"\n"
         "  port 3000\n"
+        "  partial {\n"
+        "    name \"header\"\n"
+        "    mustache {\n"
+        "      <header>{{title}}</header>\n"
+        "    }\n"
+        "  }\n"
         "  page {\n"
         "    name \"home\"\n"
         "    route \"/\"\n"
@@ -54,6 +60,17 @@ static void test_website_to_json(void) {
     TEST_ASSERT_EQUAL_STRING("Test Author", json_string_value(json_object_get(root, "author")));
     TEST_ASSERT_EQUAL_STRING("1.0", json_string_value(json_object_get(root, "version")));
     TEST_ASSERT_EQUAL(3000, json_integer_value(json_object_get(root, "port")));
+    
+    // Check partials
+    json_t *partials = json_object_get(root, "partials");
+    TEST_ASSERT_NOT_NULL(partials);
+    TEST_ASSERT_TRUE(json_is_array(partials));
+    TEST_ASSERT_EQUAL(1, json_array_size(partials));
+    json_t *partial = json_array_get(partials, 0);
+    TEST_ASSERT_EQUAL_STRING("header", json_string_value(json_object_get(partial, "name")));
+    json_t *partialTemplate = json_object_get(partial, "template");
+    TEST_ASSERT_NOT_NULL(partialTemplate);
+    TEST_ASSERT_TRUE(strstr(json_string_value(json_object_get(partialTemplate, "content")), "<header>{{title}}</header>") != NULL);
     
     // Check pages array
     json_t *pages = json_object_get(root, "pages");
