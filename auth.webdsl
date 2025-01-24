@@ -1,0 +1,473 @@
+page {
+    name "login"
+    route "/login"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "Login",
+                errorMessage: (
+                    if .query.error == "missing-fields" then
+                        "Email and password are required"
+                    elif .query.error == "invalid-credentials" then
+                        "Invalid email or password"
+                    elif .query.error == "server-error" then
+                        "An error occurred. Please try again later."
+                    else
+                        null
+                    end
+                ),
+                isLoggedIn: .isLoggedIn
+            }
+        }
+    }
+    mustache {
+        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Sign in to your account
+                    </h2>
+                    <p class="mt-2 text-center text-sm text-gray-600">
+                        Or
+                        <a href="/register" class="font-medium text-indigo-600 hover:text-indigo-500">
+                            create a new account
+                        </a>
+                    </p>
+                </div>
+                
+                {{#errorMessage}}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <!-- Heroicon name: x-circle -->
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                {{errorMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/errorMessage}}
+
+                <form class="mt-8 space-y-6" action="/login" method="POST">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <label for="login" class="sr-only">Email address</label>
+                            <input id="login" 
+                                   name="login" 
+                                   type="email" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Email address">
+                        </div>
+                        <div>
+                            <label for="password" class="sr-only">Password</label>
+                            <input id="password" 
+                                   name="password" 
+                                   type="password" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Password">
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="submit" 
+                                class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Sign in
+                        </button>
+                    </div>
+
+                    <div class="text-sm text-center">
+                        <a href="/forgot-password" class="font-medium text-indigo-600 hover:text-indigo-500">
+                            Forgot your password?
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "register"
+    route "/register"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "Register",
+                errorMessage: (
+                    if .query.error == "missing-fields" then
+                        "All fields are required"
+                    elif .query.error == "password-mismatch" then
+                        "Passwords do not match"
+                    elif .query.error == "email-taken" then
+                        "This email is already registered"
+                    elif .query.error == "server-error" then
+                        "An error occurred. Please try again later."
+                    else
+                        null
+                    end
+                ),
+                isLoggedIn: .isLoggedIn
+            }
+        }
+    }
+    mustache {
+        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Create your account
+                    </h2>
+                    <p class="mt-2 text-center text-sm text-gray-600">
+                        Or
+                        <a href="/login" class="font-medium text-indigo-600 hover:text-indigo-500">
+                            sign in to your existing account
+                        </a>
+                    </p>
+                </div>
+
+                {{#errorMessage}}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <!-- Heroicon name: x-circle -->
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                {{errorMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/errorMessage}}
+
+                <form class="mt-8 space-y-6" action="/register" method="POST">
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <label for="login" class="sr-only">Email address</label>
+                            <input id="login" 
+                                   name="login" 
+                                   type="email" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Email address">
+                        </div>
+                        <div>
+                            <label for="password" class="sr-only">Password</label>
+                            <input id="password" 
+                                   name="password" 
+                                   type="password" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Password">
+                        </div>
+                        <div>
+                            <label for="confirm_password" class="sr-only">Confirm Password</label>
+                            <input id="confirm_password" 
+                                   name="confirm_password" 
+                                   type="password" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Confirm password">
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="submit" 
+                                class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Create Account
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "verify-email"
+    route "/verify-email"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "Verify Email",
+                errorMessage: (
+                    if .query.error == "invalid-token" then
+                        "Invalid or expired verification token"
+                    elif .query.error == "already-verified" then
+                        "Email is already verified"
+                    elif .query.error == "server-error" then
+                        "An error occurred. Please try again later."
+                    else
+                        null
+                    end
+                ),
+                successMessage: (
+                    if .query.success == "verified" then
+                        "Your email has been verified successfully!"
+                    elif .query.success == "sent" then
+                        "A new verification email has been sent. Please check your inbox."
+                    else
+                        null
+                    end
+                ),
+                isLoggedIn: .isLoggedIn
+            }
+        }
+    }
+    mustache {
+        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Email Verification
+                    </h2>
+                </div>
+
+                {{#errorMessage}}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                {{errorMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/errorMessage}}
+
+                {{#successMessage}}
+                <div class="rounded-md bg-green-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">
+                                {{successMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/successMessage}}
+
+                {{^successMessage}}
+                <form class="mt-8 space-y-6" action="/resend-verification" method="POST">
+                    <div>
+                        <button type="submit" 
+                                class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Resend Verification Email
+                        </button>
+                    </div>
+                </form>
+                {{/successMessage}}
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "forgot-password"
+    route "/forgot-password"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "Forgot Password",
+                errorMessage: (
+                    if .query.error == "missing-fields" then
+                        "Email is required"
+                    elif .query.error == "server-error" then
+                        "An error occurred. Please try again later."
+                    else
+                        null
+                    end
+                ),
+                successMessage: (
+                    if .query.success == "sent" then
+                        "If an account exists with that email, you will receive password reset instructions."
+                    else
+                        null
+                    end
+                ),
+                isLoggedIn: .isLoggedIn
+            }
+        }
+    }
+    mustache {
+        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Reset your password
+                    </h2>
+                    <p class="mt-2 text-center text-sm text-gray-600">
+                        Enter your email address and we'll send you a link to reset your password.
+                    </p>
+                </div>
+
+                {{#errorMessage}}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                {{errorMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/errorMessage}}
+
+                {{#successMessage}}
+                <div class="rounded-md bg-green-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-green-800">
+                                {{successMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/successMessage}}
+
+                {{^successMessage}}
+                <form class="mt-8 space-y-6" action="/forgot-password" method="POST">
+                    <div>
+                        <label for="login" class="sr-only">Email address</label>
+                        <input id="login" 
+                               name="login" 
+                               type="email" 
+                               required 
+                               class="appearance-none rounded relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                               placeholder="Email address">
+                    </div>
+
+                    <div>
+                        <button type="submit" 
+                                class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Send reset link
+                        </button>
+                    </div>
+                </form>
+                {{/successMessage}}
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "reset-password"
+    route "/reset-password"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "Reset Password",
+                errorMessage: (
+                    if .query.error == "missing-fields" then
+                        "All fields are required"
+                    elif .query.error == "password-mismatch" then
+                        "Passwords do not match"
+                    elif .query.error == "invalid-token" then
+                        "Invalid or expired reset token"
+                    elif .query.error == "server-error" then
+                        "An error occurred. Please try again later."
+                    else
+                        null
+                    end
+                ),
+                token: .query.token,
+                isLoggedIn: .isLoggedIn
+            }
+        }
+    }
+    mustache {
+        <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+            <div class="max-w-md w-full space-y-8">
+                <div>
+                    <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
+                        Reset your password
+                    </h2>
+                </div>
+
+                {{#errorMessage}}
+                <div class="rounded-md bg-red-50 p-4">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <h3 class="text-sm font-medium text-red-800">
+                                {{errorMessage}}
+                            </h3>
+                        </div>
+                    </div>
+                </div>
+                {{/errorMessage}}
+
+                <form class="mt-8 space-y-6" action="/reset-password" method="POST">
+                    <input type="hidden" name="token" value="{{token}}">
+                    
+                    <div class="rounded-md shadow-sm -space-y-px">
+                        <div>
+                            <label for="password" class="sr-only">New Password</label>
+                            <input id="password" 
+                                   name="password" 
+                                   type="password" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="New password">
+                        </div>
+                        <div>
+                            <label for="confirm_password" class="sr-only">Confirm New Password</label>
+                            <input id="confirm_password" 
+                                   name="confirm_password" 
+                                   type="password" 
+                                   required 
+                                   class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
+                                   placeholder="Confirm new password">
+                        </div>
+                    </div>
+
+                    <div>
+                        <button type="submit" 
+                                class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Reset Password
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}

@@ -4,11 +4,10 @@ website {
     version "0.0.1"
     port $PORT
     database $DATABASE_URL
-
     auth {
         salt $SALT
     }
-
+    include "auth.webdsl"
     include "api.webdsl"
     include "pages.webdsl"
     include "htmx.webdsl"
