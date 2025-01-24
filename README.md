@@ -132,7 +132,8 @@ brew install \
   uthash \
   libbsd \
   openssl \
-  curl
+  curl \
+  argon2
 ```
 
 #### Linux
@@ -148,7 +149,8 @@ sudo apt-get install -y \
   uthash-dev \
   libbsd-dev \
   libcurl4-openssl-dev \
-  valgrind
+  valgrind \
+  libargon2-dev
 ```
 
 ### Building
