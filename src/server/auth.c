@@ -10,6 +10,51 @@
 #include "db.h"
 #include "auth.h"
 #include <microhttpd.h>
+#include <jansson.h>
+
+// Forward declarations of helper functions
+static char* generateToken(Arena *arena);
+static void sendVerificationEmail(const char *email, const char *token);
+static char* createVerificationToken(ServerContext *ctx, Arena *arena, const char *userId);
+static char* createSession(ServerContext *ctx, Arena *arena, const char *userId);
+static char* hashPassword(Arena *arena, const char *password, const char *configSalt);
+static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
+                                       const char *location,
+                                       const char *error_key);
+
+// Get user from session token
+json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
+    const char *sessionToken = MHD_lookup_connection_value(connection, 
+                                                         MHD_COOKIE_KIND, 
+                                                         "session");
+    if (!sessionToken) {
+        return NULL;
+    }
+
+    // Look up valid session and user
+    const char *values[] = {sessionToken};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT u.id, u.login, u.created_at "
+        "FROM sessions s "
+        "JOIN users u ON u.id = s.user_id "
+        "WHERE s.token = $1 "
+        "AND s.expires_at > NOW()",
+        values, 1);
+
+    if (!result || PQntuples(result) == 0) {
+        if (result) PQclear(result);
+        return NULL;
+    }
+
+    // Create user object
+    json_t *user = json_object();
+    json_object_set_new(user, "id", json_string(PQgetvalue(result, 0, 0)));
+    json_object_set_new(user, "login", json_string(PQgetvalue(result, 0, 1)));
+    json_object_set_new(user, "created_at", json_string(PQgetvalue(result, 0, 2)));
+
+    PQclear(result);
+    return user;
+}
 
 static bool verifyPassword(const char *password, const char *storedHash, const char *configSalt) {
     uint8_t hash[32];
@@ -324,9 +369,18 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
-    // Create session
-    char *token = createSession(ctx, post->arena, userId);
+    // Create verification token
+    char *token = createVerificationToken(ctx, post->arena, userId);
     if (!token) {
+        return redirectWithError(connection, "/register", "server-error");
+    }
+
+    // Send verification email
+    sendVerificationEmail(login, token);
+
+    // Create session
+    char *sessionToken = createSession(ctx, post->arena, userId);
+    if (!sessionToken) {
         return redirectWithError(connection, "/register", "server-error");
     }
     
@@ -335,11 +389,165 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     
     // Set session cookie
     char cookie[256];
-    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
+    snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", sessionToken);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
-    // Redirect to home page
-    MHD_add_response_header(response, "Location", "/");
+    // Redirect to verify email page
+    MHD_add_response_header(response, "Location", "/verify-email");
+    
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    
+    return ret;
+}
+
+// Helper function to generate a random token
+static char* generateToken(Arena *arena) {
+    uint8_t random_bytes[32];
+    FILE *urandom = fopen("/dev/urandom", "rb");
+    if (!urandom) {
+        fprintf(stderr, "Failed to open /dev/urandom\n");
+        return NULL;
+    }
+    
+    if (fread(random_bytes, 1, sizeof(random_bytes), urandom) != sizeof(random_bytes)) {
+        fprintf(stderr, "Failed to read from /dev/urandom\n");
+        fclose(urandom);
+        return NULL;
+    }
+    fclose(urandom);
+    
+    // Convert random bytes to hex string
+    char *token = arenaAlloc(arena, 65);
+    for (size_t i = 0; i < sizeof(random_bytes); i++) {
+        snprintf(&token[i*2], 3, "%02x", random_bytes[i]);
+    }
+    token[64] = '\0';
+    
+    return token;
+}
+
+// Helper function to send verification email (currently just prints to console)
+static void sendVerificationEmail(const char *email, const char *token) {
+    printf("\n=== VERIFICATION EMAIL ===\n");
+    printf("To: %s\n", email);
+    printf("Subject: Verify your email address\n");
+    printf("\nHello!\n\n");
+    printf("Please verify your email address by clicking the link below:\n");
+    printf("http://localhost:8080/verify-email?token=%s\n", token);
+    printf("\nThis link will expire in 24 hours.\n");
+    printf("=== END EMAIL ===\n\n");
+}
+
+// Helper function to create verification token
+static char* createVerificationToken(ServerContext *ctx, Arena *arena, const char *userId) {
+    char *token = generateToken(arena);
+    if (!token) {
+        return NULL;
+    }
+    
+    // Insert verification token with expiration
+    const char *values[] = {userId, token};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "INSERT INTO email_verifications (user_id, token, expires_at) "
+        "VALUES ($1, $2, NOW() + INTERVAL '24 hours') RETURNING token",
+        values, 2);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        fprintf(stderr, "Failed to create verification token\n");
+        if (result) PQclear(result);
+        return NULL;
+    }
+
+    PQclear(result);
+    return token;
+}
+
+enum MHD_Result handleVerifyEmailRequest(ServerContext *ctx, struct MHD_Connection *connection, const char *token) {
+    if (!token) {
+        return redirectWithError(connection, "/verify-email", "invalid-token");
+    }
+
+    // Look up valid verification token
+    const char *values[] = {token};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT v.id, v.user_id, v.verified_at, u.login "
+        "FROM email_verifications v "
+        "JOIN users u ON u.id = v.user_id "
+        "WHERE v.token = $1 "
+        "AND v.expires_at > NOW() "
+        "AND v.verified_at IS NULL",
+        values, 1);
+
+    if (!result || PQntuples(result) == 0) {
+        if (result) PQclear(result);
+        return redirectWithError(connection, "/verify-email", "invalid-token");
+    }
+
+    // Get user info and store in arena
+    char *userId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 1));
+    char *verificationId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 0));
+    PQclear(result);
+
+    // Mark email as verified
+    const char *updateValues[] = {verificationId};
+    result = executeParameterizedQuery(ctx->db,
+        "UPDATE email_verifications "
+        "SET verified_at = NOW() "
+        "WHERE id = $1",
+        updateValues, 1);
+
+    if (!result) {
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
+    PQclear(result);
+
+    // Create empty response for redirect with success
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/verify-email?success=verified");
+    
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    
+    return ret;
+}
+
+enum MHD_Result handleResendVerificationRequest(ServerContext *ctx, struct MHD_Connection *connection) {
+    // Get current user from session
+    json_t *user = getUser(ctx, connection);
+    if (!user) {
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
+
+    const char *userId = json_string_value(json_object_get(user, "id"));
+    const char *userEmail = json_string_value(json_object_get(user, "login"));
+    
+    // Check if already verified
+    const char *values[] = {userId};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT id FROM email_verifications "
+        "WHERE user_id = $1 "
+        "AND verified_at IS NOT NULL",
+        values, 1);
+
+    if (result && PQntuples(result) > 0) {
+        PQclear(result);
+        return redirectWithError(connection, "/verify-email", "already-verified");
+    }
+    if (result) PQclear(result);
+
+    // Create new verification token
+    char *token = createVerificationToken(ctx, ctx->arena, userId);
+    if (!token) {
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
+
+    // Send verification email
+    sendVerificationEmail(userEmail, token);
+
+    // Redirect with success message
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/verify-email?success=sent");
     
     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
     MHD_destroy_response(response);

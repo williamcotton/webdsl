@@ -144,8 +144,30 @@ static const char *INIT_TABLES_SQL =
     "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL"
     ");"
     
+    "CREATE TABLE IF NOT EXISTS email_verifications ("
+    "    id SERIAL PRIMARY KEY,"
+    "    user_id INTEGER REFERENCES users(id),"
+    "    token VARCHAR(255) UNIQUE NOT NULL,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,"
+    "    verified_at TIMESTAMP WITH TIME ZONE"
+    ");"
+    
+    "CREATE TABLE IF NOT EXISTS password_resets ("
+    "    id SERIAL PRIMARY KEY,"
+    "    user_id INTEGER REFERENCES users(id),"
+    "    token VARCHAR(255) UNIQUE NOT NULL,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,"
+    "    used_at TIMESTAMP WITH TIME ZONE"
+    ");"
+    
     "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
-    "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);";
+    "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
+    "CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(token);"
+    "CREATE INDEX IF NOT EXISTS email_verifications_user_id_idx ON email_verifications(user_id);"
+    "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON password_resets(token);"
+    "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets(user_id);";
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {

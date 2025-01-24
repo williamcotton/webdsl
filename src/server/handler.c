@@ -126,39 +126,6 @@ static enum MHD_Result jsonKvIterator(void *cls, enum MHD_ValueKind kind,
   return MHD_YES;
 }
 
-static json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
-    const char *sessionToken = MHD_lookup_connection_value(connection, 
-                                                         MHD_COOKIE_KIND, 
-                                                         "session");
-    if (!sessionToken) {
-        return NULL;
-    }
-
-    // Look up valid session and user
-    const char *values[] = {sessionToken};
-    PGresult *result = executeParameterizedQuery(ctx->db,
-        "SELECT u.id, u.login, u.created_at "
-        "FROM sessions s "
-        "JOIN users u ON u.id = s.user_id "
-        "WHERE s.token = $1 "
-        "AND s.expires_at > NOW()",
-        values, 1);
-
-    if (!result || PQntuples(result) == 0) {
-        if (result) PQclear(result);
-        return NULL;
-    }
-
-    // Create user object
-    json_t *user = json_object();
-    json_object_set_new(user, "id", json_string(PQgetvalue(result, 0, 0)));
-    json_object_set_new(user, "login", json_string(PQgetvalue(result, 0, 1)));
-    json_object_set_new(user, "created_at", json_string(PQgetvalue(result, 0, 2)));
-
-    PQclear(result);
-    return user;
-}
-
 static json_t* buildRequestContextJson(ServerContext *ctx, struct MHD_Connection *connection, Arena *arena, 
                                    void *con_cls, const char *method, 
                                    const char *url, const char *version,
@@ -314,6 +281,19 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         // Handle register endpoint
         if (strcmp(url, "/register") == 0) {
             return handleRegisterRequest(ctx, connection, post);
+        }
+
+        // Handle resend verification endpoint
+        if (strcmp(url, "/resend-verification") == 0) {
+            return handleResendVerificationRequest(ctx, connection);
+        }
+    } else {
+        // Handle verify email endpoint (GET request)
+        if (strcmp(url, "/verify-email") == 0) {
+            const char *token = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "token");
+            if (token) {
+                return handleVerifyEmailRequest(ctx, connection, token);
+            }
         }
     }
 
