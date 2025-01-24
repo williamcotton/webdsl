@@ -287,6 +287,16 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         if (strcmp(url, "/resend-verification") == 0) {
             return handleResendVerificationRequest(ctx, connection);
         }
+
+        // Handle forgot password endpoint
+        if (strcmp(url, "/forgot-password") == 0) {
+            return handleForgotPasswordRequest(ctx, connection, post);
+        }
+
+        // Handle reset password endpoint
+        if (strcmp(url, "/reset-password") == 0) {
+            return handleResetPasswordRequest(ctx, connection, post);
+        }
     } else {
         // Handle verify email endpoint (GET request)
         if (strcmp(url, "/verify-email") == 0) {

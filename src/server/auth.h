@@ -18,4 +18,9 @@ enum MHD_Result handleVerifyEmailRequest(ServerContext *ctx, struct MHD_Connecti
 
 enum MHD_Result handleResendVerificationRequest(ServerContext *ctx, struct MHD_Connection *connection);
 
+// New password reset handlers
+enum MHD_Result handleForgotPasswordRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post);
+
+enum MHD_Result handleResetPasswordRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post);
+
 #endif /* SERVER_AUTH_H */

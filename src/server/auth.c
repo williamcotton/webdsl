@@ -11,6 +11,9 @@
 #include "auth.h"
 #include <microhttpd.h>
 #include <jansson.h>
+#include <libpq-fe.h>
+#include <time.h>
+#include <unistd.h>
 
 // Forward declarations of helper functions
 static char* generateToken(Arena *arena);
@@ -21,6 +24,36 @@ static char* hashPassword(Arena *arena, const char *password, const char *config
 static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                        const char *location,
                                        const char *error_key);
+
+// Helper function to create a password reset token
+static char* createPasswordResetToken(ServerContext *ctx, Arena *arena, const char *userId) {
+    char *token = generateToken(arena);
+    if (!token) {
+        return NULL;
+    }
+
+    // Insert token into password_resets table with 1 hour expiration
+    const char *values[] = {userId, token};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "INSERT INTO password_resets (user_id, token, expires_at) "
+        "VALUES ($1, $2, NOW() + INTERVAL '1 hour') RETURNING token",
+        values, 2);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        if (result) PQclear(result);
+        return NULL;
+    }
+
+    PQclear(result);
+    return token;
+}
+
+// Helper function to send password reset email
+static void sendPasswordResetEmail(const char *email, const char *token) {
+    // For now, just print to console
+    printf("Password reset email to: %s\n", email);
+    printf("Reset link: http://localhost:8080/reset-password?token=%s\n", token);
+}
 
 // Get user from session token
 json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
@@ -485,7 +518,6 @@ enum MHD_Result handleVerifyEmailRequest(ServerContext *ctx, struct MHD_Connecti
     }
 
     // Get user info and store in arena
-    char *userId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 1));
     char *verificationId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
@@ -552,5 +584,148 @@ enum MHD_Result handleResendVerificationRequest(ServerContext *ctx, struct MHD_C
     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
     MHD_destroy_response(response);
     
+    return ret;
+}
+
+enum MHD_Result handleForgotPasswordRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post) {
+    const char *login = NULL;
+
+    // Get form data
+    for (size_t i = 0; i < post->post_data.value_count; i++) {
+        const char *key = post->post_data.keys[i];
+        const char *value = post->post_data.values[i];
+        if (strcmp(key, "login") == 0) {
+            login = value;
+        }
+    }
+
+    if (!login) {
+        return redirectWithError(connection, "/forgot-password", "missing-fields");
+    }
+
+    // Look up user by email
+    const char *values[] = {login};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT id FROM users WHERE login = $1",
+        values, 1);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
+        if (result) PQclear(result);
+        return redirectWithError(connection, "/forgot-password", "server-error");
+    }
+
+    // If user exists, create reset token and send email
+    if (PQntuples(result) > 0) {
+        char *userId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 0));
+        PQclear(result);
+
+        char *token = createPasswordResetToken(ctx, ctx->arena, userId);
+        if (!token) {
+            return redirectWithError(connection, "/forgot-password", "server-error");
+        }
+
+        sendPasswordResetEmail(login, token);
+    } else {
+        // Even if user doesn't exist, pretend we sent email for security
+        PQclear(result);
+    }
+
+    // Always redirect to success to prevent email enumeration
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/forgot-password?success=sent");
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
+    return ret;
+}
+
+enum MHD_Result handleResetPasswordRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post) {
+    const char *token = NULL;
+    const char *password = NULL;
+    const char *confirmPassword = NULL;
+
+    // Get form data
+    for (size_t i = 0; i < post->post_data.value_count; i++) {
+        const char *key = post->post_data.keys[i];
+        const char *value = post->post_data.values[i];
+        if (strcmp(key, "token") == 0) {
+            token = value;
+        } else if (strcmp(key, "password") == 0) {
+            password = value;
+        } else if (strcmp(key, "confirm_password") == 0) {
+            confirmPassword = value;
+        }
+    }
+
+    if (!token || !password || !confirmPassword) {
+        return redirectWithError(connection, "/reset-password", "missing-fields");
+    }
+
+    if (strcmp(password, confirmPassword) != 0) {
+        char redirectBuffer[256];
+        snprintf(redirectBuffer, sizeof(redirectBuffer), "/reset-password?token=%s&error=password-mismatch", token);
+        char *redirectUrl = arenaDupString(ctx->arena, redirectBuffer);
+        struct MHD_Response *response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+        MHD_add_response_header(response, "Location", redirectUrl);
+        enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+        MHD_destroy_response(response);
+        return ret;
+    }
+
+    // Look up valid reset token
+    const char *values[] = {token};
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "SELECT user_id FROM password_resets "
+        "WHERE token = $1 AND expires_at > NOW() AND used_at IS NULL",
+        values, 1);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK || PQntuples(result) == 0) {
+        if (result) PQclear(result);
+        return redirectWithError(connection, "/reset-password", "invalid-token");
+    }
+
+    char *userId = arenaDupString(ctx->arena, PQgetvalue(result, 0, 0));
+    PQclear(result);
+
+    // Get salt from website config
+    const char *salt = NULL;
+    if (ctx->website && ctx->website->auth) {
+        salt = resolveString(ctx->arena, &ctx->website->auth->salt);
+    }
+    
+    if (!salt) {
+        fprintf(stderr, "No salt configured in website auth block\n");
+        return redirectWithError(connection, "/reset-password", "server-error");
+    }
+
+    // Hash new password
+    char *hashedPassword = hashPassword(ctx->arena, password, salt);
+    if (!hashedPassword) {
+        return redirectWithError(connection, "/reset-password", "server-error");
+    }
+
+    // Update password and mark token as used in a transaction
+    const char *updateValues[] = {hashedPassword, userId, token};
+    result = executeParameterizedQuery(ctx->db,
+        "WITH updated_user AS ("
+        "  UPDATE users SET password_hash = $1 "
+        "  WHERE id = $2 "
+        "  RETURNING id"
+        ")"
+        "UPDATE password_resets SET used_at = NOW() "
+        "WHERE token = $3 "
+        "RETURNING user_id",
+        updateValues, 3);
+
+    if (!result || PQresultStatus(result) != PGRES_TUPLES_OK || PQntuples(result) == 0) {
+        if (result) PQclear(result);
+        return redirectWithError(connection, "/reset-password", "server-error");
+    }
+    PQclear(result);
+
+    // Redirect to login with success message
+    struct MHD_Response *response = MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Location", "/login?success=password-reset");
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    MHD_destroy_response(response);
     return ret;
 }
