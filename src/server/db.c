@@ -133,7 +133,11 @@ static const char *INIT_TABLES_SQL =
     "    id SERIAL PRIMARY KEY,"
     "    login VARCHAR(255) UNIQUE NOT NULL,"
     "    password_hash VARCHAR(255) NOT NULL,"
-    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
+    "    email VARCHAR(255) UNIQUE,"
+    "    type VARCHAR(50) NOT NULL DEFAULT 'local',"
+    "    status VARCHAR(50) NOT NULL DEFAULT 'active',"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
     
     "CREATE TABLE IF NOT EXISTS sessions ("
@@ -162,12 +166,26 @@ static const char *INIT_TABLES_SQL =
     "    used_at TIMESTAMP WITH TIME ZONE"
     ");"
     
+    "CREATE TABLE IF NOT EXISTS oauth_connections ("
+    "    id SERIAL PRIMARY KEY,"
+    "    user_id INTEGER REFERENCES users(id),"
+    "    provider VARCHAR(50) NOT NULL,"
+    "    provider_user_id VARCHAR(255) NOT NULL,"
+    "    access_token VARCHAR(255) NOT NULL,"
+    "    credentials JSONB DEFAULT '{}'::jsonb,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    UNIQUE(provider, provider_user_id)"
+    ");"
+    
     "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
     "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
     "CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(token);"
     "CREATE INDEX IF NOT EXISTS email_verifications_user_id_idx ON email_verifications(user_id);"
     "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON password_resets(token);"
-    "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets(user_id);";
+    "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets(user_id);"
+    "CREATE INDEX IF NOT EXISTS oauth_connections_user_id_idx ON oauth_connections(user_id);"
+    "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON oauth_connections(provider, provider_user_id);";
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {

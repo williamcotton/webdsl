@@ -6,6 +6,10 @@ website {
     database $DATABASE_URL
     auth {
         salt $SALT
+        github {
+            clientId $GITHUB_CLIENT_ID
+            clientSecret $GITHUB_CLIENT_SECRET
+        }
     }
     include "auth.webdsl"
     include "api.webdsl"

@@ -204,6 +204,9 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("partial", TOKEN_PARTIAL)
     KW_MATCH("auth", TOKEN_AUTH)
     KW_MATCH("salt", TOKEN_SALT)
+    KW_MATCH("github", TOKEN_GITHUB)
+    KW_MATCH("clientId", TOKEN_CLIENT_ID)
+    KW_MATCH("clientSecret", TOKEN_CLIENT_SECRET)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -442,6 +445,9 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_ENV_VAR: return "ENV_VAR";
         case TOKEN_AUTH: return "AUTH";
         case TOKEN_SALT: return "SALT";
+        case TOKEN_GITHUB: return "GITHUB";
+        case TOKEN_CLIENT_ID: return "CLIENT_ID";
+        case TOKEN_CLIENT_SECRET: return "CLIENT_SECRET";
     }
     return "INVALID";
 }

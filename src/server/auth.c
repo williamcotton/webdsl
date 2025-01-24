@@ -14,16 +14,84 @@
 #include <libpq-fe.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <curl/curl.h>
 
 // Forward declarations of helper functions
-static char* generateToken(Arena *arena);
 static void sendVerificationEmail(const char *email, const char *token);
 static char* createVerificationToken(ServerContext *ctx, Arena *arena, const char *userId);
-static char* createSession(ServerContext *ctx, Arena *arena, const char *userId);
 static char* hashPassword(Arena *arena, const char *password, const char *configSalt);
-static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
-                                       const char *location,
-                                       const char *error_key);
+
+// Store state tokens temporarily in memory (consider moving to database for production)
+#define MAX_STATE_TOKENS 1000
+static struct {
+    char *token;
+    time_t created;
+} stateTokens[MAX_STATE_TOKENS];
+static size_t stateTokenCount = 0;
+static pthread_mutex_t stateTokenLock = PTHREAD_MUTEX_INITIALIZER;
+
+static void cleanupOldStateTokens(void) {
+    time_t now = time(NULL);
+    size_t i = 0;
+    
+    while (i < stateTokenCount) {
+        if (now - stateTokens[i].created > 600) { // 10 minute expiry
+            // Remove expired token by shifting remaining tokens
+            if (i < stateTokenCount - 1) {
+                memmove(&stateTokens[i], &stateTokens[i + 1], 
+                       (stateTokenCount - i - 1) * sizeof(stateTokens[0]));
+            }
+            stateTokenCount--;
+        } else {
+            i++;
+        }
+    }
+}
+
+bool validateStateToken(const char *token) {
+    bool valid = false;
+    pthread_mutex_lock(&stateTokenLock);
+    
+    // First cleanup old tokens
+    cleanupOldStateTokens();
+    
+    // Look for matching token
+    for (size_t i = 0; i < stateTokenCount; i++) {
+        if (strcmp(stateTokens[i].token, token) == 0) {
+            // Remove used token by shifting remaining tokens
+            if (i < stateTokenCount - 1) {
+                memmove(&stateTokens[i], &stateTokens[i + 1], 
+                       (stateTokenCount - i - 1) * sizeof(stateTokens[0]));
+            }
+            stateTokenCount--;
+            valid = true;
+            break;
+        }
+    }
+    
+    pthread_mutex_unlock(&stateTokenLock);
+    return valid;
+}
+
+bool storeStateToken(const char *token) {
+    bool stored = false;
+    pthread_mutex_lock(&stateTokenLock);
+    
+    // First cleanup old tokens
+    cleanupOldStateTokens();
+    
+    // Store new token if space available
+    if (stateTokenCount < MAX_STATE_TOKENS) {
+        stateTokens[stateTokenCount].token = strdup(token);
+        stateTokens[stateTokenCount].created = time(NULL);
+        stateTokenCount++;
+        stored = true;
+    }
+    
+    pthread_mutex_unlock(&stateTokenLock);
+    return stored;
+}
 
 // Helper function to create a password reset token
 static char* createPasswordResetToken(ServerContext *ctx, Arena *arena, const char *userId) {
@@ -55,23 +123,50 @@ static void sendPasswordResetEmail(const char *email, const char *token) {
     printf("Reset link: http://localhost:8080/reset-password?token=%s\n", token);
 }
 
-// Get user from session token
+bool storeOAuthCredentials(ServerContext *ctx, const char *userId, 
+                                const char *provider, const char *providerId,
+                                const char *accessToken, json_t *credentials) {
+    // Use arena allocation for the JSON string
+    size_t json_size = json_dumpb(credentials, NULL, 0, JSON_COMPACT);
+    char *creds_str = arenaAlloc(ctx->arena, json_size + 1);
+    json_dumpb(credentials, creds_str, json_size + 1, JSON_COMPACT);
+    
+    const char *values[] = {userId, provider, providerId, accessToken, creds_str};
+    
+    PGresult *result = executeParameterizedQuery(ctx->db,
+        "INSERT INTO oauth_connections "
+        "(user_id, provider, provider_user_id, access_token, credentials) "
+        "VALUES ($1, $2, $3, $4, $5::jsonb) "
+        "ON CONFLICT (provider, provider_user_id) DO UPDATE "
+        "SET access_token = $4, credentials = $5::jsonb, updated_at = NOW()",
+        values, 5);
+        
+    bool success = result != NULL;
+    if (result) PQclear(result);
+    return success;
+}
+
+// Get user from session token with enhanced user info
 json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
     const char *sessionToken = MHD_lookup_connection_value(connection, 
                                                          MHD_COOKIE_KIND, 
                                                          "session");
     if (!sessionToken) {
+        printf("No session token found in cookies\n");
         return NULL;
     }
 
-    // Look up valid session and user
+    // Look up valid session and user with enhanced info
     const char *values[] = {sessionToken};
     PGresult *result = executeParameterizedQuery(ctx->db,
-        "SELECT u.id, u.login, u.created_at "
+        "SELECT u.id, u.login, u.email, u.type, u.status, u.created_at, "
+        "       o.provider as auth_provider, o.credentials "
         "FROM sessions s "
         "JOIN users u ON u.id = s.user_id "
+        "LEFT JOIN oauth_connections o ON u.id = o.user_id "
         "WHERE s.token = $1 "
-        "AND s.expires_at > NOW()",
+        "AND s.expires_at > NOW() "
+        "AND u.status = 'active'",
         values, 1);
 
     if (!result || PQntuples(result) == 0) {
@@ -79,11 +174,30 @@ json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
         return NULL;
     }
 
-    // Create user object
+    // Create enhanced user object
     json_t *user = json_object();
     json_object_set_new(user, "id", json_string(PQgetvalue(result, 0, 0)));
     json_object_set_new(user, "login", json_string(PQgetvalue(result, 0, 1)));
-    json_object_set_new(user, "created_at", json_string(PQgetvalue(result, 0, 2)));
+    
+    // Handle potentially NULL email
+    if (!PQgetisnull(result, 0, 2)) {
+        json_object_set_new(user, "email", json_string(PQgetvalue(result, 0, 2)));
+    }
+    
+    json_object_set_new(user, "type", json_string(PQgetvalue(result, 0, 3)));
+    json_object_set_new(user, "status", json_string(PQgetvalue(result, 0, 4)));
+    json_object_set_new(user, "created_at", json_string(PQgetvalue(result, 0, 5)));
+    
+    // Handle OAuth info if present
+    if (!PQgetisnull(result, 0, 6)) {
+        json_object_set_new(user, "auth_provider", json_string(PQgetvalue(result, 0, 6)));
+        // Parse and include credentials if needed
+        json_error_t error;
+        json_t *credentials = json_loads(PQgetvalue(result, 0, 7), 0, &error);
+        if (credentials) {
+            json_object_set_new(user, "oauth_credentials", credentials);
+        }
+    }
 
     PQclear(result);
     return user;
@@ -123,7 +237,7 @@ static bool verifyPassword(const char *password, const char *storedHash, const c
     return strcmp(hashStr, storedHash) == 0;
 }
 
-static char* createSession(ServerContext *ctx, Arena *arena, const char *userId) {
+char* createSession(ServerContext *ctx, Arena *arena, const char *userId) {
     // Generate a random session token using urandom
     uint8_t random_bytes[32];
     FILE *urandom = fopen("/dev/urandom", "rb");
@@ -166,7 +280,7 @@ static char* createSession(ServerContext *ctx, Arena *arena, const char *userId)
     return sessionToken;
 }
 
-static enum MHD_Result redirectWithError(struct MHD_Connection *connection,
+enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                          const char *location,
                                          const char *error_key) {
     // Create redirect URL with error parameter
@@ -221,7 +335,6 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
         values, 1);
 
     if (!result || PQntuples(result) == 0) {
-        fprintf(stderr, "Login failed - user not found: %s\n", login);
         if (result) PQclear(result);
         return redirectWithError(connection, "/login", "invalid-credentials");
     }
@@ -233,11 +346,8 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
 
     // Verify password
     if (!verifyPassword(password, storedHash, salt)) {
-        fprintf(stderr, "Login failed - incorrect password for: %s\n", login);
         return redirectWithError(connection, "/login", "invalid-credentials");
     }
-
-    printf("Login successful for user: %s (id: %s)\n", login, userId);
     
     // Create session
     char *token = createSession(ctx, post->arena, userId);
@@ -367,7 +477,7 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     // Check if user already exists
     const char *values[] = {login};
     PGresult *checkResult = executeParameterizedQuery(ctx->db,
-        "SELECT id FROM users WHERE login = $1",
+        "SELECT id FROM users WHERE login = $1 OR email = $1",
         values, 1);
 
     if (!checkResult) {
@@ -387,10 +497,11 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
     }
 
     // Insert user into database
-    const char *insertValues[] = {login, passwordHash};
+    const char *insertValues[] = {login, passwordHash, login, "local", "active"};
     PGresult *result = executeParameterizedQuery(ctx->db,
-        "INSERT INTO users (login, password_hash) VALUES ($1, $2) RETURNING id",
-        insertValues, 2);
+        "INSERT INTO users (login, password_hash, email, type, status) "
+        "VALUES ($1, $2, $3, $4, $5) RETURNING id",
+        insertValues, 5);
 
     if (!result || PQresultStatus(result) != PGRES_TUPLES_OK) {
         fprintf(stderr, "Failed to create user account\n");
@@ -435,7 +546,7 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
 }
 
 // Helper function to generate a random token
-static char* generateToken(Arena *arena) {
+char* generateToken(Arena *arena) {
     uint8_t random_bytes[32];
     FILE *urandom = fopen("/dev/urandom", "rb");
     if (!urandom) {

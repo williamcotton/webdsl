@@ -1,6 +1,7 @@
 #include "handler.h"
 #include "routing.h"
 #include "auth.h"
+#include "github.h"
 #include "api.h"
 #include "css.h"
 #include "mustache.h"
@@ -304,6 +305,13 @@ enum MHD_Result handleRequest(ServerContext *ctx,
             if (token) {
                 return handleVerifyEmailRequest(ctx, connection, token);
             }
+        }
+        // Handle GitHub OAuth endpoints
+        if (strcmp(url, "/auth/github") == 0) {
+            return handleGithubAuthRequest(ctx, connection);
+        }
+        if (strcmp(url, "/auth/github/callback") == 0) {
+            return handleGithubCallback(ctx, connection, NULL);
         }
     }
 

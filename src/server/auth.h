@@ -23,4 +23,16 @@ enum MHD_Result handleForgotPasswordRequest(ServerContext *ctx, struct MHD_Conne
 
 enum MHD_Result handleResetPasswordRequest(ServerContext *ctx, struct MHD_Connection *connection, struct PostContext *post);
 
+
+char* generateToken(Arena *arena);
+bool storeOAuthCredentials(ServerContext *ctx, const char *userId, 
+                                const char *provider, const char *providerId,
+                                const char *accessToken, json_t *credentials);
+enum MHD_Result redirectWithError(struct MHD_Connection *connection,
+                                         const char *location,
+                                         const char *error_key);
+bool storeStateToken(const char *token);
+bool validateStateToken(const char *token);
+char* createSession(ServerContext *ctx, Arena *arena, const char *userId);
+
 #endif /* SERVER_AUTH_H */

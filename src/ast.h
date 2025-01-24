@@ -186,8 +186,14 @@ typedef struct PartialNode {
     struct PartialNode *next;
 } PartialNode;
 
+typedef struct GithubNode {
+    Value clientId;     // Can be string or env var
+    Value clientSecret; // Can be string or env var
+} GithubNode;
+
 typedef struct AuthNode {
-    Value salt;  // Salt for password hashing as environment variable
+    Value salt;
+    GithubNode *github;  // NULL if not using GitHub auth
 } AuthNode;
 
 typedef struct WebsiteNode {

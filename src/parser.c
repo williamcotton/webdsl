@@ -937,6 +937,55 @@ static AuthNode* parseAuth(Parser *parser) {
                 }
                 break;
             }
+            case TOKEN_GITHUB: {
+                advanceParser(parser);
+                consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'github'");
+                
+                GithubNode *github = arenaAlloc(parser->arena, sizeof(GithubNode));
+                memset(github, 0, sizeof(GithubNode));
+                auth->github = github;
+                
+                while (parser->current.type != TOKEN_CLOSE_BRACE && 
+                       parser->current.type != TOKEN_EOF && 
+                       !parser->hadError) {
+                    switch (parser->current.type) {
+                        case TOKEN_CLIENT_ID: {
+                            advanceParser(parser);
+                            if (parser->current.type == TOKEN_ENV_VAR) {
+                                github->clientId = makeEnvVar(parser->arena, parser->current.lexeme + 1);
+                                advanceParser(parser);
+                            } else {
+                                consume(parser, TOKEN_STRING, "Expected string or environment variable after 'clientId'");
+                                github->clientId = makeString(parser->arena, parser->previous.lexeme);
+                            }
+                            break;
+                        }
+                        case TOKEN_CLIENT_SECRET: {
+                            advanceParser(parser);
+                            if (parser->current.type == TOKEN_ENV_VAR) {
+                                github->clientSecret = makeEnvVar(parser->arena, parser->current.lexeme + 1);
+                                advanceParser(parser);
+                            } else {
+                                consume(parser, TOKEN_STRING, "Expected string or environment variable after 'clientSecret'");
+                                github->clientSecret = makeString(parser->arena, parser->previous.lexeme);
+                            }
+                            break;
+                        }
+                        default: {
+                            char buffer[256];
+                            snprintf(buffer, sizeof(buffer),
+                                    "Parse error at line %d: Unexpected token in github block.\n",
+                                    parser->current.line);
+                            fputs(buffer, stderr);
+                            parser->hadError = 1;
+                            break;
+                        }
+                    }
+                }
+                
+                consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after github block");
+                break;
+            }
             default: {
                 char buffer[256];
                 snprintf(buffer, sizeof(buffer),
