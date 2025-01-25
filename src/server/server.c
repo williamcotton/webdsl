@@ -5,6 +5,7 @@
 #include "lua.h"
 #include "css.h"
 #include "mustache.h"
+#include "email.h"
 #include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -55,6 +56,7 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
     initDb(serverCtx);
     initCss(serverCtx);
     initMustache(serverCtx);
+    initEmail(serverCtx);
 
     // Initialize Lua subsystem
     if (!initLua(serverCtx)) {

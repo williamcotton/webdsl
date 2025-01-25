@@ -9,6 +9,7 @@
 #include "server.h"
 #include "db.h"
 #include "auth.h"
+#include "email.h"
 #include <microhttpd.h>
 #include <jansson.h>
 #include <libpq-fe.h>
@@ -18,7 +19,6 @@
 #include <curl/curl.h>
 
 // Forward declarations of helper functions
-static void sendVerificationEmail(const char *email, const char *token);
 static char* createVerificationToken(ServerContext *ctx, Arena *arena, const char *userId);
 static char* hashPassword(Arena *arena, const char *password, const char *configSalt);
 
@@ -114,13 +114,6 @@ static char* createPasswordResetToken(ServerContext *ctx, Arena *arena, const ch
 
     PQclear(result);
     return token;
-}
-
-// Helper function to send password reset email
-static void sendPasswordResetEmail(const char *email, const char *token) {
-    // For now, just print to console
-    printf("Password reset email to: %s\n", email);
-    printf("Reset link: http://localhost:8080/reset-password?token=%s\n", token);
 }
 
 bool storeOAuthCredentials(ServerContext *ctx, const char *userId, 
@@ -518,8 +511,14 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
         return redirectWithError(connection, "/register", "server-error");
     }
 
-    // Send verification email
-    sendVerificationEmail(login, token);
+    // Build verification URL
+    char verificationUrl[512];
+    snprintf(verificationUrl, sizeof(verificationUrl), "http://localhost:8080/verify-email?token=%s", token);
+
+    // Send verification email using new email service
+    if (sendVerificationEmail(ctx, post->arena, login, verificationUrl) < 0) {
+        return redirectWithError(connection, "/register", "server-error");
+    }
 
     // Create session
     char *sessionToken = createSession(ctx, post->arena, userId);
@@ -568,18 +567,6 @@ char* generateToken(Arena *arena) {
     token[64] = '\0';
     
     return token;
-}
-
-// Helper function to send verification email (currently just prints to console)
-static void sendVerificationEmail(const char *email, const char *token) {
-    printf("\n=== VERIFICATION EMAIL ===\n");
-    printf("To: %s\n", email);
-    printf("Subject: Verify your email address\n");
-    printf("\nHello!\n\n");
-    printf("Please verify your email address by clicking the link below:\n");
-    printf("http://localhost:8080/verify-email?token=%s\n", token);
-    printf("\nThis link will expire in 24 hours.\n");
-    printf("=== END EMAIL ===\n\n");
 }
 
 // Helper function to create verification token
@@ -684,8 +671,14 @@ enum MHD_Result handleResendVerificationRequest(ServerContext *ctx, struct MHD_C
         return redirectWithError(connection, "/verify-email", "server-error");
     }
 
-    // Send verification email
-    sendVerificationEmail(userEmail, token);
+    // Build verification URL
+    char verificationUrl[512];
+    snprintf(verificationUrl, sizeof(verificationUrl), "http://localhost:8080/verify-email?token=%s", token);
+
+    // Send verification email using new email service
+    if (sendVerificationEmail(ctx, ctx->arena, userEmail, verificationUrl) < 0) {
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
 
     // Redirect with success message
     struct MHD_Response *response = MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
@@ -734,7 +727,14 @@ enum MHD_Result handleForgotPasswordRequest(ServerContext *ctx, struct MHD_Conne
             return redirectWithError(connection, "/forgot-password", "server-error");
         }
 
-        sendPasswordResetEmail(login, token);
+        // Build reset URL
+        char resetUrl[512];
+        snprintf(resetUrl, sizeof(resetUrl), "http://localhost:8080/reset-password?token=%s", token);
+
+        // Send password reset email using new email service
+        if (sendPasswordResetEmail(ctx, ctx->arena, login, resetUrl) < 0) {
+            return redirectWithError(connection, "/forgot-password", "server-error");
+        }
     } else {
         // Even if user doesn't exist, pretend we sent email for security
         PQclear(result);

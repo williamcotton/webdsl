@@ -1029,6 +1029,8 @@ static EmailTemplateNode* parseEmailTemplate(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE && 
            parser->current.type != TOKEN_EOF && 
            !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
             case TOKEN_SUBJECT:
                 advanceParser(parser);
@@ -1049,6 +1051,7 @@ static EmailTemplateNode* parseEmailTemplate(Parser *parser) {
                 break;
             }
         }
+        #pragma clang diagnostic pop
     }
     
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after email template");
@@ -1064,6 +1067,8 @@ static SendGridNode* parseSendGrid(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE && 
            parser->current.type != TOKEN_EOF && 
            !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
             case TOKEN_API_KEY:
                 advanceParser(parser);
@@ -1120,6 +1125,8 @@ static EmailNode* parseEmail(Parser *parser) {
     while (parser->current.type != TOKEN_CLOSE_BRACE && 
            parser->current.type != TOKEN_EOF && 
            !parser->hadError) {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wswitch-enum"
         switch (parser->current.type) {
             case TOKEN_SENDGRID:
                 advanceParser(parser);
@@ -1151,6 +1158,7 @@ static EmailNode* parseEmail(Parser *parser) {
                 break;
             }
         }
+        #pragma clang diagnostic pop
     }
     
     consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after email config");
