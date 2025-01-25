@@ -4,6 +4,13 @@ website {
     version "0.0.1"
     port $PORT
     database $DATABASE_URL
+
+    include "auth.webdsl"
+    include "api.webdsl"
+    include "pages.webdsl"
+    include "htmx.webdsl"
+    include "notes.webdsl"
+
     auth {
         salt $SALT
         github {
@@ -11,16 +18,11 @@ website {
             clientSecret $GITHUB_CLIENT_SECRET
         }
     }
-    include "auth.webdsl"
-    include "api.webdsl"
-    include "pages.webdsl"
-    include "htmx.webdsl"
-    include "notes.webdsl"
 
-        email {
+    email {
         sendgrid {
             apiKey $SENDGRID_API_KEY
-            fromEmail "noreply@example.com"
+            fromEmail "noreply@webdsl.local"
             fromName "WebDSL App"
         }
         
