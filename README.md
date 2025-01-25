@@ -18,15 +18,15 @@ This is a complete WebDSL application. We're taking in a GET request and returni
 
 ```webdsl
 website {
-    port 3123
-    database "postgresql://localhost/test"
+    port 3445
+    database "postgresql://localhost/express-test"
     api {
         route "/api/v1/team"
         method "GET"
         pipeline {
             jq { { sqlParams: [.query.id] } }
             sql { SELECT * FROM teams WHERE id = $1 }
-            jq { { data: (.rows | map({id: .id, name: .name})) } }
+            jq { { data: (.data[0].rows | map({id: .id, name: .name})) } }
         }
     }
 }
