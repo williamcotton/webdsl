@@ -213,16 +213,19 @@ api {
 ### Field Validation
 ```webdsl
 fields {
+    "name" {
+        type "string"
+        required true
+        length 10..100
+    }
     "email" {
-        type "string" 
+        type "string"
         required true
         format "email"
     }
-    "age" {
+    "team_id" {
         type "number"
-        validate {
-            range 13..120
-        }
+        required false
     }
 }
 ```
