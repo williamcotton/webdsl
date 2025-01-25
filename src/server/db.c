@@ -185,7 +185,14 @@ static const char *INIT_TABLES_SQL =
     "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON password_resets(token);"
     "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets(user_id);"
     "CREATE INDEX IF NOT EXISTS oauth_connections_user_id_idx ON oauth_connections(user_id);"
-    "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON oauth_connections(provider, provider_user_id);";
+    "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON oauth_connections(provider, provider_user_id);"
+
+    "CREATE TABLE IF NOT EXISTS state_tokens ("
+    "    id SERIAL PRIMARY KEY,"
+    "    token VARCHAR(255) UNIQUE NOT NULL,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
+    ");"
+    "CREATE INDEX IF NOT EXISTS state_tokens_token_idx ON state_tokens(token);";
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {

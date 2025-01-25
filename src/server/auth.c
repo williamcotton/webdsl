@@ -22,74 +22,50 @@
 static char* createVerificationToken(ServerContext *ctx, Arena *arena, const char *userId);
 static char* hashPassword(Arena *arena, const char *password, const char *configSalt);
 
-// Store state tokens temporarily in memory (consider moving to database for production)
-#define MAX_STATE_TOKENS 1000
-static struct {
-    char *token;
-    time_t created;
-} stateTokens[MAX_STATE_TOKENS];
-static size_t stateTokenCount = 0;
-static pthread_mutex_t stateTokenLock = PTHREAD_MUTEX_INITIALIZER;
-
-static void cleanupOldStateTokens(void) {
-    time_t now = time(NULL);
-    size_t i = 0;
-    
-    while (i < stateTokenCount) {
-        if (now - stateTokens[i].created > 600) { // 10 minute expiry
-            // Remove expired token by shifting remaining tokens
-            if (i < stateTokenCount - 1) {
-                memmove(&stateTokens[i], &stateTokens[i + 1], 
-                       (stateTokenCount - i - 1) * sizeof(stateTokens[0]));
-            }
-            stateTokenCount--;
-        } else {
-            i++;
-        }
+static void cleanupOldStateTokens(ServerContext *ctx) {
+    // Delete tokens older than 10 minutes
+    const char *sql = "DELETE FROM state_tokens WHERE created_at < NOW() - INTERVAL '10 minutes'";
+    PGresult *result = executeQuery(ctx->db, sql);
+    if (result) {
+        PQclear(result);
     }
 }
 
-bool validateStateToken(const char *token) {
+bool validateStateToken(const char *token, ServerContext *ctx) {
     bool valid = false;
-    pthread_mutex_lock(&stateTokenLock);
     
     // First cleanup old tokens
-    cleanupOldStateTokens();
+    cleanupOldStateTokens(ctx);
     
-    // Look for matching token
-    for (size_t i = 0; i < stateTokenCount; i++) {
-        if (strcmp(stateTokens[i].token, token) == 0) {
-            // Remove used token by shifting remaining tokens
-            if (i < stateTokenCount - 1) {
-                memmove(&stateTokens[i], &stateTokens[i + 1], 
-                       (stateTokenCount - i - 1) * sizeof(stateTokens[0]));
-            }
-            stateTokenCount--;
-            valid = true;
-            break;
-        }
+    // Look for and delete matching token
+    const char *values[] = {token};
+    const char *sql = "DELETE FROM state_tokens WHERE token = $1 RETURNING id";
+    
+    PGresult *result = executeParameterizedQuery(ctx->db, sql, values, 1);
+    if (result) {
+        valid = PQntuples(result) > 0;
+        PQclear(result);
     }
     
-    pthread_mutex_unlock(&stateTokenLock);
     return valid;
 }
 
-bool storeStateToken(const char *token) {
+bool storeStateToken(const char *token, ServerContext *ctx) {
     bool stored = false;
-    pthread_mutex_lock(&stateTokenLock);
     
     // First cleanup old tokens
-    cleanupOldStateTokens();
+    cleanupOldStateTokens(ctx);
     
-    // Store new token if space available
-    if (stateTokenCount < MAX_STATE_TOKENS) {
-        stateTokens[stateTokenCount].token = strdup(token);
-        stateTokens[stateTokenCount].created = time(NULL);
-        stateTokenCount++;
-        stored = true;
+    // Store new token
+    const char *values[] = {token};
+    const char *sql = "INSERT INTO state_tokens (token) VALUES ($1)";
+    
+    PGresult *result = executeParameterizedQuery(ctx->db, sql, values, 1);
+    if (result) {
+        stored = PQresultStatus(result) == PGRES_COMMAND_OK;
+        PQclear(result);
     }
     
-    pthread_mutex_unlock(&stateTokenLock);
     return stored;
 }
 

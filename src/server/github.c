@@ -48,7 +48,7 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
     
     // Generate state token for CSRF protection
     char *state = generateToken(ctx->arena);
-    if (!state || !storeStateToken(state)) {
+    if (!state || !storeStateToken(state, ctx)) {
         return redirectWithError(connection, "/login", "server-error");
     }
     
@@ -89,7 +89,7 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
     }
     
     // Validate state token to prevent CSRF
-    if (!validateStateToken(state)) {
+    if (!validateStateToken(state, ctx)) {
         printf("Error: Invalid state token\n");
         return redirectWithError(connection, "/login", "github-invalid-state");
     }

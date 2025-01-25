@@ -1,16 +1,25 @@
 #include "server.h"
-#include "handler.h"
-#include "routing.h"
 #include "db.h"
-#include "lua.h"
 #include "css.h"
+#include "lua.h"
 #include "mustache.h"
 #include "email.h"
+#include "routing.h"
+#include "handler.h"
 #include <microhttpd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <jq.h>
+#include <string.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <jansson.h>
+#include <libpq-fe.h>
+#include <time.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <jq.h>
 
 static ServerContext *serverCtx = NULL;
 
@@ -40,8 +49,8 @@ ServerContext* startServer(WebsiteNode *website, Arena *arena) {
         if (resolvedUrl) {
             serverCtx->db = initDatabase(arena, resolvedUrl);
             if (!serverCtx->db) {
-                fprintf(stderr, "Failed to connect to database: %s\n", resolvedUrl);
-                exit(1);
+                fprintf(stderr, "Failed to initialize database\n");
+                return NULL;
             }
         } else {
             fprintf(stderr, "Failed to resolve database URL\n");

@@ -31,8 +31,8 @@ bool storeOAuthCredentials(ServerContext *ctx, const char *userId,
 enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                          const char *location,
                                          const char *error_key);
-bool storeStateToken(const char *token);
-bool validateStateToken(const char *token);
+bool storeStateToken(const char *token, ServerContext *ctx);
+bool validateStateToken(const char *token, ServerContext *ctx);
 char* createSession(ServerContext *ctx, Arena *arena, const char *userId);
 
 #endif /* SERVER_AUTH_H */
