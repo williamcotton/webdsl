@@ -26,6 +26,9 @@ static IncludeNode* parseInclude(Parser *parser);
 static ResponseBlockNode* parseResponseBlock(Parser *parser);
 static PartialNode* parsePartial(Parser *parser);
 static AuthNode* parseAuth(Parser *parser);
+static EmailNode* parseEmail(Parser *parser);
+static SendGridNode* parseSendGrid(Parser *parser);
+static EmailTemplateNode* parseEmailTemplate(Parser *parser);
 
 // Forward declaration of setupStepExecutor from api.c
 void setupStepExecutor(PipelineStepNode *step);
@@ -1013,6 +1016,147 @@ static AuthNode* parseAuth(Parser *parser) {
     return auth;
 }
 
+static EmailTemplateNode* parseEmailTemplate(Parser *parser) {
+    EmailTemplateNode *template = arenaAlloc(parser->arena, sizeof(EmailTemplateNode));
+    memset(template, 0, sizeof(EmailTemplateNode));
+    
+    // Parse the template name as a string literal
+    consume(parser, TOKEN_STRING, "Expected template name as string literal");
+    template->name = copyString(parser, parser->previous.lexeme);
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after template name");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        switch (parser->current.type) {
+            case TOKEN_SUBJECT:
+                advanceParser(parser);
+                consume(parser, TOKEN_STRING, "Expected string after 'subject'");
+                template->subject = copyString(parser, parser->previous.lexeme);
+                break;
+            case TOKEN_MUSTACHE:
+                advanceParser(parser);
+                template->template = parseTemplate(parser, TOKEN_MUSTACHE);
+                break;
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in email template at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after email template");
+    return template;
+}
+
+static SendGridNode* parseSendGrid(Parser *parser) {
+    SendGridNode *sendgrid = arenaAlloc(parser->arena, sizeof(SendGridNode));
+    memset(sendgrid, 0, sizeof(SendGridNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'sendgrid'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        switch (parser->current.type) {
+            case TOKEN_API_KEY:
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    sendgrid->apiKey = makeEnvVar(parser->arena, parser->current.lexeme + 1);
+                    advanceParser(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string or environment variable after 'apiKey'");
+                    sendgrid->apiKey = makeString(parser->arena, parser->previous.lexeme);
+                }
+                break;
+            case TOKEN_FROM_EMAIL:
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    sendgrid->fromEmail = makeEnvVar(parser->arena, parser->current.lexeme + 1);
+                    advanceParser(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string or environment variable after 'fromEmail'");
+                    sendgrid->fromEmail = makeString(parser->arena, parser->previous.lexeme);
+                }
+                break;
+            case TOKEN_FROM_NAME:
+                advanceParser(parser);
+                if (parser->current.type == TOKEN_ENV_VAR) {
+                    sendgrid->fromName = makeEnvVar(parser->arena, parser->current.lexeme + 1);
+                    advanceParser(parser);
+                } else {
+                    consume(parser, TOKEN_STRING, "Expected string or environment variable after 'fromName'");
+                    sendgrid->fromName = makeString(parser->arena, parser->previous.lexeme);
+                }
+                break;
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in sendgrid config at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after sendgrid config");
+    return sendgrid;
+}
+
+static EmailNode* parseEmail(Parser *parser) {
+    EmailNode *email = arenaAlloc(parser->arena, sizeof(EmailNode));
+    memset(email, 0, sizeof(EmailNode));
+    
+    consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'email'");
+    
+    while (parser->current.type != TOKEN_CLOSE_BRACE && 
+           parser->current.type != TOKEN_EOF && 
+           !parser->hadError) {
+        switch (parser->current.type) {
+            case TOKEN_SENDGRID:
+                advanceParser(parser);
+                email->sendgrid = parseSendGrid(parser);
+                break;
+            case TOKEN_TEMPLATE: {
+                advanceParser(parser);
+                EmailTemplateNode *template = parseEmailTemplate(parser);
+                if (template) {
+                    if (!email->templateHead) {
+                        email->templateHead = template;
+                    } else {
+                        EmailTemplateNode *current = email->templateHead;
+                        while (current->next) {
+                            current = current->next;
+                        }
+                        current->next = template;
+                    }
+                }
+                break;
+            }
+            default: {
+                char buffer[256];
+                snprintf(buffer, sizeof(buffer),
+                        "Unexpected token in email config at line %d\n",
+                        parser->current.line);
+                fputs(buffer, stderr);
+                parser->hadError = 1;
+                break;
+            }
+        }
+    }
+    
+    consume(parser, TOKEN_CLOSE_BRACE, "Expected '}' after email config");
+    return email;
+}
+
 static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
     while (parser->current.type != TOKEN_EOF && 
            parser->current.type != TOKEN_CLOSE_BRACE && 
@@ -1185,6 +1329,11 @@ static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
                         current->next = partial;
                     }
                 }
+                break;
+            }
+            case TOKEN_EMAIL: {
+                advanceParser(parser);
+                website->email = parseEmail(parser);
                 break;
             }
             default: {

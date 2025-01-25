@@ -17,6 +17,7 @@
 struct PipelineStepNode;
 struct ServerContext;
 struct AuthNode;  // Add forward declaration
+struct EmailNode; // Add forward declaration
 
 // Add function pointer type for step execution
 typedef json_t* (*StepExecutor)(struct PipelineStepNode *step, json_t *input, json_t *requestContext, Arena *arena, struct ServerContext *ctx);
@@ -196,6 +197,24 @@ typedef struct AuthNode {
     GithubNode *github;  // NULL if not using GitHub auth
 } AuthNode;
 
+typedef struct EmailTemplateNode {
+    char *name;
+    char *subject;
+    TemplateNode *template;
+    struct EmailTemplateNode *next;
+} EmailTemplateNode;
+
+typedef struct SendGridNode {
+    Value apiKey;
+    Value fromEmail;
+    Value fromName;
+} SendGridNode;
+
+typedef struct EmailNode {
+    SendGridNode *sendgrid;
+    EmailTemplateNode *templateHead;
+} EmailNode;
+
 typedef struct WebsiteNode {
     char *name;
     char *author;
@@ -204,6 +223,7 @@ typedef struct WebsiteNode {
     Value databaseUrl;
     Value port;
     AuthNode *auth;  // Authentication configuration
+    EmailNode *email; // Email configuration
     PageNode *pageHead;
     StyleBlockNode *styleHead;
     LayoutNode *layoutHead;

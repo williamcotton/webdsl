@@ -16,4 +16,52 @@ website {
     include "pages.webdsl"
     include "htmx.webdsl"
     include "notes.webdsl"
+
+        email {
+        sendgrid {
+            apiKey $SENDGRID_API_KEY
+            fromEmail "noreply@example.com"
+            fromName "WebDSL App"
+        }
+        
+        template "verification" {
+            subject "Verify your email address"
+            mustache {
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h1>Verify Your Email</h1>
+                    <p>Hello!</p>
+                    <p>Please verify your email address by clicking the link below:</p>
+                    <p>
+                        <a href="{{verificationUrl}}" 
+                           style="background: #4F46E5; color: white; padding: 12px 24px; 
+                                  text-decoration: none; border-radius: 4px; display: inline-block;">
+                            Verify Email
+                        </a>
+                    </p>
+                    <p>Or copy and paste this link: {{verificationUrl}}</p>
+                    <p>This link will expire in 24 hours.</p>
+                </div>
+            }
+        }
+        
+        template "passwordReset" {
+            subject "Reset your password"
+            mustache {
+                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h1>Reset Your Password</h1>
+                    <p>Hello!</p>
+                    <p>We received a request to reset your password. Click the link below to create a new password:</p>
+                    <p>
+                        <a href="{{resetUrl}}" 
+                           style="background: #4F46E5; color: white; padding: 12px 24px; 
+                                  text-decoration: none; border-radius: 4px; display: inline-block;">
+                            Reset Password
+                        </a>
+                    </p>
+                    <p>Or copy and paste this link: {{resetUrl}}</p>
+                    <p>This link will expire in 1 hour. If you didn't request this, you can safely ignore this email.</p>
+                </div>
+            }
+        }
+    }
 }
