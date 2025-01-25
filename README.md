@@ -2,7 +2,7 @@
 
 # WebDSL
 
-WebDSL is an experimental domain-specific language and server implementation for building web applications. The language runtime includes an integrated PostgreSQL client, Lua and jq interpreters, mustache renderer and more. It provides a mainly declarative way to define websites with pages and API endpoints.
+WebDSL is an experimental domain-specific language and server implementation for building web applications. The language runtime includes an integrated PostgreSQL client, Lua and jq interpreters, mustache renderer, GitHub OAuth and more. It provides a mainly declarative way to define websites with pages and API endpoints.
 
 It aims to reduce boilerplate by having a very opinionated set of features curated especially for database driven web applications. For example, user login, authentication and sessions are all built directly into the language runtime.
 
