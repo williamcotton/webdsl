@@ -207,6 +207,13 @@ static TokenType checkKeyword(const char *start, size_t length) {
     KW_MATCH("github", TOKEN_GITHUB)
     KW_MATCH("clientId", TOKEN_CLIENT_ID)
     KW_MATCH("clientSecret", TOKEN_CLIENT_SECRET)
+    KW_MATCH("email", TOKEN_EMAIL)
+    KW_MATCH("sendgrid", TOKEN_SENDGRID)
+    KW_MATCH("fromEmail", TOKEN_FROM_EMAIL)
+    KW_MATCH("fromName", TOKEN_FROM_NAME)
+    KW_MATCH("apiKey", TOKEN_API_KEY)
+    KW_MATCH("template", TOKEN_TEMPLATE)
+    KW_MATCH("subject", TOKEN_SUBJECT)
 
     return TOKEN_UNKNOWN;
 #undef KW_MATCH
@@ -448,6 +455,13 @@ const char* getTokenTypeName(TokenType type) {
         case TOKEN_GITHUB: return "GITHUB";
         case TOKEN_CLIENT_ID: return "CLIENT_ID";
         case TOKEN_CLIENT_SECRET: return "CLIENT_SECRET";
+        case TOKEN_EMAIL: return "EMAIL";
+        case TOKEN_SENDGRID: return "SENDGRID";
+        case TOKEN_FROM_EMAIL: return "FROM_EMAIL";
+        case TOKEN_FROM_NAME: return "FROM_NAME";
+        case TOKEN_API_KEY: return "API_KEY";
+        case TOKEN_TEMPLATE: return "TEMPLATE";
+        case TOKEN_SUBJECT: return "SUBJECT";
     }
     return "INVALID";
 }
