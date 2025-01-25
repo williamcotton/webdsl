@@ -561,6 +561,16 @@ static ApiField *parseApiFields(Parser *parser) {
                     consume(parser, TOKEN_STRING, "Expected string after 'format'.");
                     field->format = copyString(parser, parser->previous.lexeme);
                 }
+                else if (strcmp(prop, "range") == 0) {
+                    consume(parser, TOKEN_RANGE, "Expected range after 'range'.");
+                    const char *range = parser->previous.lexeme;
+                    char *dotdot = strstr(range, "..");
+                    if (dotdot) {
+                        *dotdot = '\0';
+                        field->validate.range.min = atoi(range);
+                        field->validate.range.max = atoi(dotdot + 2);
+                    }
+                }
                 else if (strcmp(prop, "length") == 0) {
                     consume(parser, TOKEN_RANGE, "Expected range after 'length'.");
                     const char *range = parser->previous.lexeme;
