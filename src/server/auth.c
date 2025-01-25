@@ -152,7 +152,6 @@ json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
                                                          MHD_COOKIE_KIND, 
                                                          "session");
     if (!sessionToken) {
-        printf("No session token found in cookies\n");
         return NULL;
     }
 
