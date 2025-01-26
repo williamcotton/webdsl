@@ -214,7 +214,7 @@ ApiEndpoint* findApi(const char *url, const char *method, RouteParams *params, A
     for (int i = 0; i < HASH_TABLE_SIZE; i++) {
         entry = apiTable[i];
         while (entry) {
-            if (parseRouteParams(entry->route, url, params, arena)) {
+            if (parseRouteParams(entry->route, url, params, arena) && strcmp(entry->method, method) == 0) {
                 return entry->endpoint;
             }
             entry = entry->next;

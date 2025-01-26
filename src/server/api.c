@@ -21,8 +21,6 @@ static struct MHD_Response* createErrorResponse(const char *error_msg, int statu
     return response;
 }
 
-
-
 enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
                                  ApiEndpoint *api, const char *method,
                                  json_t *pipelineResult) {
@@ -32,7 +30,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
         MHD_create_response_from_buffer(0, "", MHD_RESPMEM_PERSISTENT);
     MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     MHD_add_response_header(response, "Access-Control-Allow-Methods",
-                            "GET, POST, OPTIONS");
+                            "GET, POST, PUT, DELETE, PATCH, OPTIONS");
     MHD_add_response_header(response, "Access-Control-Allow-Headers",
                             "Content-Type");
     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
@@ -40,14 +38,14 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
     return ret;
   }
 
-  // Verify HTTP method matches (but allow GET for GET endpoints)
-  if (strcmp(method, api->method) != 0 &&
-      !(strcmp(method, "GET") == 0 && strcmp(api->method, "GET") == 0)) {
+  // Verify HTTP method matches
+  if (strcmp(method, api->method) != 0) {
     const char *method_not_allowed = "{ \"error\": \"Method not allowed\" }";
     char *error = strdup(method_not_allowed);
     struct MHD_Response *response = MHD_create_response_from_buffer(
         strlen(error), error, MHD_RESPMEM_MUST_FREE);
     MHD_add_response_header(response, "Content-Type", "application/json");
+    MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
     enum MHD_Result ret =
         MHD_queue_response(connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
     MHD_destroy_response(response);
@@ -94,7 +92,7 @@ enum MHD_Result handleApiRequest(struct MHD_Connection *connection,
   // Add CORS headers for API endpoints
   MHD_add_response_header(response, "Access-Control-Allow-Origin", "*");
   MHD_add_response_header(response, "Access-Control-Allow-Methods",
-                          "GET, POST, OPTIONS");
+                          "GET, POST, PUT, DELETE, PATCH, OPTIONS");
   MHD_add_response_header(response, "Access-Control-Allow-Headers",
                           "Content-Type");
 

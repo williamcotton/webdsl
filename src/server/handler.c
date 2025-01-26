@@ -214,13 +214,16 @@ enum MHD_Result handleRequest(ServerContext *ctx,
                             void **con_cls) {
     (void)version; (void)ctx;
 
-    bool isPost = strcmp(method, "POST") == 0;
-
     // First call for this connection
     if (*con_cls == NULL) {
         Arena *arena = createArena(1024 * 1024); // 1MB initial size
         
-        if (isPost) {
+        // Check if this is a request with a body
+        bool hasBody = strcmp(method, "POST") == 0 || 
+                      strcmp(method, "PUT") == 0 || 
+                      strcmp(method, "PATCH") == 0;
+        
+        if (hasBody) {
             struct PostContext *post = initializePostContext(arena, connection);
             enum MHD_Result result = setupPostProcessor(post, connection, arena);
             if (result != MHD_YES) {
@@ -236,7 +239,11 @@ enum MHD_Result handleRequest(ServerContext *ctx,
 
     // Get the arena from the context
     Arena *requestArena;
-    if (isPost) {
+    bool hasBody = strcmp(method, "POST") == 0 || 
+                  strcmp(method, "PUT") == 0 || 
+                  strcmp(method, "PATCH") == 0;
+                  
+    if (hasBody) {
         struct PostContext *post = *con_cls;
         requestArena = post->arena;
     } else {
@@ -247,8 +254,8 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Initialize JSON arena for this request
     initRequestJsonArena(requestArena);
 
-    // Handle POST data
-    if (isPost) {
+    // Handle request body data
+    if (hasBody) {
         struct PostContext *post = *con_cls;
         
         if (*upload_data_size != 0) {
@@ -269,32 +276,27 @@ enum MHD_Result handleRequest(ServerContext *ctx,
             return MHD_NO;
         }
         
-        // Handle login endpoint after all POST data is processed
+        // Handle auth endpoints after all POST data is processed
         if (strcmp(url, "/login") == 0) {
             return handleLoginRequest(ctx, connection, post);
         }
         
-        // Handle logout endpoint
         if (strcmp(url, "/logout") == 0) {
             return handleLogoutRequest(ctx, connection);
         }
         
-        // Handle register endpoint
         if (strcmp(url, "/register") == 0) {
             return handleRegisterRequest(ctx, connection, post);
         }
 
-        // Handle resend verification endpoint
         if (strcmp(url, "/resend-verification") == 0) {
             return handleResendVerificationRequest(ctx, connection);
         }
 
-        // Handle forgot password endpoint
         if (strcmp(url, "/forgot-password") == 0) {
             return handleForgotPasswordRequest(ctx, connection, post);
         }
 
-        // Handle reset password endpoint
         if (strcmp(url, "/reset-password") == 0) {
             return handleResetPasswordRequest(ctx, connection, post);
         }
@@ -328,8 +330,8 @@ enum MHD_Result handleRequest(ServerContext *ctx,
         buildRequestContextJson(ctx, connection, requestArena, *con_cls, method, url,
                                 version, &match.params);
 
-    // Early validation for POST requests
-    if (isPost) {
+    // Early validation for requests with body
+    if (hasBody) {
         struct PostContext *post = *con_cls;
         json_t *validation_errors = NULL;
         
@@ -382,13 +384,14 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Execute pipeline once if it exists
     if (pipeline) {
         pipelineResult = executePipeline(ctx, pipeline, requestContext, requestArena);
+        if (pipelineResult) {
+            // Don't free the result string since we're using arena allocation
+        }
     } else {
         json_t *context = json_object();
         json_object_set_new(context, "request", json_deep_copy(requestContext));
         pipelineResult = context;
     }
-
-    
 
     // Handle based on route type
     switch (match.type) {
@@ -396,9 +399,9 @@ enum MHD_Result handleRequest(ServerContext *ctx,
             return handleApiRequest(connection, match.endpoint.api, method, pipelineResult);
 
         case ROUTE_TYPE_PAGE:
-          // add requestContext to pipelineResult
-          json_object_set_new(pipelineResult, "request", json_deep_copy(requestContext));
-          return handlePageRequest(connection, match.endpoint.page, requestArena,
+            // add requestContext to pipelineResult
+            json_object_set_new(pipelineResult, "request", json_deep_copy(requestContext));
+            return handlePageRequest(connection, match.endpoint.page, requestArena,
                                    pipelineResult);
 
         case ROUTE_TYPE_NONE:

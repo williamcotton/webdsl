@@ -11,7 +11,12 @@ extern _Thread_local Arena* currentJsonArena;
 enum RequestType {
     REQUEST_TYPE_GET,
     REQUEST_TYPE_POST,
-    REQUEST_TYPE_JSON_POST
+    REQUEST_TYPE_PUT,
+    REQUEST_TYPE_PATCH,
+    REQUEST_TYPE_DELETE,
+    REQUEST_TYPE_JSON_POST,
+    REQUEST_TYPE_JSON_PUT,
+    REQUEST_TYPE_JSON_PATCH
 };
 
 struct PostData {

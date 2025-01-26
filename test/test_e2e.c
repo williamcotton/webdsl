@@ -174,12 +174,21 @@ static json_t* makeRequest(const char *url, const char *method, const char *data
         curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&header_response);
     }
     
+    struct curl_slist *headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    
     if (strcmp(method, "POST") == 0) {
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, curl_slist_append(NULL, "Content-Type: application/json"));
+    } else if (strcmp(method, "PUT") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
+        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, data);
+    } else if (strcmp(method, "DELETE") == 0) {
+        curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
     }
     
     CURLcode res = curl_easy_perform(curl);
+    curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
     
     if (res != CURLE_OK) {
@@ -1399,6 +1408,97 @@ static void test_not_found_route(void) {
     remove(TEST_FILE);
 }
 
+static void test_in_memory_crud(void) {
+    // Write config with simple endpoints
+    const char *memory_config = 
+        "website {\n"
+        "    name \"Memory Test Site\"\n"
+        "    port 3456\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/notes\"\n"
+        "        method \"GET\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                { response: \"GET success\" }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/notes\"\n"
+        "        method \"POST\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                { response: \"POST success\" }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/notes/:id\"\n"
+        "        method \"PUT\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                { response: \"PUT success\" }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "\n"
+        "    api {\n"
+        "        route \"/api/notes/:id\"\n"
+        "        method \"DELETE\"\n"
+        "        pipeline {\n"
+        "            jq {\n"
+        "                { response: \"DELETE success\" }\n"
+        "            }\n"
+        "        }\n"
+        "    }\n"
+        "}\n";
+
+    // Ensure clean state
+    stopServer();
+    remove(TEST_FILE);
+    
+    // Write config
+    writeConfig(memory_config);
+    
+    // Start server
+    Parser parser = {0};
+    WebsiteNode *website = reloadWebsite(&parser, NULL, TEST_FILE);
+    TEST_ASSERT_NOT_NULL(website);
+    TEST_ASSERT_EQUAL_STRING("Memory Test Site", website->name);
+    
+    // Test POST request
+    json_t *response = makeRequest("http://localhost:3456/api/notes", "POST", "{}", NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("POST success", json_string_value(json_object_get(response, "response")));
+    json_decref(response);
+
+    // Test GET request
+    response = makeRequest("http://localhost:3456/api/notes", "GET", NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("GET success", json_string_value(json_object_get(response, "response")));
+    json_decref(response);
+
+    // Test PUT request
+    response = makeRequest("http://localhost:3456/api/notes/1", "PUT", "{}", NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("PUT success", json_string_value(json_object_get(response, "response")));
+    json_decref(response);
+
+    // Test DELETE request
+    response = makeRequest("http://localhost:3456/api/notes/1", "DELETE", NULL, NULL);
+    TEST_ASSERT_NOT_NULL(response);
+    TEST_ASSERT_EQUAL_STRING("DELETE success", json_string_value(json_object_get(response, "response")));
+    json_decref(response);
+    
+    // Clean up
+    stopServer();
+    freeArena(parser.arena);
+    remove(TEST_FILE);
+}
+
 int run_e2e_tests(void) {
     UNITY_BEGIN();
     RUN_TEST(test_full_website_lifecycle);
@@ -1415,5 +1515,6 @@ int run_e2e_tests(void) {
     RUN_TEST(test_route_params);
     RUN_TEST(test_json_post_endpoint);
     RUN_TEST(test_not_found_route);
+    RUN_TEST(test_in_memory_crud);
     return UNITY_END();
 }
