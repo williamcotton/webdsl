@@ -5,15 +5,13 @@
 #include "../value.h"
 #include "../deps/mustach/mustach-jansson.h"
 
-static ServerContext *serverCtx = NULL;
-
 // Helper function to find email template by name
-static EmailTemplateNode* findEmailTemplate(const char *name) {
-    if (!serverCtx || !serverCtx->website || !serverCtx->website->email) {
+static EmailTemplateNode* findEmailTemplate(const char *name, ServerContext *ctx) {
+    if (!ctx || !ctx->website || !ctx->website->email) {
         return NULL;
     }
     
-    EmailTemplateNode *current = serverCtx->website->email->templateHead;
+    EmailTemplateNode *current = ctx->website->email->templateHead;
     while (current) {
         if (strcmp(current->name, name) == 0) {
             return current;
@@ -25,13 +23,13 @@ static EmailTemplateNode* findEmailTemplate(const char *name) {
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdisabled-macro-expansion"
-static int sendEmail(Arena *arena, const char *to, const char *subject, const char *htmlContent) {
-    if (!serverCtx || !serverCtx->website || !serverCtx->website->email || !serverCtx->website->email->sendgrid) {
+static int sendEmail(Arena *arena, const char *to, const char *subject, const char *htmlContent, ServerContext *ctx) {
+    if (!ctx || !ctx->website || !ctx->website->email || !ctx->website->email->sendgrid) {
         fprintf(stderr, "Email configuration not found\n");
         return -1;
     }
 
-    SendGridNode *config = serverCtx->website->email->sendgrid;
+    SendGridNode *config = ctx->website->email->sendgrid;
     
     // Get API key
     const char *apiKey = resolveString(arena, &config->apiKey);
@@ -117,14 +115,8 @@ static int sendEmail(Arena *arena, const char *to, const char *subject, const ch
 }
 #pragma clang diagnostic pop
 
-void initEmail(ServerContext *ctx) {
-    serverCtx = ctx;
-    curl_global_init(CURL_GLOBAL_DEFAULT);
-}
-
 int sendVerificationEmail(ServerContext *ctx, Arena *arena, const char *email, const char *verificationUrl) {
-    (void)ctx;
-    EmailTemplateNode *tmpl = findEmailTemplate("verification");
+    EmailTemplateNode *tmpl = findEmailTemplate("verification", ctx);
     if (!tmpl) {
         fprintf(stderr, "Verification email template not found\n");
         return -1;
@@ -152,15 +144,14 @@ int sendVerificationEmail(ServerContext *ctx, Arena *arena, const char *email, c
     }
 
     // Send email
-    rc = sendEmail(arena, email, tmpl->subject, result);
+    rc = sendEmail(arena, email, tmpl->subject, result, ctx);
     free(result);
     
     return rc;
 }
 
 int sendPasswordResetEmail(ServerContext *ctx, Arena *arena, const char *email, const char *resetUrl) {
-    (void)ctx;
-    EmailTemplateNode *tmpl = findEmailTemplate("passwordReset");
+    EmailTemplateNode *tmpl = findEmailTemplate("passwordReset", ctx);
     if (!tmpl) {
         fprintf(stderr, "Password reset email template not found\n");
         return -1;
@@ -188,7 +179,7 @@ int sendPasswordResetEmail(ServerContext *ctx, Arena *arena, const char *email, 
     }
 
     // Send email
-    rc = sendEmail(arena, email, tmpl->subject, result);
+    rc = sendEmail(arena, email, tmpl->subject, result, ctx);
     free(result);
     
     return rc;

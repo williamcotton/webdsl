@@ -7,9 +7,6 @@
 #pragma clang diagnostic pop
 #include "server.h"
 
-// Initialize email service with server context
-void initEmail(ServerContext *ctx);
-
 // Send verification email using configured template
 int sendVerificationEmail(ServerContext *ctx, Arena *arena, const char *email, const char *verificationUrl);
 
