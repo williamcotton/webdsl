@@ -250,6 +250,7 @@ page {
                     id = note.id,
                     title = note.title,
                     employee_id = note.employee_id,
+                    employee_name = note.employee_name,
                     date = note.date,
                     closeDialog = true
                 }
