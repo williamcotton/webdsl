@@ -252,14 +252,6 @@ For detailed documentation on:
 - [API Features](docs/api.md)
 - [Validation Rules](docs/validation.md)
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
 ## Database Migrations
 
 WebDSL includes a built-in migration system to manage database schema changes. Migrations are stored in the `migrations` directory, with each migration containing `up.sql` and `down.sql` files.
@@ -333,3 +325,10 @@ The `$DATABASE_URL` is loaded from your `.env` file and should be in the format:
 DATABASE_URL=postgresql://localhost/your_database
 ```
 
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
