@@ -71,6 +71,35 @@ page {
             if not request.isLoggedIn then
                 return { redirect = "/login" }
             end
+
+            -- Store a string
+            setStore("greeting", "Hello World")
+
+            -- Store a number
+            setStore("count", 42)
+
+            -- Store a table/object
+            setStore("user", {
+                name = "John",
+                age = 30,
+                roles = {"admin", "user"}
+            })
+
+            -- Store a boolean
+            setStore("isActive", true)
+
+            -- Later retrieve specific values
+            local greeting = getStore("greeting")  -- Returns "Hello World"
+            local count = getStore("count")       -- Returns 42
+            local user = getStore("user")         -- Returns the user table
+            local isActive = getStore("isActive") -- Returns true
+            
+            print("Greeting:", greeting)
+            print("Count:", count)
+            if user then
+                print("User name:", user.name)
+            end
+            print("Is active:", isActive)
             
             local sql = findQuery("getTodos")
             local result = sqlQuery(sql, {request.user.id})

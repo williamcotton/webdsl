@@ -703,6 +703,154 @@ static int lua_findQuery(lua_State *L) {
     return 1;
 }
 
+// Get session store data
+static int lua_getStore(lua_State *L) {
+    // Get key from first argument
+    const char *key = luaL_checkstring(L, 1);
+    
+    // Get session_id from cookies global table
+    lua_getglobal(L, "cookies");
+    lua_getfield(L, -1, "session");
+    const char *session_id = lua_tostring(L, -1);
+    lua_pop(L, 2);  // Pop session and cookies table
+    
+    if (!session_id) {
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    // Build query to get session store data
+    const char *sql = "SELECT data::text FROM session_store WHERE session_id = $1 LIMIT 1";
+    const char *params[] = {session_id};
+    
+    // Execute query
+    json_t *result = executeSqlWithParams(g_ctx->db, sql, params, 1);
+    if (!result) {
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    // Get the first row if it exists
+    json_t *rows = json_object_get(result, "rows");
+    if (!rows || !json_array_size(rows)) {
+        json_decref(result);
+        lua_pushnil(L);
+        return 1;
+    }
+
+    // Get the first row
+    json_t *row = json_array_get(rows, 0);
+    
+    // Parse the data field as JSON
+    json_t *data_str = json_object_get(row, "data");
+    if (!data_str || !json_is_string(data_str)) {
+        json_decref(result);
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    json_error_t error;
+    json_t *data = json_loads(json_string_value(data_str), 0, &error);
+    json_decref(result);
+    
+    if (!data) {
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    // Get the specific key from the data
+    json_t *value = json_object_get(data, key);
+    if (!value) {
+        json_decref(data);
+        lua_pushnil(L);
+        return 1;
+    }
+    
+    // Convert just that value to Lua
+    pushJsonToLua(L, value);
+    json_decref(data);
+    
+    return 1;
+}
+
+// Set a value in session store
+static int lua_setStore(lua_State *L) {
+    // Check arguments
+    const char *key = luaL_checkstring(L, 1);
+    if (lua_isnone(L, 2)) {
+        return luaL_error(L, "Missing value argument");
+    }
+    
+    // Get session_id from cookies global table
+    lua_getglobal(L, "cookies");
+    lua_getfield(L, -1, "session");
+    const char *session_id = lua_tostring(L, -1);
+    lua_pop(L, 2);  // Pop session and cookies table
+    
+    if (!session_id) {
+        lua_pushboolean(L, 0);  // Return false if no session
+        return 1;
+    }
+    
+    // First get existing data
+    const char *get_sql = "SELECT data::text FROM session_store WHERE session_id = $1 LIMIT 1";
+    const char *get_params[] = {session_id};
+    json_t *get_result = executeSqlWithParams(g_ctx->db, get_sql, get_params, 1);
+    
+    // Initialize data object
+    json_t *data = json_object();
+    
+    // If we got existing data, parse it
+    if (get_result) {
+        json_t *rows = json_object_get(get_result, "rows");
+        if (rows && json_array_size(rows)) {
+            json_t *row = json_array_get(rows, 0);
+            json_t *data_str = json_object_get(row, "data");
+            if (data_str && json_is_string(data_str)) {
+                json_error_t error;
+                json_t *parsed_data = json_loads(json_string_value(data_str), 0, &error);
+                if (parsed_data) {
+                    json_decref(data);
+                    data = parsed_data;
+                }
+            }
+        }
+        json_decref(get_result);
+    }
+    
+    // Convert Lua value to JSON and set it in data object
+    json_t *value = luaToJson(L, 2);
+    if (!value) {
+        json_decref(data);
+        return luaL_error(L, "Failed to convert value to JSON");
+    }
+    json_object_set_new(data, key, value);
+    
+    // Convert data object to string
+    char *data_str = json_dumps(data, JSON_COMPACT);
+    if (!data_str) {
+        json_decref(data);
+        return luaL_error(L, "Failed to convert data to string");
+    }
+    
+    // Update session store
+    const char *update_sql = "INSERT INTO session_store (session_id, data) VALUES ($1, $2::jsonb) "
+                           "ON CONFLICT (session_id) DO UPDATE SET data = $2::jsonb, updated_at = CURRENT_TIMESTAMP";
+    const char *update_params[] = {session_id, data_str};
+    json_t *update_result = executeSqlWithParams(g_ctx->db, update_sql, update_params, 2);
+    
+    json_decref(data);
+    
+    if (!update_result) {
+        lua_pushboolean(L, 0);  // Return false if update failed
+        return 1;
+    }
+    
+    json_decref(update_result);
+    lua_pushboolean(L, 1);  // Return true for success
+    return 1;
+}
+
 // Register database functions with Lua state
 void registerDbFunctions(lua_State *L) {
     lua_pushcfunction(L, lua_sqlQuery);
@@ -710,6 +858,12 @@ void registerDbFunctions(lua_State *L) {
     
     lua_pushcfunction(L, lua_findQuery);
     lua_setglobal(L, "findQuery");
+    
+    lua_pushcfunction(L, lua_getStore);
+    lua_setglobal(L, "getStore");
+    
+    lua_pushcfunction(L, lua_setStore);
+    lua_setglobal(L, "setStore");
 }
 
 // Add global cache for embedded scripts
@@ -913,9 +1067,15 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     // Create tables for request context
     lua_newtable(L);  // Main request context table
     
-    // Add query params
-    lua_newtable(L);
+    // Set up globals from the original request context
     json_t *query = json_object_get(requestContext, "query");
+    json_t *body = json_object_get(requestContext, "body");
+    json_t *headers = json_object_get(requestContext, "headers");
+    json_t *cookies = json_object_get(requestContext, "cookies");
+    json_t *params = json_object_get(requestContext, "params");
+    
+    // Create query table
+    lua_newtable(L);
     const char *key;
     json_t *value;
     json_object_foreach(query, key, value) {
@@ -925,37 +1085,41 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     }
     lua_setglobal(L, "query");
     
-    // Add headers
+    // Create body table
     lua_newtable(L);
-    json_t *headers = json_object_get(requestContext, "headers");
-    json_object_foreach(headers, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
-    }
-    lua_setglobal(L, "headers");
-
-    // Add params
-    lua_newtable(L);
-    json_t *params = json_object_get(requestContext, "params");
-    const char *params_key;
-    json_t *params_value;
-    json_object_foreach(params, params_key, params_value) {
-        lua_pushstring(L, params_key);
-        lua_pushstring(L, json_string_value(params_value));
-        lua_settable(L, -3);
-    }
-    lua_setglobal(L, "params");
-    
-    // Add body params
-    lua_newtable(L);
-    json_t *body = json_object_get(requestContext, "body");
     json_object_foreach(body, key, value) {
         lua_pushstring(L, key);
         lua_pushstring(L, json_string_value(value));
         lua_settable(L, -3);
     }
     lua_setglobal(L, "body");
+    
+    // Create headers table
+    lua_newtable(L);
+    json_object_foreach(headers, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "headers");
+    
+    // Create cookies table
+    lua_newtable(L);
+    json_object_foreach(cookies, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "cookies");
+
+    // Create params table
+    lua_newtable(L);
+    json_object_foreach(params, key, value) {
+        lua_pushstring(L, key);
+        lua_pushstring(L, json_string_value(value));
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "params");
     
     return L;
 }
@@ -1016,43 +1180,59 @@ static void pushJsonToLua(lua_State *L, json_t *json) {
 static json_t* luaToJson(lua_State *L, int index) {
     switch (lua_type(L, index)) {
         case LUA_TTABLE: {
-            bool isArray = true;
-            lua_Integer maxIndex = 0;
-            
-            lua_pushnil(L);
-            while (lua_next(L, index - 1) != 0) {
-                if (lua_type(L, -2) != LUA_TNUMBER) {
-                    isArray = false;
-                } else {
-                    lua_Integer i = lua_tointeger(L, -2);
-                    if (i > 0 && i > maxIndex) {
-                        maxIndex = i;
-                    } else {
-                        isArray = false;
-                    }
-                }
-                lua_pop(L, 1);
+            // Normalize the index to be positive if it was negative
+            if (index < 0) {
+                index = lua_gettop(L) + index + 1;
             }
             
-            if (isArray && maxIndex > 0) {
+            // First pass: determine if it's an array
+            bool isArray = true;
+            size_t arrayLen = 0;
+            
+            lua_pushnil(L);  // First key
+            while (lua_next(L, index) != 0) {
+                if (!lua_isnumber(L, -2) || lua_tointeger(L, -2) != (lua_Integer)(arrayLen + 1)) {
+                    isArray = false;
+                }
+                arrayLen++;
+                lua_pop(L, 1);  // Remove value, keep key for next iteration
+            }
+            
+            if (isArray) {
+                // Create JSON array
                 json_t *arr = json_array();
-                for (lua_Integer i = 1; i <= maxIndex; i++) {
-                    lua_rawgeti(L, index, i);
+                for (size_t i = 1; i <= arrayLen; i++) {
+                    lua_rawgeti(L, index, (lua_Integer)i);
                     json_t *value = luaToJson(L, -1);
-                    json_array_append_new(arr, value);
+                    if (value) {
+                        json_array_append_new(arr, value);
+                    }
                     lua_pop(L, 1);
                 }
                 return arr;
             } else {
+                // Create JSON object
                 json_t *obj = json_object();
-                lua_pushnil(L);
-                while (lua_next(L, index - 1) != 0) {
-                    const char *key = lua_tostring(L, -2);
-                    json_t *value = luaToJson(L, -1);
-                    if (key) {
-                        json_object_set_new(obj, key, value);
+                lua_pushnil(L);  // First key
+                while (lua_next(L, index) != 0) {
+                    // Convert key to string
+                    const char *key;
+                    if (lua_type(L, -2) == LUA_TSTRING) {
+                        key = lua_tostring(L, -2);
+                    } else {
+                        // Convert non-string key to string
+                        lua_pushvalue(L, -2);  // Copy key
+                        key = lua_tostring(L, -1);
+                        lua_pop(L, 1);  // Remove key copy
                     }
-                    lua_pop(L, 1);
+                    
+                    if (key) {
+                        json_t *value = luaToJson(L, -1);
+                        if (value) {
+                            json_object_set_new(obj, key, value);
+                        }
+                    }
+                    lua_pop(L, 1);  // Remove value, keep key for next iteration
                 }
                 return obj;
             }
