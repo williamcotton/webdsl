@@ -837,17 +837,50 @@ static int lua_setStore(lua_State *L) {
     const char *update_sql = "INSERT INTO session_store (session_id, data) VALUES ($1, $2::jsonb) "
                            "ON CONFLICT (session_id) DO UPDATE SET data = $2::jsonb, updated_at = CURRENT_TIMESTAMP";
     const char *update_params[] = {session_id, data_str};
-    json_t *update_result = executeSqlWithParams(g_ctx->db, update_sql, update_params, 2);
+    json_t *sqlResult = executeSqlWithParams(g_ctx->db, update_sql, update_params, 2);
     
     json_decref(data);
     
-    if (!update_result) {
+    if (!sqlResult) {
         lua_pushboolean(L, 0);  // Return false if update failed
         return 1;
     }
     
-    json_decref(update_result);
+    json_decref(sqlResult);
     lua_pushboolean(L, 1);  // Return true for success
+    return 1;
+}
+
+// Helper function to create a login redirect response
+static int lua_redirectLogin(lua_State *L) {
+    // Get return path from first argument (optional)
+    const char *returnPath = luaL_optstring(L, 1, NULL);
+    
+    printf("lua_redirectLogin returnPath: %s\n", returnPath ? returnPath : "null");
+    
+    // Create result object
+    json_t *result = json_object();
+    
+    if (returnPath) {
+        // Append return path as query parameter
+        char *encoded_path = curl_easy_escape(NULL, returnPath, 0);
+        if (encoded_path) {
+            char redirect_url[1024];
+            snprintf(redirect_url, sizeof(redirect_url), "/login?returnTo=%s", encoded_path);
+            printf("lua_redirectLogin encoded redirect_url: %s\n", redirect_url);
+            json_object_set_new(result, "redirect", json_string(redirect_url));
+            curl_free(encoded_path);
+        } else {
+            json_object_set_new(result, "redirect", json_string("/login"));
+        }
+    } else {
+        json_object_set_new(result, "redirect", json_string("/login"));
+    }
+    
+    // Convert to Lua and return
+    pushJsonToLua(L, result);
+    json_decref(result);
+    
     return 1;
 }
 
@@ -864,6 +897,9 @@ void registerDbFunctions(lua_State *L) {
     
     lua_pushcfunction(L, lua_setStore);
     lua_setglobal(L, "setStore");
+    
+    lua_pushcfunction(L, lua_redirectLogin);
+    lua_setglobal(L, "redirectLogin");
 }
 
 // Add global cache for embedded scripts

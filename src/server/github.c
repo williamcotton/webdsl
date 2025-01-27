@@ -46,11 +46,30 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
         return redirectWithError(connection, "/login", "github-not-configured");
     }
     
+    // Get returnTo from query parameters
+    const char *returnTo = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "returnTo");
+    printf("GitHub Auth Start - returnTo: %s\n", returnTo ? returnTo : "null");
+    
     // Generate state token for CSRF protection
     char *state = generateToken(ctx->arena);
-    if (!state || !storeStateToken(state, ctx)) {
+    if (!state) {
         return redirectWithError(connection, "/login", "server-error");
     }
+    
+    // Store state token with returnTo data if present
+    json_t *data = json_object();  // Always create an object
+    if (returnTo) {
+        json_object_set_new(data, "returnTo", json_string(returnTo));
+        char *debug_str = json_dumps(data, JSON_COMPACT);
+        printf("Storing state data: %s\n", debug_str);
+    }
+    
+    if (!storeStateToken(state, data, ctx)) {
+        json_decref(data);  // Always clean up
+        return redirectWithError(connection, "/login", "server-error");
+    }
+    
+    json_decref(data);  // Always clean up
     
     // Build GitHub authorization URL
     char redirect_url[1024];
@@ -81,17 +100,30 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
     const char *code = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "code");
     const char *state = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "state");
     
-    
     // Validate required parameters
     if (!code || !state) {
         printf("Error: Missing code or state\n");
         return redirectWithError(connection, "/login", "github-invalid-response");
     }
     
-    // Validate state token to prevent CSRF
-    if (!validateStateToken(state, ctx)) {
+    // Validate state token and get stored data
+    json_t *stateData = validateStateToken(state, ctx);
+    if (!stateData) {
         printf("Error: Invalid state token\n");
         return redirectWithError(connection, "/login", "github-invalid-state");
+    }
+    
+    char *debug_str = json_dumps(stateData, JSON_COMPACT);
+    printf("Retrieved state data: %s\n", debug_str);
+    
+    // Extract returnTo path if present
+    const char *returnTo = NULL;
+    json_t *returnToJson = json_object_get(stateData, "returnTo");
+    if (returnToJson && json_is_string(returnToJson)) {
+        returnTo = json_string_value(returnToJson);
+        printf("Found returnTo in state: %s\n", returnTo);
+    } else {
+        printf("No returnTo found in state data\n");
     }
     
     // Get GitHub OAuth configuration
@@ -311,11 +343,31 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
              "session=%s; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400",
              sessionToken);
     MHD_add_response_header(response, "Set-Cookie", cookie);
-    MHD_add_response_header(response, "Location", "/");
+    
+    // Use returnTo path if present, otherwise redirect to home
+    const char *redirectPath = "/";
+    if (returnTo) {
+        CURL *curlInit = curl_easy_init();
+        if (curlInit) {
+            int decodedLength = 0;
+            char *decodedPath = curl_easy_unescape(curlInit, returnTo, 0, &decodedLength);
+            if (decodedPath) {
+                redirectPath = arenaDupString(ctx->arena, decodedPath);
+                printf("Decoded returnTo path: %s\n", redirectPath);
+                curl_free(decodedPath);
+            }
+            curl_easy_cleanup(curlInit);
+        }
+    }
+    
+    printf("Final redirect path: %s\n", redirectPath);
+    
+    MHD_add_response_header(response, "Location", redirectPath);
     
     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
     MHD_destroy_response(response);
     
+    if (stateData) json_decref(stateData);
     return ret;
 }
 #pragma clang diagnostic pop

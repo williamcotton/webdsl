@@ -69,7 +69,7 @@ page {
     pipeline {
         lua {
             if not request.isLoggedIn then
-                return { redirect = "/login" }
+                return redirectLogin("/todos")
             end
 
             -- Store a string

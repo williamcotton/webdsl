@@ -25,9 +25,14 @@ json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *reque
         return NULL;
     }
 
-    // Check for existing error here instead of in each executor
+    // Check for existing error or redirect here instead of in each executor
     json_t *error = json_object_get(input, "error");
     if (error) {
+        return json_deep_copy(input);
+    }
+
+    json_t *redirect = json_object_get(input, "redirect");
+    if (redirect) {
         return json_deep_copy(input);
     }
 

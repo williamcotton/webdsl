@@ -31,36 +31,45 @@ static void cleanupOldStateTokens(ServerContext *ctx) {
     }
 }
 
-bool validateStateToken(const char *token, ServerContext *ctx) {
-    bool valid = false;
+json_t* validateStateToken(const char *token, ServerContext *ctx) {
+    json_t *data = NULL;
     
     // First cleanup old tokens
     cleanupOldStateTokens(ctx);
     
     // Look for and delete matching token
     const char *values[] = {token};
-    const char *sql = "DELETE FROM state_tokens WHERE token = $1 RETURNING id";
+    const char *sql = "DELETE FROM state_tokens WHERE token = $1 RETURNING data";
     
     PGresult *result = executeParameterizedQuery(ctx->db, sql, values, 1);
     if (result) {
-        valid = PQntuples(result) > 0;
+        if (PQntuples(result) > 0 && !PQgetisnull(result, 0, 0)) {
+            json_error_t error;
+            data = json_loads(PQgetvalue(result, 0, 0), 0, &error);
+        }
         PQclear(result);
     }
     
-    return valid;
+    return data;
 }
 
-bool storeStateToken(const char *token, ServerContext *ctx) {
+bool storeStateToken(const char *token, json_t *data, ServerContext *ctx) {
     bool stored = false;
     
     // First cleanup old tokens
     cleanupOldStateTokens(ctx);
     
-    // Store new token
-    const char *values[] = {token};
-    const char *sql = "INSERT INTO state_tokens (token) VALUES ($1)";
+    // Convert data to JSON string if present
+    char *data_str = NULL;
+    if (data) {
+        data_str = json_dumps(data, JSON_COMPACT);
+    }
     
-    PGresult *result = executeParameterizedQuery(ctx->db, sql, values, 1);
+    // Store new token with data
+    const char *values[] = {token, data_str ? data_str : NULL};
+    const char *sql = "INSERT INTO state_tokens (token, data) VALUES ($1, $2::jsonb)";
+    
+    PGresult *result = executeParameterizedQuery(ctx->db, sql, values, 2);
     if (result) {
         stored = PQresultStatus(result) == PGRES_COMMAND_OK;
         PQclear(result);
@@ -331,8 +340,41 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
+    // First check for returnTo in POST data
+    const char *returnTo = NULL;
+    for (size_t i = 0; i < post->post_data.value_count; i++) {
+        if (strcmp(post->post_data.keys[i], "returnTo") == 0) {
+            returnTo = post->post_data.values[i];
+            break;
+        }
+    }
+    
+    // If not in POST data, check query parameters
+    if (!returnTo) {
+        returnTo = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "returnTo");
+    }
+    
+    printf("returnTo from POST/query: %s\n", returnTo ? returnTo : "null");
+    
+    const char *redirectPath = "/";  // Default path
+    
+    if (returnTo) {
+        CURL *curl = curl_easy_init();
+        if (curl) {
+            int decodedLength = 0;
+            char *decodedPath = curl_easy_unescape(curl, returnTo, 0, &decodedLength);
+            if (decodedPath) {
+                redirectPath = arenaDupString(post->arena, decodedPath);
+                curl_free(decodedPath);
+            }
+            curl_easy_cleanup(curl);
+        }
+    }
+    
+    printf("redirectPath (decoded): %s\n", redirectPath);
+    
     // Set redirect header
-    MHD_add_response_header(response, "Location", "/");
+    MHD_add_response_header(response, "Location", redirectPath);
     
     enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_FOUND, response);
     MHD_destroy_response(response);
