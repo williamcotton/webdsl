@@ -11,6 +11,7 @@
 #include <jansson.h>
 #include "website.h"
 #include "../deps/dotenv-c/dotenv.h"
+#include "migration.h"
 
 #define MAX_PATH_LENGTH 4096
 #define MAX_INCLUDES 100  // Maximum number of files to track
@@ -79,8 +80,13 @@ static bool checkModifications(ModificationTracker* tracker) {
 static void printUsage(const char* program) {
     fprintf(stderr, "Usage: %s [options] [path to .webdsl file]\n", program);
     fprintf(stderr, "Options:\n");
-    fprintf(stderr, "  --json    Parse the .webdsl file and output AST as JSON\n");
-    fprintf(stderr, "  --help    Show this help message\n");
+    fprintf(stderr, "  --json              Parse the .webdsl file and output AST as JSON\n");
+    fprintf(stderr, "  --help              Show this help message\n");
+    fprintf(stderr, "\nMigration Commands:\n");
+    fprintf(stderr, "  migrate up          Run all pending migrations\n");
+    fprintf(stderr, "  migrate down        Roll back last migration\n");
+    fprintf(stderr, "  migrate create NAME Create a new migration\n");
+    fprintf(stderr, "  migrate status      Show migration status\n");
 }
 
 int main(int argc, char* argv[]) {
@@ -114,6 +120,30 @@ int main(int argc, char* argv[]) {
         return 64;
     }
 
+    // Check for migration command
+    if (strcmp(argv[optind], "migrate") == 0) {
+        if (optind + 2 >= argc) {
+            fprintf(stderr, "Usage: %s migrate <command> <webdsl-file> [name]\n", argv[0]);
+            return 64;
+        }
+        
+        const char* cmd = argv[optind + 1];
+        const char* webdsl_path = argv[optind + 3];
+        const char* name = NULL;
+        
+        if (strcmp(cmd, "create") == 0) {
+            if (optind + 3 >= argc) {
+                fprintf(stderr, "Usage: %s migrate create <name> <webdsl-file>\n", argv[0]);
+                return 64;
+            }
+            name = argv[optind + 2];
+        } else {
+            webdsl_path = argv[optind + 2];
+        }
+        
+        return runMigration(cmd, webdsl_path, name);
+    }
+
     // Get the .webdsl file path from remaining args
     const char* webdsl_path = argv[optind];
 
@@ -134,7 +164,6 @@ int main(int argc, char* argv[]) {
         website = parseWebsite(&parser, webdsl_path);
         if (website != NULL) {
             char* json_str = websiteToJson(parser.arena, website);
-            // char* json_str = json_dumps(json, JSON_INDENT(2));
             if (json_str) {
                 printf("%s\n", json_str);
                 free(json_str);

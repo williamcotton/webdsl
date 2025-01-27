@@ -260,3 +260,76 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
+## Database Migrations
+
+WebDSL includes a built-in migration system to manage database schema changes. Migrations are stored in the `migrations` directory, with each migration containing `up.sql` and `down.sql` files.
+
+### Migration Commands
+
+- `webdsl migrate create <name> app.webdsl` - Create a new migration
+- `webdsl migrate up app.webdsl` - Run all pending migrations
+- `webdsl migrate down app.webdsl` - Roll back the most recent migration
+- `webdsl migrate status app.webdsl` - Show migration status
+
+### Creating a Migration
+
+To create a new migration:
+
+```bash
+webdsl migrate create add_users app.webdsl
+```
+
+This creates a new directory in `migrations` with the format `YYYYMMDDHHMMSS_add_users` containing:
+- `up.sql` - SQL to apply the migration
+- `down.sql` - SQL to revert the migration
+
+### Example Migration
+
+```sql
+-- up.sql
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- down.sql
+DROP TABLE users;
+```
+
+### Migration Status
+
+To check the status of migrations:
+
+```bash
+webdsl migrate status app.webdsl
+```
+
+This shows which migrations have been applied and which are pending:
+
+```
+Migration Status:
+=================
+
+✓ 20250127045917_add_users (applied at 2025-01-27 04:59:17-06)
+✗ 20250127050023_add_posts (pending)
+
+Total: 2 migrations (1 applied, 1 pending)
+```
+
+### Database Configuration
+
+Migrations use the database URL specified in your `app.webdsl` file:
+
+```
+website {
+    database $DATABASE_URL
+    // ... other config
+}
+```
+
+The `$DATABASE_URL` is loaded from your `.env` file and should be in the format:
+```
+DATABASE_URL=postgresql://localhost/your_database
+```
+

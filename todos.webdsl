@@ -1,0 +1,201 @@
+query {
+    name "getTodos"
+    sql {
+        SELECT * FROM todos 
+        WHERE user_id = $1
+        ORDER BY completed ASC, created_at DESC
+    }
+}
+
+query {
+    name "createTodo"
+    sql {
+        INSERT INTO todos (title, user_id, completed) 
+        VALUES ($1, $2, false)
+        RETURNING id, title, completed, created_at
+    }
+}
+
+query {
+    name "toggleTodo"
+    sql {
+        UPDATE todos 
+        SET completed = NOT completed 
+        WHERE id = $1 AND user_id = $2
+        RETURNING id, title, completed, created_at
+    }
+}
+
+query {
+    name "deleteTodo"
+    sql {
+        DELETE FROM todos 
+        WHERE id = $1 AND user_id = $2
+    }
+}
+
+partial {
+    name "todo-item"
+    mustache {
+        <div id="todo-{{id}}" class="flex items-center justify-between p-4 bg-white rounded-lg shadow mb-2">
+            <div class="flex items-center space-x-3">
+                <input type="checkbox" 
+                       {{#completed}}checked{{/completed}}
+                       hx-post="/htmx/todos/toggle/{{id}}"
+                       hx-target="#todo-{{id}}"
+                       hx-swap="outerHTML"
+                       hx-trigger="change"
+                       class="h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                <span class="text-gray-800 {{#completed}}line-through text-gray-500{{/completed}}">
+                    {{title}}
+                </span>
+            </div>
+            <button hx-delete="/htmx/todos/delete/{{id}}"
+                    hx-target="#todo-{{id}}"
+                    hx-swap="outerHTML"
+                    class="text-red-600 hover:text-red-800">
+                <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                </svg>
+            </button>
+        </div>
+    }
+}
+
+page {
+    name "todos"
+    route "/todos"
+    layout "main"
+    pipeline {
+        lua {
+            if not request.isLoggedIn then
+                return { redirect = "/login" }
+            end
+            
+            local sql = findQuery("getTodos")
+            local result = sqlQuery(sql, {request.user.id})
+            
+            return { 
+                todos = result.rows,
+                pageTitle = "Todos",
+                isLoggedIn = request.isLoggedIn,
+                user = request.user
+            }
+        }
+    }
+    mustache {
+        <div class="max-w-2xl mx-auto py-8 px-4">
+            <div class="flex justify-between items-center mb-8">
+                <h1 class="text-3xl font-bold text-gray-900">My Todos</h1>
+            </div>
+
+            <!-- Add Todo Form -->
+            <form hx-post="/htmx/todos/create" 
+                  hx-target="#todos-list" 
+                  hx-swap="afterbegin"
+                  class="flex gap-2 mb-8">
+                <input type="text" 
+                       name="title" 
+                       placeholder="What needs to be done?"
+                       required
+                       class="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                <button type="submit" 
+                        class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                    Add Todo
+                </button>
+            </form>
+
+            <!-- Todos List -->
+            <div id="todos-list" class="space-y-2">
+                {{#todos}}
+                {{> todo-item}}
+                {{/todos}}
+                {{^todos}}
+                <p class="text-gray-500 text-center py-4">No todos yet. Add one above!</p>
+                {{/todos}}
+            </div>
+        </div>
+    }
+}
+
+page {
+    name "todos-create"
+    route "/htmx/todos/create"
+    method "POST"
+    layout "none"
+    fields {
+        "title" {
+            type "string"
+            required true
+            length 1..200
+        }
+    }
+    pipeline {
+        lua {
+            if not request.isLoggedIn then
+                return { statusCode = 401 }
+            end
+            
+            local title = body.title
+            local user_id = request.user.id
+            
+            local sql = findQuery("createTodo")
+            local result = sqlQuery(sql, {title, user_id})
+            
+            return result.rows[1]
+        }
+    }
+    mustache {
+        {{> todo-item}}
+    }
+}
+
+page {
+    name "todos-toggle"
+    route "/htmx/todos/toggle/:id"
+    method "POST"
+    layout "none"
+    pipeline {
+        lua {
+            if not request.isLoggedIn then
+                return { statusCode = 401 }
+            end
+            
+            local id = params.id
+            local user_id = request.user.id
+            
+            local sql = findQuery("toggleTodo")
+            local result = sqlQuery(sql, {id, user_id})
+            
+            return result.rows[1]
+        }
+    }
+    mustache {
+        {{> todo-item}}
+    }
+}
+
+page {
+    name "todos-delete"
+    route "/htmx/todos/delete/:id"
+    method "DELETE"
+    layout "none"
+    pipeline {
+        lua {
+            if not request.isLoggedIn then
+                return { statusCode = 401 }
+            end
+            
+            local id = params.id
+            local user_id = request.user.id
+            
+            local sql = findQuery("deleteTodo")
+            sqlQuery(sql, {id, user_id})
+            
+            return {}
+        }
+    }
+    mustache {
+        <!-- Empty response as the element will be removed -->
+    }
+} 

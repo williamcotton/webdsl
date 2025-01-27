@@ -10,6 +10,7 @@ website {
     include "pages.webdsl"
     include "htmx.webdsl"
     include "notes.webdsl"
+    include "todos.webdsl"
 
     auth {
         salt $SALT

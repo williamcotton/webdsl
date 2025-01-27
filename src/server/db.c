@@ -129,6 +129,14 @@ PGresult* executeParameterizedQuery(Database *db, const char *sql,
 
 static const char *INIT_TABLES_SQL = 
     "SET client_min_messages TO WARNING;"
+    "CREATE TABLE IF NOT EXISTS migrations ("
+    "    id SERIAL PRIMARY KEY,"
+    "    name VARCHAR(255) NOT NULL UNIQUE,"
+    "    checksum VARCHAR(64) NOT NULL,"
+    "    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    applied_by VARCHAR(255)"
+    ");"
+    
     "CREATE TABLE IF NOT EXISTS users ("
     "    id SERIAL PRIMARY KEY,"
     "    login VARCHAR(255) UNIQUE NOT NULL,"
@@ -146,6 +154,15 @@ static const char *INIT_TABLES_SQL =
     "    token VARCHAR(255) UNIQUE NOT NULL,"
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL"
+    ");"
+    
+    "CREATE TABLE IF NOT EXISTS session_store ("
+    "    id SERIAL PRIMARY KEY,"
+    "    session_id VARCHAR(255) UNIQUE NOT NULL,"
+    "    user_id INTEGER REFERENCES users(id),"
+    "    data JSONB DEFAULT '{}'::jsonb,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
     
     "CREATE TABLE IF NOT EXISTS email_verifications ("
@@ -180,6 +197,8 @@ static const char *INIT_TABLES_SQL =
     
     "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
     "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
+    "CREATE INDEX IF NOT EXISTS session_store_session_id_idx ON session_store(session_id);"
+    "CREATE INDEX IF NOT EXISTS session_store_user_id_idx ON session_store(user_id);"
     "CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(token);"
     "CREATE INDEX IF NOT EXISTS email_verifications_user_id_idx ON email_verifications(user_id);"
     "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON password_resets(token);"
@@ -302,7 +321,14 @@ json_t* resultToJson(PGresult *result, const char *sql) {
                 json_object_set_new(row, colName, json_null());
             } else {
                 const char *value = PQgetvalue(result, i, j);
-                json_object_set_new(row, colName, json_string(value));
+                Oid type = PQftype(result, j);
+                
+                // Handle PostgreSQL boolean type (16 is BOOLOID)
+                if (type == 16) {  // BOOLOID
+                    json_object_set_new(row, colName, value[0] == 't' ? json_true() : json_false());
+                } else {
+                    json_object_set_new(row, colName, json_string(value));
+                }
             }
         }
         
