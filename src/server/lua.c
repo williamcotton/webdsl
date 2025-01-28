@@ -855,9 +855,26 @@ static int lua_setStore(lua_State *L) {
 static int lua_redirectLogin(lua_State *L) {
     // Get return path from first argument (optional)
     const char *returnPath = luaL_optstring(L, 1, NULL);
-    
-    printf("lua_redirectLogin returnPath: %s\n", returnPath ? returnPath : "null");
-    
+
+    lua_getglobal(L, "cookies");
+    lua_getfield(L, -1, "anonymous_session");
+    const char *anonymous_session = lua_tostring(L, -1);
+    printf("lua_redirectLogin anonymous_session: %s\n", anonymous_session ? anonymous_session : "null");
+
+    // Add database update for return path
+    if (returnPath && anonymous_session) {
+        const char *values[] = {returnPath, anonymous_session};
+        PGresult *result = executeParameterizedQuery(
+            g_ctx->db,
+            "UPDATE anonymous_sessions SET return_path = $1, updated_at = NOW() WHERE token = $2",
+            values,
+            2
+        );
+        if (result) {
+            PQclear(result);
+        }
+    }
+
     // Create result object
     json_t *result = json_object();
     
