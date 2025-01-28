@@ -46,9 +46,21 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
         return redirectWithError(connection, "/login", "github-not-configured");
     }
     
-    // Get returnTo from query parameters
-    const char *returnTo = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "returnTo");
-    printf("GitHub Auth Start - returnTo: %s\n", returnTo ? returnTo : "null");
+    // Get returnTo from anonymous session if it exists
+    char *returnTo = NULL;
+    const char *anonymous_session = MHD_lookup_connection_value(connection, MHD_COOKIE_KIND, "anonymous_session");
+    if (anonymous_session) {
+        const char *valuesSession[] = {anonymous_session};
+        PGresult *resultSession = executeParameterizedQuery(ctx->db,
+            "SELECT return_path FROM anonymous_sessions WHERE token = $1",
+            valuesSession, 1);
+        if (resultSession) {
+            if (PQntuples(resultSession) > 0) {
+                returnTo = strdup(PQgetvalue(resultSession, 0, 0));
+            }
+            PQclear(resultSession);
+        }
+    }
     
     // Generate state token for CSRF protection
     char *state = generateToken(ctx->arena);
@@ -60,8 +72,7 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
     json_t *data = json_object();  // Always create an object
     if (returnTo) {
         json_object_set_new(data, "returnTo", json_string(returnTo));
-        char *debug_str = json_dumps(data, JSON_COMPACT);
-        printf("Storing state data: %s\n", debug_str);
+        free(returnTo);
     }
     
     if (!storeStateToken(state, data, ctx)) {
@@ -113,15 +124,11 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
         return redirectWithError(connection, "/login", "github-invalid-state");
     }
     
-    char *debug_str = json_dumps(stateData, JSON_COMPACT);
-    printf("Retrieved state data: %s\n", debug_str);
-    
     // Extract returnTo path if present
     const char *returnTo = NULL;
     json_t *returnToJson = json_object_get(stateData, "returnTo");
     if (returnToJson && json_is_string(returnToJson)) {
         returnTo = json_string_value(returnToJson);
-        printf("Found returnTo in state: %s\n", returnTo);
     } else {
         printf("No returnTo found in state data\n");
     }
@@ -353,14 +360,11 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
             char *decodedPath = curl_easy_unescape(curlInit, returnTo, 0, &decodedLength);
             if (decodedPath) {
                 redirectPath = arenaDupString(ctx->arena, decodedPath);
-                printf("Decoded returnTo path: %s\n", redirectPath);
                 curl_free(decodedPath);
             }
             curl_easy_cleanup(curlInit);
         }
     }
-    
-    printf("Final redirect path: %s\n", redirectPath);
     
     MHD_add_response_header(response, "Location", redirectPath);
     

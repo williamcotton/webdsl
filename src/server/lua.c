@@ -859,7 +859,6 @@ static int lua_redirectLogin(lua_State *L) {
     lua_getglobal(L, "cookies");
     lua_getfield(L, -1, "anonymous_session");
     const char *anonymous_session = lua_tostring(L, -1);
-    printf("lua_redirectLogin anonymous_session: %s\n", anonymous_session ? anonymous_session : "null");
 
     // Add database update for return path
     if (returnPath && anonymous_session) {
@@ -878,7 +877,7 @@ static int lua_redirectLogin(lua_State *L) {
     // Create result object
     json_t *result = json_object();
     json_object_set_new(result, "redirect", json_string("/login"));
-    
+
     // Convert to Lua and return
     pushJsonToLua(L, result);
     json_decref(result);
