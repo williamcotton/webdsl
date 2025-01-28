@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include "../deps/dotenv-c/dotenv.h"
+#include "server/utils.h"
 
 // Internal functions
 static bool createMigrationDir(void);
@@ -193,17 +194,11 @@ static int migrateUp(Database* db) {
         return 1;
     }
     
-    // Build hash table of applied migrations for O(1) lookup
-    bool applied[1000] = {false};  // Assuming max 1000 migrations
+    // Store list of applied migrations for lookup
+    char* applied[1000] = {NULL};  // Assuming max 1000 migrations
     int num_applied = PQntuples(result);
     for (int i = 0; i < num_applied; i++) {
-        const char* name = PQgetvalue(result, i, 0);
-        // Hash the name to an index (simple hash for now)
-        size_t hash = 0;
-        for (const char* p = name; *p; p++) {
-            hash = hash * 31 + (unsigned char)*p;  // Cast to unsigned char first
-        }
-        applied[hash % 1000] = true;
+        applied[i] = strdup(PQgetvalue(result, i, 0));
     }
     PQclear(result);
     
@@ -211,6 +206,9 @@ static int migrateUp(Database* db) {
     DIR* dir = opendir("migrations");
     if (!dir) {
         fprintf(stderr, "Error: Could not open migrations directory\n");
+        for (int i = 0; i < num_applied; i++) {
+            free(applied[i]);
+        }
         return 1;
     }
     
@@ -241,11 +239,15 @@ static int migrateUp(Database* db) {
     bool success = true;
     for (int i = 0; i < num_migrations; i++) {
         // Check if migration is already applied
-        size_t hash = 0;
-        for (const char* p = migrations[i]; *p; p++) {
-            hash = hash * 31 + (unsigned char)*p;  // Cast to unsigned char first
+        bool is_applied = false;
+        for (int j = 0; j < num_applied; j++) {
+            if (applied[j] && strcmp(migrations[i], applied[j]) == 0) {
+                is_applied = true;
+                break;
+            }
         }
-        if (!applied[hash % 1000]) {
+        
+        if (!is_applied) {
             // Read up.sql
             char path[1024];
             snprintf(path, sizeof(path), "migrations/%s/up.sql", migrations[i]);
@@ -285,6 +287,11 @@ static int migrateUp(Database* db) {
             
             printf("Migration %s applied successfully\n", migrations[i]);
         }
+    }
+    
+    // Free applied migration names
+    for (int i = 0; i < num_applied; i++) {
+        free(applied[i]);
     }
     
     // Free migration names
