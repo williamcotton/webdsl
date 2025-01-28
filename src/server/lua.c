@@ -885,6 +885,24 @@ static int lua_redirectLogin(lua_State *L) {
     return 1;
 }
 
+// Add environment variable access function
+static int lua_getenv(lua_State *L) {
+    // Get environment variable name from first argument
+    const char *name = luaL_checkstring(L, 1);
+    
+    // Get the environment variable
+    const char *value = getenv(name);
+    
+    // Push the value or nil if not found
+    if (value) {
+        lua_pushstring(L, value);
+    } else {
+        lua_pushnil(L);
+    }
+    
+    return 1;
+}
+
 // Register database functions with Lua state
 void registerDbFunctions(lua_State *L) {
     lua_pushcfunction(L, lua_sqlQuery);
@@ -901,6 +919,9 @@ void registerDbFunctions(lua_State *L) {
     
     lua_pushcfunction(L, lua_redirectLogin);
     lua_setglobal(L, "redirectLogin");
+    
+    lua_pushcfunction(L, lua_getenv);
+    lua_setglobal(L, "getenv");
 }
 
 // Add global cache for embedded scripts
