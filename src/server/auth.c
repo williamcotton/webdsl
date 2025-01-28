@@ -321,6 +321,23 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
+    // Look up anonymous session return path
+    const char *anonymous_session = MHD_lookup_connection_value(connection, MHD_COOKIE_KIND, "anonymous_session");
+    if (anonymous_session) {
+        printf("--- anonymous_session: %s\n", anonymous_session);
+        const char *values[] = {anonymous_session};
+        PGresult *result = executeParameterizedQuery(ctx->db,
+            "SELECT return_path FROM anonymous_sessions WHERE token = $1",
+            values, 1);
+        if (result) {
+            if (PQntuples(result) > 0) {
+                const char *return_path = PQgetvalue(result, 0, 0);
+                printf("Found return path in anonymous session: %s\n", return_path ? return_path : "null");
+            }
+            PQclear(result);
+        }
+    }
+
     // Verify password
     if (!verifyPassword(password, storedHash, salt)) {
         return redirectWithError(connection, "/login", "invalid-credentials");
