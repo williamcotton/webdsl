@@ -127,7 +127,7 @@ PGresult* executeParameterizedQuery(Database *db, const char *sql,
     return executePreparedStatement(db, sql, values, value_count);
 }
 
-static const char *INIT_TABLES_SQL = 
+static const char *INIT_TABLES_SQL =
     "SET client_min_messages TO WARNING;"
     "CREATE TABLE IF NOT EXISTS migrations ("
     "    id SERIAL PRIMARY KEY,"
@@ -136,7 +136,7 @@ static const char *INIT_TABLES_SQL =
     "    applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    applied_by VARCHAR(255)"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS users ("
     "    id SERIAL PRIMARY KEY,"
     "    login VARCHAR(255) UNIQUE NOT NULL,"
@@ -147,7 +147,7 @@ static const char *INIT_TABLES_SQL =
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS sessions ("
     "    id SERIAL PRIMARY KEY,"
     "    user_id INTEGER REFERENCES users(id),"
@@ -155,7 +155,7 @@ static const char *INIT_TABLES_SQL =
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS session_store ("
     "    id SERIAL PRIMARY KEY,"
     "    session_id VARCHAR(255) UNIQUE NOT NULL,"
@@ -164,7 +164,7 @@ static const char *INIT_TABLES_SQL =
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS email_verifications ("
     "    id SERIAL PRIMARY KEY,"
     "    user_id INTEGER REFERENCES users(id),"
@@ -173,7 +173,7 @@ static const char *INIT_TABLES_SQL =
     "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,"
     "    verified_at TIMESTAMP WITH TIME ZONE"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS password_resets ("
     "    id SERIAL PRIMARY KEY,"
     "    user_id INTEGER REFERENCES users(id),"
@@ -182,7 +182,7 @@ static const char *INIT_TABLES_SQL =
     "    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,"
     "    used_at TIMESTAMP WITH TIME ZONE"
     ");"
-    
+
     "CREATE TABLE IF NOT EXISTS oauth_connections ("
     "    id SERIAL PRIMARY KEY,"
     "    user_id INTEGER REFERENCES users(id),"
@@ -194,17 +194,6 @@ static const char *INIT_TABLES_SQL =
     "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
     "    UNIQUE(provider, provider_user_id)"
     ");"
-    
-    "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
-    "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
-    "CREATE INDEX IF NOT EXISTS session_store_session_id_idx ON session_store(session_id);"
-    "CREATE INDEX IF NOT EXISTS session_store_user_id_idx ON session_store(user_id);"
-    "CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON email_verifications(token);"
-    "CREATE INDEX IF NOT EXISTS email_verifications_user_id_idx ON email_verifications(user_id);"
-    "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON password_resets(token);"
-    "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets(user_id);"
-    "CREATE INDEX IF NOT EXISTS oauth_connections_user_id_idx ON oauth_connections(user_id);"
-    "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON oauth_connections(provider, provider_user_id);"
 
     "CREATE TABLE IF NOT EXISTS state_tokens ("
     "    id SERIAL PRIMARY KEY,"
@@ -212,6 +201,25 @@ static const char *INIT_TABLES_SQL =
     "    data JSONB,"
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
+
+    "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
+    "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
+    "CREATE INDEX IF NOT EXISTS session_store_session_id_idx ON "
+    "session_store(session_id);"
+    "CREATE INDEX IF NOT EXISTS session_store_user_id_idx ON "
+    "session_store(user_id);"
+    "CREATE INDEX IF NOT EXISTS email_verifications_token_idx ON "
+    "email_verifications(token);"
+    "CREATE INDEX IF NOT EXISTS email_verifications_user_id_idx ON "
+    "email_verifications(user_id);"
+    "CREATE INDEX IF NOT EXISTS password_resets_token_idx ON "
+    "password_resets(token);"
+    "CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON "
+    "password_resets(user_id);"
+    "CREATE INDEX IF NOT EXISTS oauth_connections_user_id_idx ON "
+    "oauth_connections(user_id);"
+    "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON "
+    "oauth_connections(provider, provider_user_id);"
     "CREATE INDEX IF NOT EXISTS state_tokens_token_idx ON state_tokens(token);";
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
