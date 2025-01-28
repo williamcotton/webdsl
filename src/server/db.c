@@ -202,6 +202,16 @@ static const char *INIT_TABLES_SQL =
     "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
     ");"
 
+    "CREATE TABLE IF NOT EXISTS anonymous_sessions ("
+    "    id SERIAL PRIMARY KEY,"
+    "    token VARCHAR(64) NOT NULL UNIQUE,"
+    "    return_path TEXT,"
+    "    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,"
+    "    expires_at TIMESTAMP WITH TIME ZONE DEFAULT (NOW() + INTERVAL '24 hours'),"
+    "    data JSONB DEFAULT '{}'::jsonb"
+    ");"
+
     "CREATE INDEX IF NOT EXISTS sessions_token_idx ON sessions(token);"
     "CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);"
     "CREATE INDEX IF NOT EXISTS session_store_session_id_idx ON "
@@ -220,7 +230,9 @@ static const char *INIT_TABLES_SQL =
     "oauth_connections(user_id);"
     "CREATE INDEX IF NOT EXISTS oauth_connections_provider_id_idx ON "
     "oauth_connections(provider, provider_user_id);"
-    "CREATE INDEX IF NOT EXISTS state_tokens_token_idx ON state_tokens(token);";
+    "CREATE INDEX IF NOT EXISTS state_tokens_token_idx ON state_tokens(token);"
+    "CREATE INDEX IF NOT EXISTS anonymous_sessions_token_idx ON anonymous_sessions(token);"
+    "CREATE INDEX IF NOT EXISTS anonymous_sessions_expires_at_idx ON anonymous_sessions(expires_at);";
 
 Database* initDatabase(Arena *arena, const char *conninfo) {
     if (!arena || !conninfo) {
