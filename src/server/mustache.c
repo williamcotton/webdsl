@@ -4,6 +4,7 @@
 #include <string.h>
 #include <jansson.h>
 #include "../deps/mustach/mustach-jansson.h"
+#include "auth.h"
 
 static ServerContext *serverCtx = NULL;
 
@@ -128,30 +129,79 @@ char *generateFullPage(Arena *arena,
     return arena_result;
 }
 
+static char* createAnonymousSessionCookie(struct MHD_Connection *connection, ServerContext *ctx, Arena *arena) {
+    // Check for existing anonymous session
+    const char *existing_token = MHD_lookup_connection_value(
+        connection, 
+        MHD_COOKIE_KIND, 
+        "anonymous_session"
+    );
+
+    if (existing_token) {
+        return NULL;  // Already has anonymous session
+    }
+
+    // Generate new token and store in database
+    char *token = generateToken(arena);
+    if (!token) {
+        return NULL;
+    }
+
+    const char *values[] = {token};
+    PGresult *result = executeParameterizedQuery(
+        ctx->db,
+        "INSERT INTO anonymous_sessions (token) VALUES ($1)",
+        values, 
+        1
+    );
+
+    if (!result) {
+        return NULL;
+    }
+    PQclear(result);
+
+    // Create cookie string
+    char *cookie = arenaAlloc(arena, 512);
+    snprintf(cookie, 512, 
+            "anonymous_session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400",
+            token);
+    
+    return cookie;
+}
+
 enum MHD_Result handlePageRequest(struct MHD_Connection *connection,
                                   PageNode *page, Arena *arena,
                                   json_t *pipelineResult) {
+    // Find layout
+    LayoutNode *layout = findLayout(page->layout);
 
-  // Find layout
-  LayoutNode *layout = findLayout(page->layout);
+    // Generate the page with templates
+    char *html = generateFullPage(arena, page, layout, pipelineResult);
 
-  // Generate the page with templates
-  char *html = generateFullPage(arena, page, layout, pipelineResult);
+    if (page->redirect) {
+        struct MHD_Response *response =
+            MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
+        MHD_add_response_header(response, "Location", page->redirect);
+        enum MHD_Result ret =
+            MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+        MHD_destroy_response(response);
+        return ret;
+    }
 
-  if (page->redirect) {
-    struct MHD_Response *response =
-        MHD_create_response_from_buffer(0, NULL, MHD_RESPMEM_PERSISTENT);
-    MHD_add_response_header(response, "Location", page->redirect);
-    enum MHD_Result ret =
-        MHD_queue_response(connection, MHD_HTTP_FOUND, response);
+    struct MHD_Response *response = MHD_create_response_from_buffer(
+        strlen(html), html, MHD_RESPMEM_PERSISTENT);
+    MHD_add_response_header(response, "Content-Type", "text/html");
+
+    // Check isLoggedIn from pipelineResult
+    json_t *isLoggedIn = json_object_get(pipelineResult, "isLoggedIn");
+    if (!json_is_true(isLoggedIn)) {
+        char *cookie = createAnonymousSessionCookie(connection, serverCtx, arena);
+        if (cookie) {
+            MHD_add_response_header(response, "Set-Cookie", cookie);
+        }
+    }
+
+    enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
     MHD_destroy_response(response);
     return ret;
-  }
-
-  struct MHD_Response *response = MHD_create_response_from_buffer(
-      strlen(html), html, MHD_RESPMEM_PERSISTENT);
-  MHD_add_response_header(response, "Content-Type", "text/html");
-  enum MHD_Result ret = MHD_queue_response(connection, MHD_HTTP_OK, response);
-  MHD_destroy_response(response);
-  return ret;
 }
