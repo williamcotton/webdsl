@@ -321,23 +321,6 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     char *userId = arenaDupString(post->arena, PQgetvalue(result, 0, 0));
     PQclear(result);
 
-    // Look up anonymous session return path
-    const char *anonymous_session = MHD_lookup_connection_value(connection, MHD_COOKIE_KIND, "anonymous_session");
-    if (anonymous_session) {
-        printf("--- anonymous_session: %s\n", anonymous_session);
-        const char *values[] = {anonymous_session};
-        PGresult *result = executeParameterizedQuery(ctx->db,
-            "SELECT return_path FROM anonymous_sessions WHERE token = $1",
-            values, 1);
-        if (result) {
-            if (PQntuples(result) > 0) {
-                const char *return_path = PQgetvalue(result, 0, 0);
-                printf("Found return path in anonymous session: %s\n", return_path ? return_path : "null");
-            }
-            PQclear(result);
-        }
-    }
-
     // Verify password
     if (!verifyPassword(password, storedHash, salt)) {
         return redirectWithError(connection, "/login", "invalid-credentials");
@@ -357,38 +340,28 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
-    // First check for returnTo in POST data
-    const char *returnTo = NULL;
-    for (size_t i = 0; i < post->post_data.value_count; i++) {
-        if (strcmp(post->post_data.keys[i], "returnTo") == 0) {
-            returnTo = post->post_data.values[i];
-            break;
-        }
-    }
-    
-    // If not in POST data, check query parameters
-    if (!returnTo) {
-        returnTo = MHD_lookup_connection_value(connection, MHD_GET_ARGUMENT_KIND, "returnTo");
-    }
-    
-    printf("returnTo from POST/query: %s\n", returnTo ? returnTo : "null");
-    
     const char *redirectPath = "/";  // Default path
     
-    if (returnTo) {
-        CURL *curl = curl_easy_init();
-        if (curl) {
-            int decodedLength = 0;
-            char *decodedPath = curl_easy_unescape(curl, returnTo, 0, &decodedLength);
-            if (decodedPath) {
-                redirectPath = arenaDupString(post->arena, decodedPath);
-                curl_free(decodedPath);
+    // Use return path from anonymous session
+    const char *anonymous_session = MHD_lookup_connection_value(
+        connection, MHD_COOKIE_KIND, "anonymous_session");
+    if (anonymous_session) {
+        const char *valuesSession[] = {anonymous_session};
+        PGresult *resultSession = executeParameterizedQuery(ctx->db,
+            "SELECT return_path FROM anonymous_sessions WHERE token = $1",
+            valuesSession, 1);
+        if (resultSession) {
+            if (PQntuples(resultSession) > 0) {
+                const char *return_path = PQgetvalue(resultSession, 0, 0);
+                if (return_path) {
+                    redirectPath = arenaDupString(post->arena, return_path);
+                }
             }
-            curl_easy_cleanup(curl);
+            PQclear(resultSession);
         }
     }
     
-    printf("redirectPath (decoded): %s\n", redirectPath);
+    printf("redirectPath: %s\n", redirectPath);
     
     // Set redirect header
     MHD_add_response_header(response, "Location", redirectPath);

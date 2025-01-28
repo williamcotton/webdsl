@@ -877,22 +877,7 @@ static int lua_redirectLogin(lua_State *L) {
 
     // Create result object
     json_t *result = json_object();
-    
-    if (returnPath) {
-        // Append return path as query parameter
-        char *encoded_path = curl_easy_escape(NULL, returnPath, 0);
-        if (encoded_path) {
-            char redirect_url[1024];
-            snprintf(redirect_url, sizeof(redirect_url), "/login?returnTo=%s", encoded_path);
-            printf("lua_redirectLogin encoded redirect_url: %s\n", redirect_url);
-            json_object_set_new(result, "redirect", json_string(redirect_url));
-            curl_free(encoded_path);
-        } else {
-            json_object_set_new(result, "redirect", json_string("/login"));
-        }
-    } else {
-        json_object_set_new(result, "redirect", json_string("/login"));
-    }
+    json_object_set_new(result, "redirect", json_string("/login"));
     
     // Convert to Lua and return
     pushJsonToLua(L, result);

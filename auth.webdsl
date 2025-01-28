@@ -55,9 +55,6 @@ page {
                 {{/errorMessage}}
 
                 <form class="mt-8 space-y-6" action="/login" method="POST">
-                    {{#request.query.returnTo}}
-                    <input type="hidden" name="returnTo" value="{{request.query.returnTo}}">
-                    {{/request.query.returnTo}}
                     <div class="rounded-md shadow-sm -space-y-px">
                         <div>
                             <label for="login" class="sr-only">Email address</label>
