@@ -16,7 +16,19 @@ enum RequestType {
     REQUEST_TYPE_DELETE,
     REQUEST_TYPE_JSON_POST,
     REQUEST_TYPE_JSON_PUT,
-    REQUEST_TYPE_JSON_PATCH
+    REQUEST_TYPE_JSON_PATCH,
+    REQUEST_TYPE_MULTIPART
+};
+
+// File upload structure
+struct FileUpload {
+    char *fieldname;     // Form field name
+    char *filename;      // Original filename
+    char *mimetype;      // Content type
+    char *tempPath;      // Path to temporary file
+    size_t size;        // File size
+    FILE *fp;           // File handle for writing
+    uint32_t : 32;      // Padding
 };
 
 struct PostData {
@@ -38,6 +50,9 @@ struct PostContext {
     size_t size;
     size_t processed;
     struct PostData post_data;
+    struct FileUpload *files;  // Array of file uploads
+    size_t file_count;         // Number of files
+    size_t file_capacity;      // Capacity of files array
     Arena *arena;
 };
 

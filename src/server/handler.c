@@ -10,6 +10,10 @@
 #include "../arena.h"
 #include <string.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <errno.h>
+#include <fcntl.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wpadded"
 #include <jansson.h>
@@ -17,6 +21,117 @@
 
 // Add thread-local storage definition
 _Thread_local Arena* currentJsonArena = NULL;
+
+// Initial capacity for file uploads array
+#define INITIAL_FILES_CAPACITY 4
+
+// Create a temporary file and return its path
+static char* createTempFile(Arena *arena) {
+    char template[] = "/tmp/webdsl_upload_XXXXXX";
+    int fd = mkstemp(template);
+    if (fd == -1) {
+        fprintf(stderr, "Failed to create temp file: %s\n", strerror(errno));
+        return NULL;
+    }
+    close(fd);
+    return arenaDupString(arena, template);
+}
+
+// Initialize file uploads array
+static bool initFileUploads(struct PostContext *post) {
+    post->files = arenaAlloc(post->arena, INITIAL_FILES_CAPACITY * sizeof(struct FileUpload));
+    if (!post->files) return false;
+    post->file_capacity = INITIAL_FILES_CAPACITY;
+    post->file_count = 0;
+    return true;
+}
+
+// Add a new file upload entry
+static struct FileUpload* addFileUpload(struct PostContext *post, const char *fieldname) {
+    if (post->file_count >= post->file_capacity) {
+        size_t new_capacity = post->file_capacity * 2;
+        struct FileUpload *new_files = arenaAlloc(post->arena, new_capacity * sizeof(struct FileUpload));
+        if (!new_files) return NULL;
+        
+        memcpy(new_files, post->files, post->file_count * sizeof(struct FileUpload));
+        post->files = new_files;
+        post->file_capacity = new_capacity;
+    }
+    
+    struct FileUpload *file = &post->files[post->file_count++];
+    memset(file, 0, sizeof(struct FileUpload));
+    
+    file->fieldname = arenaDupString(post->arena, fieldname);
+    file->tempPath = createTempFile(post->arena);
+    if (!file->tempPath) {
+        post->file_count--;
+        return NULL;
+    }
+    
+    file->fp = fopen(file->tempPath, "wb");
+    if (!file->fp) {
+        post->file_count--;
+        return NULL;
+    }
+    
+    return file;
+}
+
+// Handle multipart form data
+static enum MHD_Result handleMultipartData(void *coninfo_cls, 
+                                         enum MHD_ValueKind kind,
+                                         const char *key,
+                                         const char *filename,
+                                         const char *content_type,
+                                         const char *transfer_encoding,
+                                         const char *data, 
+                                         uint64_t off, 
+                                         size_t size) {
+    struct PostContext *post = coninfo_cls;
+    (void)kind; (void)transfer_encoding;
+    
+    if (filename) {
+        // This is a file upload
+        struct FileUpload *file = NULL;
+        
+        // Find existing file upload or create new one
+        for (size_t i = 0; i < post->file_count; i++) {
+            if (strcmp(post->files[i].fieldname, key) == 0) {
+                file = &post->files[i];
+                break;
+            }
+        }
+        
+        if (!file) {
+            // New file upload
+            file = addFileUpload(post, key);
+            if (!file) return MHD_NO;
+            
+            // Store file metadata
+            file->filename = arenaDupString(post->arena, filename);
+            file->mimetype = content_type ? arenaDupString(post->arena, content_type) : NULL;
+        }
+        
+        // Write data to temp file
+        if (fwrite(data, 1, size, file->fp) != size) {
+            return MHD_NO;
+        }
+        
+        file->size += size;
+    } else {
+        // Regular form field
+        if (off == 0) {
+            // Start of field value
+            if (post->post_data.value_count < 32) {
+                post->post_data.values[post->post_data.value_count] = arenaDupString(post->arena, data);
+                post->post_data.keys[post->post_data.value_count] = arenaDupString(post->arena, key);
+                post->post_data.value_count++;
+            }
+        }
+    }
+    
+    return MHD_YES;
+}
 
 // Add JSON memory management functions
 static void* jsonArenaMalloc(size_t size) {
@@ -73,6 +188,9 @@ static struct PostContext* initializePostContext(Arena *arena, struct MHD_Connec
     post->post_data.error = 0;
     post->post_data.value_count = 0;
     post->post_data.arena = arena;
+    post->files = NULL;
+    post->file_count = 0;
+    post->file_capacity = 0;
     post->arena = arena;
     return post;
 }
@@ -80,8 +198,24 @@ static struct PostContext* initializePostContext(Arena *arena, struct MHD_Connec
 static enum MHD_Result setupPostProcessor(struct PostContext *post, struct MHD_Connection *connection, Arena *arena) {
     const char *content_type = MHD_lookup_connection_value(connection, MHD_HEADER_KIND, "Content-Type");
     
-    if (content_type && strstr(content_type, "application/json") != NULL) {
-        post->type = REQUEST_TYPE_JSON_POST;
+    if (content_type) {
+        if (strstr(content_type, "application/json") != NULL) {
+            post->type = REQUEST_TYPE_JSON_POST;
+        } else if (strstr(content_type, "multipart/form-data") != NULL) {
+            post->type = REQUEST_TYPE_MULTIPART;
+            if (!initFileUploads(post)) {
+                return MHD_NO;
+            }
+            post->pp = MHD_create_post_processor(connection, 64 * 1024, handleMultipartData, post);
+        } else {
+            post->type = REQUEST_TYPE_POST;
+            post->pp = MHD_create_post_processor(connection, 32 * 1024, post_iterator, &post->post_data);
+        }
+        
+        if (post->type != REQUEST_TYPE_JSON_POST && !post->pp) {
+            freeArena(arena);
+            return MHD_NO;
+        }
     } else {
         post->type = REQUEST_TYPE_POST;
         post->pp = MHD_create_post_processor(connection, 32 * 1024, post_iterator, &post->post_data);
@@ -201,6 +335,30 @@ static json_t* buildRequestContextJson(ServerContext *ctx, struct MHD_Connection
     }
     json_object_set_new(context, "body", body);
 
+    // Add files to context if present
+    json_t *files = json_object();
+    if (strcmp(method, "POST") == 0) {
+        struct PostContext *post_ctx = con_cls;
+        if (post_ctx && post_ctx->type == REQUEST_TYPE_MULTIPART) {
+            for (size_t i = 0; i < post_ctx->file_count; i++) {
+                struct FileUpload *file = &post_ctx->files[i];
+                if (file->fp) {
+                    fclose(file->fp);  // Close file handle after upload
+                    file->fp = NULL;
+                }
+                
+                json_t *file_obj = json_object();
+                json_object_set_new(file_obj, "filename", json_string(file->filename));
+                json_object_set_new(file_obj, "mimetype", file->mimetype ? json_string(file->mimetype) : json_null());
+                json_object_set_new(file_obj, "size", json_integer(file->size));
+                json_object_set_new(file_obj, "tempPath", json_string(file->tempPath));
+                
+                json_object_set_new(files, file->fieldname, file_obj);
+            }
+        }
+    }
+    json_object_set_new(context, "files", files);
+    
     return context;
 }
 
@@ -444,12 +602,27 @@ void handleRequestCompleted(ServerContext *ctx,
             return;
         }
         
-        if (reqctx->type == REQUEST_TYPE_POST || reqctx->type == REQUEST_TYPE_JSON_POST) {
+        if (reqctx->type == REQUEST_TYPE_POST || 
+            reqctx->type == REQUEST_TYPE_JSON_POST ||
+            reqctx->type == REQUEST_TYPE_MULTIPART) {
             struct PostContext *post = (struct PostContext *)reqctx;
+            
+            // Close and remove temp files
+            if (post->files) {
+                for (size_t i = 0; i < post->file_count; i++) {
+                    if (post->files[i].fp) {
+                        fclose(post->files[i].fp);
+                    }
+                    if (post->files[i].tempPath) {
+                        unlink(post->files[i].tempPath);
+                    }
+                }
+            }
+            
             if (post->pp) {
                 MHD_destroy_post_processor(post->pp);
             }
-            // No need to free raw_json, data, values, or keys - they're all in the arena
+            
             freeArena(post->arena);
         } else {
             freeArena(reqctx->arena);

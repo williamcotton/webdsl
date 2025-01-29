@@ -11,6 +11,7 @@ website {
     include "htmx.webdsl"
     include "notes.webdsl"
     include "todos.webdsl"
+    include "upload.webdsl"
 
     auth {
         salt $SALT

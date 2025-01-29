@@ -1,0 +1,100 @@
+page {
+    name "upload"
+    route "/upload"
+    layout "main"
+    pipeline {
+        jq {
+            {
+                pageTitle: "File Upload Demo"
+            }
+        }
+    }
+    mustache {
+        <div class="max-w-2xl mx-auto py-8 px-4">
+            <h1 class="text-3xl font-bold text-gray-900 mb-8">File Upload Demo</h1>
+
+            <form action="/api/v1/upload" 
+                  method="POST" 
+                  enctype="multipart/form-data"
+                  class="space-y-6">
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">
+                        Choose a file
+                    </label>
+                    <div class="mt-1">
+                        <input type="file" 
+                               name="file"
+                               class="block w-full text-sm text-gray-500
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-md file:border-0
+                                      file:text-sm file:font-semibold
+                                      file:bg-indigo-50 file:text-indigo-700
+                                      hover:file:bg-indigo-100">
+                    </div>
+                </div>
+
+                <div>
+                    <button type="submit"
+                            class="inline-flex justify-center py-2 px-4 border border-transparent 
+                                   shadow-sm text-sm font-medium rounded-md text-white 
+                                   bg-indigo-600 hover:bg-indigo-700 focus:outline-none 
+                                   focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        Upload File
+                    </button>
+                </div>
+            </form>
+        </div>
+    }
+}
+
+api {
+    route "/api/v1/upload"
+    method "POST"
+    pipeline {
+        lua {
+            local file = request.files.file
+            if not file then
+                return {
+                    error = "No file uploaded",
+                    statusCode = 400
+                }
+            end
+            
+            -- Upload to S3
+            local result = s3Upload({
+                bucket = getenv("S3_BUCKET") or "test-bucket",
+                key = "uploads/" .. os.time() .. "_" .. file.filename,
+                file = file,
+                contentType = file.mimetype
+            })
+            
+            if result.error then
+                return {
+                    error = result.error,
+                    statusCode = 500
+                }
+            end
+            
+            return {
+                success = true,
+                file = {
+                    url = result.url,
+                    originalName = file.filename,
+                    size = file.size,
+                    mimeType = file.mimetype
+                }
+            }
+        }
+        
+        jq {
+            {
+                success: true,
+                data: {
+                    file: .file,
+                    message: "File uploaded successfully"
+                }
+            }
+        }
+    }
+} 

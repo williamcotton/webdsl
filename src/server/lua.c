@@ -1114,6 +1114,7 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     // Register our functions
     registerHttpFunctions(L);
     registerDbFunctions(L);
+    registerS3Functions(L);  // Add this line to register S3 functions
     
     // Load embedded scripts into this state
     if (!loadEmbeddedScripts(L)) {
@@ -1131,6 +1132,7 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     json_t *headers = json_object_get(requestContext, "headers");
     json_t *cookies = json_object_get(requestContext, "cookies");
     json_t *params = json_object_get(requestContext, "params");
+    json_t *files = json_object_get(requestContext, "files");  // Add files to context
     
     // Create query table
     lua_newtable(L);
@@ -1178,6 +1180,15 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
         lua_settable(L, -3);
     }
     lua_setglobal(L, "params");
+
+    // Create files table
+    lua_newtable(L);
+    json_object_foreach(files, key, value) {
+        lua_pushstring(L, key);
+        pushJsonToLua(L, value);  // Use pushJsonToLua since files contain nested objects
+        lua_settable(L, -3);
+    }
+    lua_setglobal(L, "files");
     
     return L;
 }
@@ -1339,6 +1350,11 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
         return result;
     }
     
+    // Register all our functions
+    registerHttpFunctions(L);
+    registerDbFunctions(L);
+    registerS3Functions(L);  // Add this line to register S3 functions
+    
     // Set up input from previous step
     pushJsonToLua(L, input);
     lua_setglobal(L, "request");
@@ -1429,7 +1445,60 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     return result;
 }
 
-// Modify initLua to store context and register DB functions
+// Mock S3 upload function
+static int lua_s3Upload(lua_State *L) {
+    // Get upload parameters
+    luaL_checktype(L, 1, LUA_TTABLE);
+    
+    // Get bucket
+    lua_getfield(L, 1, "bucket");
+    const char *bucket = luaL_checkstring(L, -1);
+    
+    // Get key
+    lua_getfield(L, 1, "key");
+    const char *key = luaL_checkstring(L, -1);
+    
+    // Get file info
+    lua_getfield(L, 1, "file");
+    luaL_checktype(L, -1, LUA_TTABLE);
+    
+    lua_getfield(L, -1, "tempPath");
+    const char *tempPath = luaL_checkstring(L, -1);
+    
+    lua_getfield(L, -2, "mimetype");
+    const char *contentType = lua_tostring(L, -1);
+    
+    // For now, just mock the upload and return a URL
+    // In a real implementation, we would use AWS SDK to upload the file
+    
+    // Create result table
+    lua_newtable(L);
+    
+    // Generate mock S3 URL
+    char url[1024];
+    snprintf(url, sizeof(url), "https://%s.s3.amazonaws.com/%s", bucket, key);
+    
+    lua_pushstring(L, url);
+    lua_setfield(L, -2, "url");
+    
+    // Log the mock upload
+    fprintf(stderr, "Mock S3 Upload:\n");
+    fprintf(stderr, "  Bucket: %s\n", bucket);
+    fprintf(stderr, "  Key: %s\n", key);
+    fprintf(stderr, "  Content-Type: %s\n", contentType);
+    fprintf(stderr, "  Source: %s\n", tempPath);
+    fprintf(stderr, "  URL: %s\n", url);
+    
+    return 1;
+}
+
+// Register S3 functions with Lua state
+void registerS3Functions(lua_State *L) {
+    lua_pushcfunction(L, lua_s3Upload);
+    lua_setglobal(L, "s3Upload");
+}
+
+// Modify initLua to register S3 functions
 bool initLua(ServerContext *server_ctx) {
     g_ctx = server_ctx;  // Store in global
     
@@ -1445,6 +1514,7 @@ bool initLua(ServerContext *server_ctx) {
     // Register our functions
     registerHttpFunctions(L);
     registerDbFunctions(L);
+    registerS3Functions(L);  // Add S3 functions
     
     // First load embedded scripts
     if (!loadEmbeddedScripts(L)) {

@@ -56,4 +56,7 @@ void registerHttpFunctions(lua_State *L);
 // Register database functions with Lua state
 void registerDbFunctions(lua_State *L);
 
+// Register S3 functions with Lua state
+void registerS3Functions(lua_State *L);
+
 #endif
