@@ -350,7 +350,7 @@ static json_t* buildRequestContextJson(ServerContext *ctx, struct MHD_Connection
                 json_t *file_obj = json_object();
                 json_object_set_new(file_obj, "filename", json_string(file->filename));
                 json_object_set_new(file_obj, "mimetype", file->mimetype ? json_string(file->mimetype) : json_null());
-                json_object_set_new(file_obj, "size", json_integer(file->size));
+                json_object_set_new(file_obj, "size", json_integer((json_int_t)file->size));
                 json_object_set_new(file_obj, "tempPath", json_string(file->tempPath));
                 
                 json_object_set_new(files, file->fieldname, file_obj);

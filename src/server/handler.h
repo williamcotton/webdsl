@@ -27,8 +27,7 @@ struct FileUpload {
     char *mimetype;      // Content type
     char *tempPath;      // Path to temporary file
     size_t size;        // File size
-    FILE *fp;           // File handle for writing
-    uint32_t : 32;      // Padding
+    FILE *fp;    // Padding
 };
 
 struct PostData {

@@ -81,12 +81,12 @@ api {
                 file = {
                     url = result.url,
                     originalName = file.filename,
-                    size = file.size,
+                    size = tonumber(file.size),
                     mimeType = file.mimetype
                 }
             }
         }
-        
+
         jq {
             {
                 success: true,
