@@ -26,14 +26,4 @@ json_t* executePipeline(
     Arena *arena
 );
 
-// Create a basic request context with default values
-json_t* createRequestContext(
-    const char *method,
-    const char *url,
-    json_t *query,
-    json_t *headers,
-    json_t *cookies,
-    json_t *body
-);
-
 #endif // SERVER_PIPELINE_EXECUTOR_H

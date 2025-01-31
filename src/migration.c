@@ -1,7 +1,6 @@
 #include "migration.h"
 #include "server/db.h"
 #include "parser.h"
-#include "website.h"
 #include "file_utils.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +11,6 @@
 #include <errno.h>
 #include <dirent.h>
 #include "../deps/dotenv-c/dotenv.h"
-#include "server/utils.h"
 
 // Internal functions
 static bool createMigrationDir(void);
