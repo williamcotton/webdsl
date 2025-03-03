@@ -12,6 +12,12 @@ static struct MHD_Response* createErrorResponse(const char *error_msg, int statu
     (void)status_code;
     size_t len = strlen(error_msg);
     char *error_copy = malloc(len + 1);
+    if (error_copy == NULL) {
+        // If memory allocation fails, use a static error message instead
+        char *fallback = "Internal server error - memory allocation failed";
+        return MHD_create_response_from_buffer(strlen(fallback), fallback, 
+                                             MHD_RESPMEM_PERSISTENT);
+    }
     memcpy(error_copy, error_msg, len + 1);
     
     struct MHD_Response *response = MHD_create_response_from_buffer(len, error_copy,

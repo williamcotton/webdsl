@@ -5,7 +5,16 @@
 
 Arena* createArena(size_t size) {
     Arena *arena = malloc(sizeof(Arena));
+    if (arena == NULL) {
+        return NULL;
+    }
+    
     arena->buffer = malloc(size);
+    if (arena->buffer == NULL) {
+        free(arena);
+        return NULL;
+    }
+    
     arena->size = size;
     arena->used = 0;
     

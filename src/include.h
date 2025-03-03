@@ -11,7 +11,7 @@ typedef struct IncludeState {
 } IncludeState;
 
 // Initialize include state
-void initIncludeState(IncludeState *state);
+bool initIncludeState(IncludeState *state);
 
 // Process an include statement
 bool processInclude(Parser *parser, WebsiteNode *website, 

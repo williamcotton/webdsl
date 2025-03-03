@@ -5,10 +5,14 @@
 
 #define MAX_INCLUDES 100  // Maximum number of includes to prevent infinite recursion
 
-void initIncludeState(IncludeState *state) {
+bool initIncludeState(IncludeState *state) {
     state->included_files = malloc(sizeof(char*) * MAX_INCLUDES);
+    if (state->included_files == NULL) {
+        return false;
+    }
     state->num_included = 0;
     state->max_includes = MAX_INCLUDES;
+    return true;
 }
 
 static char *readFile(const char *filepath, Arena *arena) {

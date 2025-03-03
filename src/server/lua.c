@@ -176,7 +176,16 @@ static int lua_fetch(lua_State *L) {
                 const char *key = lua_tostring(L, -2);
                 const char *value = lua_tostring(L, -1);
                 char *header = malloc(strlen(key) + strlen(value) + 3);
-                snprintf(header, sizeof(header), "%s: %s", key, value);
+                if (!header) {
+                    // Clean up existing headers
+                    if (headers) {
+                        curl_slist_free_all(headers);
+                    }
+                    lua_pushnil(L);
+                    lua_pushstring(L, "Failed to allocate memory for headers");
+                    return 2;
+                }
+                snprintf(header, strlen(key) + strlen(value) + 3, "%s: %s", key, value);
                 headers = curl_slist_append(headers, header);
                 free(header);
                 lua_pop(L, 1);

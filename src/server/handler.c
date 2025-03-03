@@ -179,19 +179,19 @@ static enum MHD_Result post_iterator(void *cls,
 
 static struct PostContext* initializePostContext(Arena *arena, struct MHD_Connection *connection) {
     struct PostContext *post = arenaAlloc(arena, sizeof(struct PostContext));
-    post->data = NULL;
-    post->size = 0;
-    post->processed = 0;
-    post->raw_json = NULL;
-    post->pp = NULL;
-    post->post_data.connection = connection;
-    post->post_data.error = 0;
-    post->post_data.value_count = 0;
-    post->post_data.arena = arena;
-    post->files = NULL;
-    post->file_count = 0;
-    post->file_capacity = 0;
+    if (!post) {
+        return NULL;
+    }
+    memset(post, 0, sizeof(struct PostContext));
+    
     post->arena = arena;
+    post->post_data.arena = arena;
+    post->post_data.connection = connection;
+    
+    if (!initFileUploads(post)) {
+        return NULL;
+    }
+    
     return post;
 }
 

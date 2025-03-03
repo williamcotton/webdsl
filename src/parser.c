@@ -1365,7 +1365,11 @@ WebsiteNode *parseProgram(Parser *parser) {
 
     // Initialize include state
     IncludeState includeState;
-    initIncludeState(&includeState);
+    if (!initIncludeState(&includeState)) {
+        parser->hadError = true;
+        fprintf(stderr, "Error: Failed to initialize include state (memory allocation failed)\n");
+        return NULL;
+    }
 
     consume(parser, TOKEN_WEBSITE, "Expected 'website' at start.");
     consume(parser, TOKEN_OPEN_BRACE, "Expected '{' after 'website'.");
