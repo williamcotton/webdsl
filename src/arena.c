@@ -27,6 +27,10 @@ Arena* createArena(size_t size) {
 }
 
 void* arenaAlloc(Arena *arena, size_t size) {
+    if (!arena) {
+        return NULL;
+    }
+    
     // Align to 8 bytes
     size = (size + 7) & ~((size_t)7);
     

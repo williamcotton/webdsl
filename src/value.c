@@ -31,7 +31,7 @@ Value makeEnvVar(Arena *arena, const char *name) {
 }
 
 char* resolveString(Arena *arena, const Value* value) {
-    if (!value) return NULL;
+    if (!arena || !value) return NULL;
     
     switch (value->type) {
         case VALUE_STRING:

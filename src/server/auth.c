@@ -126,6 +126,10 @@ bool storeOAuthCredentials(ServerContext *ctx, const char *userId,
 
 // Get user from session token with enhanced user info
 json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
+    if (!ctx || !connection || !ctx->db) {
+        return NULL;
+    }
+    
     const char *sessionToken = MHD_lookup_connection_value(connection, 
                                                          MHD_COOKIE_KIND, 
                                                          "session");

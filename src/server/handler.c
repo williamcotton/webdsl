@@ -48,6 +48,10 @@ static bool initFileUploads(struct PostContext *post) {
 
 // Add a new file upload entry
 static struct FileUpload* addFileUpload(struct PostContext *post, const char *fieldname) {
+    if (!post || !fieldname) {
+        return NULL;
+    }
+    
     if (post->file_count >= post->file_capacity) {
         size_t new_capacity = post->file_capacity * 2;
         struct FileUpload *new_files = arenaAlloc(post->arena, new_capacity * sizeof(struct FileUpload));
@@ -62,6 +66,11 @@ static struct FileUpload* addFileUpload(struct PostContext *post, const char *fi
     memset(file, 0, sizeof(struct FileUpload));
     
     file->fieldname = arenaDupString(post->arena, fieldname);
+    if (!file->fieldname) {
+        post->file_count--;
+        return NULL;
+    }
+    
     file->tempPath = createTempFile(post->arena);
     if (!file->tempPath) {
         post->file_count--;

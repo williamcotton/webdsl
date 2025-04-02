@@ -40,11 +40,18 @@ json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *reque
 }
 
 json_t* executePipeline(ServerContext *ctx, PipelineStepNode *pipeline, json_t *requestContext, Arena *arena) {
-    if (!pipeline) {
+    if (!ctx || !pipeline || !arena) {
         return NULL;
     }
 
     json_t *current = requestContext;
+    if (!current) {
+        // Create an empty object if requestContext is NULL
+        current = json_object();
+        if (!current) {
+            return NULL;
+        }
+    }
 
     PipelineStepNode *step = pipeline;
     

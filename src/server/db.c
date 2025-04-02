@@ -360,6 +360,10 @@ json_t* resultToJson(PGresult *result, const char *sql) {
 }
 
 json_t* executeSqlWithParams(Database *db, const char *sql, const char **values, size_t value_count) {
+    if (!db || !sql) {
+        return NULL;
+    }
+    
     PGresult *result;
     if (values && value_count > 0) {
         result = executeParameterizedQuery(db, sql, values, value_count);

@@ -29,14 +29,16 @@ void initMustache(ServerContext *_serverCtx) {
 }
 
 char* generateTemplateContent(Arena *arena, const TemplateNode *template, int indent) {
-    if (!template) return NULL;
+    if (!arena || !template) return NULL;
     
     StringBuilder *sb = StringBuilder_new(arena);
+    if (!sb) return NULL;
+    
     char indentStr[32];
     memset(indentStr, ' ', (size_t)(indent * 2));
     indentStr[indent * 2] = '\0';
     
-    StringBuilder_append(sb, "%s%s", indentStr, template->content);
+    StringBuilder_append(sb, "%s%s", indentStr, template->content ? template->content : "");
     
     return arenaDupString(arena, StringBuilder_get(sb));
 }

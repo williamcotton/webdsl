@@ -29,6 +29,11 @@ ConnectionPool* initConnectionPool(Arena *arena, const char *conninfo, int initi
     
     pool->arena = arena;
     pool->conninfo = arenaDupString(arena, conninfo);
+    if (!pool->conninfo) {
+        fprintf(stderr, "Failed to copy connection info string\n");
+        return NULL;
+    }
+    
     pool->size = 0;
     pool->max_size = max_size > MAX_POOL_SIZE ? MAX_POOL_SIZE : max_size;
     pool->connections = NULL;

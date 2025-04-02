@@ -4,11 +4,16 @@
 #include <errno.h>
 
 char* readFile(const char* path) {
+    if (!path) {
+        fprintf(stderr, "NULL file path provided\n");
+        return NULL;
+    }
+    
     errno = 0;
     FILE* file = fopen(path, "rb");
     if (file == NULL) {
         perror("Could not open file");
-        exit(74);
+        return NULL;  // Return NULL instead of exit for better error handling
     }
 
     // Find file size

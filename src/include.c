@@ -46,9 +46,14 @@ static char *readFile(const char *filepath, Arena *arena) {
 }
 
 bool processInclude(Parser *parser, WebsiteNode *website, const char *filepath, IncludeState *state) {
+    if (!parser || !website || !filepath || !state) {
+        fprintf(stderr, "Error: NULL parameter passed to processInclude\n");
+        return false;
+    }
+    
     // Check for circular includes
     for (int i = 0; i < state->num_included; i++) {
-        if (strcmp(state->included_files[i], filepath) == 0) {
+        if (state->included_files[i] && strcmp(state->included_files[i], filepath) == 0) {
             fprintf(stderr, "Error: Circular include detected for file '%s'\n", filepath);
             return false;
         }
