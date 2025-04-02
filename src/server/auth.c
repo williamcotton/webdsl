@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 #include <stdlib.h>
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wundef"
@@ -185,6 +186,17 @@ json_t* getUser(ServerContext *ctx, struct MHD_Connection *connection) {
 }
 
 static bool verifyPassword(const char *password, const char *storedHash, const char *configSalt) {
+    // Validate input parameters
+    if (!password || !storedHash || !configSalt) {
+        return false;
+    }
+    
+    // Check password length limits
+    size_t password_len = strlen(password);
+    if (password_len < 8 || password_len > 128) {
+        return false;  // Password too short or suspiciously long
+    }
+    
     uint8_t hash[32];
     uint8_t salt[16] = {0}; // Salt from config
     
@@ -587,8 +599,11 @@ char* generateToken(Arena *arena) {
         return NULL;
     }
     
-    if (fread(random_bytes, 1, sizeof(random_bytes), urandom) != sizeof(random_bytes)) {
-        fprintf(stderr, "Failed to read from /dev/urandom\n");
+    // Check that we read the expected number of bytes
+    size_t bytes_read = fread(random_bytes, 1, sizeof(random_bytes), urandom);
+    if (bytes_read != sizeof(random_bytes)) {
+        fprintf(stderr, "Failed to read enough random bytes: %zu/%zu\n", 
+                bytes_read, sizeof(random_bytes));
         fclose(urandom);
         return NULL;
     }
@@ -596,10 +611,22 @@ char* generateToken(Arena *arena) {
     
     // Convert random bytes to hex string
     char *token = arenaAlloc(arena, 65);
+    if (!token) {
+        return NULL;
+    }
+    
     for (size_t i = 0; i < sizeof(random_bytes); i++) {
         snprintf(&token[i*2], 3, "%02x", random_bytes[i]);
     }
     token[64] = '\0';
+    
+    // Validate the token only contains hex characters
+    for (int i = 0; i < 64; i++) {
+        if (!isxdigit(token[i])) {
+            fprintf(stderr, "Generated token contains non-hex characters\n");
+            return NULL;
+        }
+    }
     
     return token;
 }

@@ -278,6 +278,19 @@ PGresult* executeQuery(Database *db, const char *query) {
         fputs("Invalid database or query\n", stderr);
         return NULL;
     }
+    
+    // Validate query length to prevent excessive resource usage
+    size_t query_len = strlen(query);
+    if (query_len > 100000) {  // 100KB limit
+        fputs("Query exceeds maximum allowed length\n", stderr);
+        return NULL;
+    }
+    
+    // Check for comments that might be used for SQL injection
+    if (strstr(query, "--") || strstr(query, "/*")) {
+        fputs("Query contains suspicious comment markers\n", stderr);
+        return NULL;
+    }
 
     DbConnection conn = getDbConnection(db);
     if (!conn.conn) {

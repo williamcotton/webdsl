@@ -280,8 +280,16 @@ static Token stringLiteral(Lexer *lexer) {
         // Mark start of actual content
         lexer->start = lexer->current;
         
+        // Count to limit triple-quoted string length
+        size_t len = 0;
+        const size_t MAX_STRING_LEN = 100000;  // 100KB limit
+        
         // Read until we find three closing quotes
         while (!isAtEnd(lexer)) {
+            if (len >= MAX_STRING_LEN) {
+                return errorToken(lexer->parser, "String too long (exceeds max length)", lexer->line);
+            }
+            
             if (!isAtEnd(lexer) && 
                 peek(lexer) == '"' && 
                 peekNext(lexer) == '"' && 
@@ -292,6 +300,7 @@ static Token stringLiteral(Lexer *lexer) {
                 lexer->line++;
             }
             advance(lexer);
+            len++;
         }
         
         if (isAtEnd(lexer)) {
@@ -311,7 +320,14 @@ static Token stringLiteral(Lexer *lexer) {
         // Regular string - mark start after opening quote
         lexer->start = lexer->current;
         
+        size_t len = 0;
+        const size_t MAX_STRING_LEN = 10000;  // 10KB limit for regular strings
+        
         while (!isAtEnd(lexer) && peek(lexer) != '"') {
+            if (len >= MAX_STRING_LEN) {
+                return errorToken(lexer->parser, "String too long (exceeds max length)", lexer->line);
+            }
+            
             if (peek(lexer) == '\n') {
                 lexer->line++;
             }
@@ -323,6 +339,7 @@ static Token stringLiteral(Lexer *lexer) {
                 continue;
             }
             advance(lexer);
+            len++;
         }
 
         if (isAtEnd(lexer)) {

@@ -4,6 +4,7 @@
 #include <jansson.h>
 #pragma clang diagnostic pop
 #include <string.h>
+#include <ctype.h>
 #include "github.h"
 #include "auth.h"
 
@@ -124,6 +125,21 @@ enum MHD_Result handleGithubCallback(ServerContext *ctx, struct MHD_Connection *
     if (!code || !state) {
         printf("Error: Missing code or state\n");
         return redirectWithError(connection, "/login", "github-invalid-response");
+    }
+    
+    // Validate state length to prevent DoS
+    size_t state_len = strlen(state);
+    if (state_len < 10 || state_len > 128) {
+        printf("Error: Invalid state token length\n");
+        return redirectWithError(connection, "/login", "github-invalid-state");
+    }
+    
+    // Validate that state contains only hex characters
+    for (size_t i = 0; i < state_len; i++) {
+        if (!isxdigit(state[i])) {
+            printf("Error: Invalid character in state token\n");
+            return redirectWithError(connection, "/login", "github-invalid-state");
+        }
     }
     
     // Validate state token and get stored data

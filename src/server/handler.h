@@ -26,6 +26,7 @@ struct FileUpload {
     char *filename;      // Original filename
     char *mimetype;      // Content type
     char *tempPath;      // Path to temporary file
+    size_t max_size;     // Maximum allowed file size
     size_t size;        // File size
     FILE *fp;    // Padding
 };

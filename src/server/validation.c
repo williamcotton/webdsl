@@ -18,6 +18,17 @@ static bool validateEmail(const char *email) {
     // Must have characters before @ and after last .
     if (at == email || !dot[1]) return false;
     
+    // Add maximum length validation
+    if (strlen(email) > 254) return false;
+    
+    // Add check for illegal characters
+    for (const char *p = email; *p; p++) {
+        if (!(isalnum(*p) || *p == '@' || *p == '.' || *p == '-' || 
+              *p == '_' || *p == '+')) {
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -51,6 +62,9 @@ static bool validateNumber(const char *value) {
 static bool validateUrl(const char *url) {
     if (!url) return false;
     
+    // Maximum reasonable URL length
+    if (strlen(url) > 2048) return false;
+    
     // Basic URL validation
     if (strncmp(url, "http://", 7) != 0 && 
         strncmp(url, "https://", 8) != 0) {
@@ -63,6 +77,13 @@ static bool validateUrl(const char *url) {
     
     // Must have at least one dot in domain
     if (!strchr(domain, '.')) return false;
+    
+    // Check for illegal characters
+    for (const char *p = url; *p; p++) {
+        if (*p <= 0x20 || *p > 0x7E) {  // Non-printable or non-ASCII
+            return false;
+        }
+    }
     
     return true;
 }

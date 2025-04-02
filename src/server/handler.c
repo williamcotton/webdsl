@@ -99,7 +99,35 @@ static enum MHD_Result handleMultipartData(void *coninfo_cls,
     struct PostContext *post = coninfo_cls;
     (void)kind; (void)transfer_encoding;
     
+    if (!post || !key) {
+        return MHD_NO;
+    }
+    
+    // Validate key length to prevent buffer overflows
+    if (strlen(key) > 64) {
+        fprintf(stderr, "Field name too long\n");
+        return MHD_NO;
+    }
+    
     if (filename) {
+        // Validate filename length and characters
+        if (!filename || strlen(filename) > 255) {
+            fprintf(stderr, "Filename too long or invalid\n");
+            return MHD_NO;
+        }
+        
+        // Check for directory traversal attempts
+        if (strstr(filename, "..") || strchr(filename, '/') || strchr(filename, '\\')) {
+            fprintf(stderr, "Invalid filename containing path traversal characters\n");
+            return MHD_NO;
+        }
+        
+        // Validate content type if provided
+        if (content_type && strlen(content_type) > 128) {
+            fprintf(stderr, "Content type too long\n");
+            return MHD_NO;
+        }
+        
         // This is a file upload
         struct FileUpload *file = NULL;
         
@@ -119,6 +147,16 @@ static enum MHD_Result handleMultipartData(void *coninfo_cls,
             // Store file metadata
             file->filename = arenaDupString(post->arena, filename);
             file->mimetype = content_type ? arenaDupString(post->arena, content_type) : NULL;
+            
+            // Set file size limit (e.g., 10MB)
+            const size_t MAX_FILE_SIZE = 10 * 1024 * 1024;
+            file->max_size = MAX_FILE_SIZE;
+        }
+        
+        // Check if file would exceed size limit
+        if (file->size + size > file->max_size) {
+            fprintf(stderr, "File upload exceeds maximum allowed size\n");
+            return MHD_NO;
         }
         
         // Write data to temp file
@@ -130,6 +168,13 @@ static enum MHD_Result handleMultipartData(void *coninfo_cls,
     } else {
         // Regular form field
         if (off == 0) {
+            // Limit field value size
+            const size_t MAX_FIELD_SIZE = 8192;
+            if (size > MAX_FIELD_SIZE) {
+                fprintf(stderr, "Form field value too large\n");
+                return MHD_NO;
+            }
+            
             // Start of field value
             if (post->post_data.value_count < 32) {
                 post->post_data.values[post->post_data.value_count] = arenaDupString(post->arena, data);
