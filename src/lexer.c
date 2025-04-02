@@ -49,9 +49,12 @@ static void skipWhitespace(Lexer *lexer) {
                 break;
             case '/':
                 if (peekNext(lexer) == '/') {
+                    // Single line comment
                     while (peek(lexer) != '\n' && !isAtEnd(lexer)) {
                         advance(lexer);
                     }
+                    // Don't consume the newline here, let the next iteration handle it
+                    // so that line counting works correctly
                 } else {
                     return;
                 }
@@ -108,6 +111,12 @@ static Token rawBlock(Lexer *lexer) {
         char c = peek(lexer);
         if (c == '{') braceCount++;
         else if (c == '}') braceCount--;
+        
+        // Increment line count when we encounter newlines
+        if (c == '\n') {
+            lexer->line++;
+        }
+        
         advance(lexer);
     }
     
