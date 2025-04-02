@@ -266,6 +266,13 @@ enum MHD_Result redirectWithError(struct MHD_Connection *connection,
                                          const char *error_key) {
     // Create redirect URL with error parameter
     char redirect_url[512];
+    size_t base_url_len = strlen("http://localhost:8080/");
+    size_t location_len = location ? strlen(location) : 0;
+
+    if (base_url_len + location_len >= sizeof(redirect_url)) {
+        fprintf(stderr, "Location too long for redirect URL buffer\n");
+        return MHD_NO;
+    }
     snprintf(redirect_url, sizeof(redirect_url), "%s?error=%s", location, error_key);
 
     struct MHD_Response *response =
@@ -341,6 +348,14 @@ enum MHD_Result handleLoginRequest(ServerContext *ctx, struct MHD_Connection *co
     
     // Set session cookie
     char cookie[256];
+    size_t base_cookie_len = strlen("session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+    size_t token_len = token ? strlen(token) : 0;
+
+    if (base_cookie_len + token_len >= sizeof(cookie)) {
+        fprintf(stderr, "Token too long for cookie buffer\n");
+        return redirectWithError(connection, "/login", "server-error");
+    }
+
     snprintf(cookie, sizeof(cookie), "session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400", token);
     MHD_add_response_header(response, "Set-Cookie", cookie);
     
@@ -525,6 +540,14 @@ enum MHD_Result handleRegisterRequest(ServerContext *ctx, struct MHD_Connection 
 
     // Build verification URL
     char verificationUrl[512];
+    size_t base_url_len = strlen("http://localhost:8080/verify-email?token=");
+    size_t token_len = token ? strlen(token) : 0;
+
+    if (base_url_len + token_len >= sizeof(verificationUrl)) {
+        fprintf(stderr, "Token too long for verification URL buffer\n");
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
+
     snprintf(verificationUrl, sizeof(verificationUrl), "http://localhost:8080/verify-email?token=%s", token);
 
     // Send verification email using new email service
@@ -685,6 +708,13 @@ enum MHD_Result handleResendVerificationRequest(ServerContext *ctx, struct MHD_C
 
     // Build verification URL
     char verificationUrl[512];
+    size_t base_url_len = strlen("http://localhost:8080/verify-email?token=");
+    size_t token_len = token ? strlen(token) : 0;
+
+    if (base_url_len + token_len >= sizeof(verificationUrl)) {
+        fprintf(stderr, "Token too long for verification URL buffer\n");
+        return redirectWithError(connection, "/verify-email", "server-error");
+    }
     snprintf(verificationUrl, sizeof(verificationUrl), "http://localhost:8080/verify-email?token=%s", token);
 
     // Send verification email using new email service
@@ -741,6 +771,14 @@ enum MHD_Result handleForgotPasswordRequest(ServerContext *ctx, struct MHD_Conne
 
         // Build reset URL
         char resetUrl[512];
+        size_t base_url_len = strlen("http://localhost:8080/reset-password?token=");
+        size_t token_len = token ? strlen(token) : 0;
+
+        if (base_url_len + token_len >= sizeof(resetUrl)) {
+            fprintf(stderr, "Token too long for reset URL buffer\n");
+            return redirectWithError(connection, "/forgot-password", "server-error");
+        }
+
         snprintf(resetUrl, sizeof(resetUrl), "http://localhost:8080/reset-password?token=%s", token);
 
         // Send password reset email using new email service

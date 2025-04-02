@@ -4,6 +4,7 @@
 #include <string.h>
 
 #define INITIAL_CAPACITY 1024
+#define SIZE_MAX 1024 * 1024
 
 StringBuilder *StringBuilder_new(Arena *arena) {
     if (!arena) return NULL;
@@ -33,15 +34,34 @@ void StringBuilder_append(StringBuilder *sb, const char *format, ...) {
     int needed = vsnprintf(sb->buffer + sb->length, remaining, format, args);
     va_end(args);
 
+    if (needed < 0) {
+        // Handle encoding error
+        return;
+    }
+
     if ((size_t)needed >= remaining) {
         // Buffer wasn't big enough, resize and try again
         size_t new_capacity = sb->capacity;
-        while ((size_t)needed >= (new_capacity - sb->length)) {
+        size_t min_new_size = sb->length + (size_t)needed + 1;
+        
+        // Check for integer overflow in new capacity calculation
+        while (new_capacity < min_new_size) {
+            if (new_capacity > SIZE_MAX / 2) {
+                // Would overflow, cap at max possible size
+                new_capacity = SIZE_MAX;
+                break;
+            }
             new_capacity *= 2;
+        }
+        
+        if (new_capacity <= sb->capacity) {
+            // Can't expand further
+            return;
         }
 
         char *new_buffer = arenaAlloc(sb->arena, new_capacity);
         if (!new_buffer) return;
+        
         memcpy(new_buffer, sb->buffer, sb->length);
         sb->buffer = new_buffer;
         sb->capacity = new_capacity;

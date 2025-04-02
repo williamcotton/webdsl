@@ -24,6 +24,16 @@ json_t* executePipelineStep(PipelineStepNode *step, json_t *input, json_t *reque
     if (!step || !step->execute) {
         return NULL;
     }
+    
+    // Handle NULL input
+    if (!input) {
+        json_t *error_result = json_object();
+        if (!error_result) {
+            return NULL;
+        }
+        json_object_set_new(error_result, "error", json_string("NULL input to pipeline step"));
+        return error_result;
+    }
 
     // Check for existing error or redirect here instead of in each executor
     json_t *error = json_object_get(input, "error");

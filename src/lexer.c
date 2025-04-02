@@ -67,6 +67,14 @@ static Token makeToken(Lexer *lexer, TokenType type) {
     token.type = type;
     size_t length = (size_t)(lexer->current - lexer->start);
     token.lexeme = arenaAlloc(lexer->parser->arena, length + 1);
+    if (!token.lexeme) {
+        // Handle allocation failure
+        token.type = TOKEN_UNKNOWN;
+        token.lexeme = "";  // Empty string as fallback
+        token.line = lexer->line;
+        return token;
+    }
+
     memcpy(token.lexeme, lexer->start, length);
     token.lexeme[length] = '\0';
     token.line = lexer->line;

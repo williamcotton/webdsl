@@ -163,8 +163,22 @@ static char* createAnonymousSessionCookie(struct MHD_Connection *connection, Ser
     PQclear(result);
 
     // Create cookie string
-    char *cookie = arenaAlloc(arena, 512);
-    snprintf(cookie, 512, 
+    size_t base_cookie_len = strlen("anonymous_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400");
+    size_t token_len = token ? strlen(token) : 0;
+    size_t needed_size = base_cookie_len + token_len + 1;
+
+    if (needed_size > 512) {
+        // Handle token too large for cookie buffer
+        fprintf(stderr, "Token too large for anonymous session cookie buffer\n");
+        return NULL;
+    }
+
+    char *cookie = arenaAlloc(arena, needed_size);
+    if (!cookie) {
+        return NULL;
+    }
+
+    snprintf(cookie, needed_size, 
             "anonymous_session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400",
             token);
     

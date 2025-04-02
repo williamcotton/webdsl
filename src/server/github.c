@@ -84,6 +84,15 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
     
     // Build GitHub authorization URL
     char redirect_url[1024];
+    size_t base_url_len = strlen("https://github.com/login/oauth/authorize?client_id=&state=&scope=user:email");
+    size_t client_id_len = clientId ? strlen(clientId) : 0;
+    size_t state_len = state ? strlen(state) : 0;
+
+    if (base_url_len + client_id_len + state_len >= sizeof(redirect_url)) {
+        fprintf(stderr, "Client ID or state too long for GitHub URL buffer\n");
+        return redirectWithError(connection, "/login", "server-error");
+    }
+
     snprintf(redirect_url, sizeof(redirect_url),
              "https://github.com/login/oauth/authorize"
              "?client_id=%s"
