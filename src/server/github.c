@@ -66,6 +66,9 @@ enum MHD_Result handleGithubAuthRequest(ServerContext *ctx, struct MHD_Connectio
     // Generate state token for CSRF protection
     char *state = generateToken(ctx->arena);
     if (!state) {
+        if (returnTo) {
+            free(returnTo);
+        }
         return redirectWithError(connection, "/login", "server-error");
     }
     

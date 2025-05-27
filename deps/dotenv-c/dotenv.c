@@ -97,9 +97,8 @@ static void set_variable(char *name, char *original, bool overwrite) {
 static void parse(FILE *file, bool overwrite) {
   char *line = NULL;
   size_t len = 0;
-  ssize_t read;
 
-  while ((read = getline(&line, &len, file)) != -1) {
+  while (getline(&line, &len, file) != -1) {
     if (!is_commented(line)) {
       char *tok_ptr;
       char *name = strtok_r(line, "=", &tok_ptr);
