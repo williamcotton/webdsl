@@ -52,7 +52,7 @@ static void consume(Parser *parser, TokenType type, const char *errorMsg) {
         advanceParser(parser);
         return;
     }
-    char buffer[256];
+    char buffer[256] = {0};  // Initialize to zero
     snprintf(buffer, sizeof(buffer), "Parse error at line %d: %s (got \"%s\")\n",
             parser->current.line, errorMsg, parser->current.lexeme);
     fputs(buffer, stderr);
@@ -88,7 +88,7 @@ static TemplateNode *parseTemplate(Parser *parser, TokenType templateType) {
         node->content = copyString(parser, parser->current.lexeme);
         advanceParser(parser);  // consume raw block or string
     } else {
-        char buffer[256];
+        char buffer[256] = {0};  // Initialize to zero
         snprintf(buffer, sizeof(buffer),
                 "Expected template content at line %d\n",
                 parser->current.line);
@@ -128,7 +128,7 @@ static LayoutNode *parseLayout(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token in layout.\n",
                         parser->current.line);
@@ -223,7 +223,7 @@ static PageNode *parsePage(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token '%s' in page.\n",
                         parser->current.line, parser->current.lexeme);
@@ -253,7 +253,7 @@ static StyleBlockNode *parseStyleBlock(Parser *parser) {
     memset(block, 0, sizeof(StyleBlockNode));
     
     if (parser->current.type != TOKEN_STRING) {
-        char buffer[256];
+        char buffer[256] = {0};
         snprintf(buffer, sizeof(buffer),
                 "Expected style selector at line %d\n",
                 parser->current.line);
@@ -513,7 +513,7 @@ static ApiEndpoint *parseApi(Parser *parser) {
                 break;
                 
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in api endpoint at line %d\n",
                         parser->current.line);
@@ -585,7 +585,7 @@ static ApiField *parseApiFields(Parser *parser) {
                     }
                 }
             } else {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in field definition at line %d\n",
                         parser->current.line);
@@ -640,7 +640,7 @@ static QueryParam *parseQueryParams(Parser *parser) {
                 advanceParser(parser);
             } else if (parser->current.type != TOKEN_CLOSE_BRACKET) {
                 parser->hadError = 1;
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Expected ',' or ']' after parameter name at line %d\n",
                         parser->current.line);
@@ -649,7 +649,7 @@ static QueryParam *parseQueryParams(Parser *parser) {
             }
         } else {
             parser->hadError = 1;
-            char buffer[256];
+            char buffer[256] = {0};
             snprintf(buffer, sizeof(buffer),
                     "Expected parameter name at line %d\n",
                     parser->current.line);
@@ -691,7 +691,7 @@ static QueryNode *parseQuery(Parser *parser) {
                     query->sql = copyString(parser, parser->current.lexeme);
                     advanceParser(parser);
                 } else {
-                    char buffer[256];
+                    char buffer[256] = {0};
                     snprintf(buffer, sizeof(buffer),
                             "Expected SQL query at line %d\n",
                             parser->current.line);
@@ -701,7 +701,7 @@ static QueryNode *parseQuery(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token in query.\n",
                         parser->current.line);
@@ -747,7 +747,7 @@ static TransformNode* parseTransform(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token in transform.\n",
                         parser->current.line);
@@ -793,7 +793,7 @@ static ScriptNode* parseScript(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token in script.\n",
                         parser->current.line);
@@ -861,7 +861,7 @@ static ResponseBlockNode* parseResponseBlock(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in response block at line %d\n",
                         parser->current.line);
@@ -901,7 +901,7 @@ static PartialNode* parsePartial(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in partial at line %d\n",
                         parser->current.line);
@@ -985,7 +985,7 @@ static AuthNode* parseAuth(Parser *parser) {
                             break;
                         }
                         default: {
-                            char buffer[256];
+                            char buffer[256] = {0};
                             snprintf(buffer, sizeof(buffer),
                                     "Parse error at line %d: Unexpected token in github block.\n",
                                     parser->current.line);
@@ -1000,7 +1000,7 @@ static AuthNode* parseAuth(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token in auth block.\n",
                         parser->current.line);
@@ -1042,7 +1042,7 @@ static EmailTemplateNode* parseEmailTemplate(Parser *parser) {
                 template->template = parseTemplate(parser, TOKEN_MUSTACHE);
                 break;
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in email template at line %d\n",
                         parser->current.line);
@@ -1101,7 +1101,7 @@ static SendGridNode* parseSendGrid(Parser *parser) {
                 }
                 break;
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in sendgrid config at line %d\n",
                         parser->current.line);
@@ -1149,7 +1149,7 @@ static EmailNode* parseEmail(Parser *parser) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Unexpected token in email config at line %d\n",
                         parser->current.line);
@@ -1254,7 +1254,7 @@ static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
                             }
                         }
                     } else {
-                        char buffer[256];
+                        char buffer[256] = {0};
                         snprintf(buffer, sizeof(buffer),
                                 "Expected style selector or CSS block at line %d\n",
                                 parser->current.line);
@@ -1345,7 +1345,7 @@ static void parseWebsiteNode(Parser *parser, WebsiteNode *website) {
                 break;
             }
             default: {
-                char buffer[256];
+                char buffer[256] = {0};
                 snprintf(buffer, sizeof(buffer),
                         "Parse error at line %d: Unexpected token '%s'\n",
                         parser->current.line, parser->current.lexeme);

@@ -221,7 +221,7 @@ static bool verifyPassword(const char *password, const char *storedHash, const c
     }
     
     // Convert hash to hex string for comparison
-    char hashStr[65];
+    char hashStr[65] = {0};  // Initialize to zero
     for (size_t i = 0; i < sizeof(hash); i++) {
         snprintf(&hashStr[i * 2], 3, "%02x", hash[i]);
     }
@@ -247,7 +247,7 @@ char* createSession(ServerContext *ctx, Arena *arena, const char *userId) {
     fclose(urandom);
     
     // Convert random bytes to hex string
-    char token[65];
+    char token[65] = {0};  // Initialize to zero
     for (size_t i = 0; i < sizeof(random_bytes); i++) {
         snprintf(&token[i*2], 3, "%02x", random_bytes[i]);
     }

@@ -197,6 +197,15 @@ static int migrateUp(Database* db) {
     int num_applied = PQntuples(result);
     for (int i = 0; i < num_applied; i++) {
         applied[i] = strdup(PQgetvalue(result, i, 0));
+        if (!applied[i]) {
+            fprintf(stderr, "Error: Failed to allocate memory for applied migration name\n");
+            // Clean up previously allocated strings
+            for (int j = 0; j < i; j++) {
+                free(applied[j]);
+            }
+            PQclear(result);
+            return 1;
+        }
     }
     PQclear(result);
     
@@ -217,7 +226,20 @@ static int migrateUp(Database* db) {
     
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-            migrations[num_migrations++] = strdup(entry->d_name);
+            migrations[num_migrations] = strdup(entry->d_name);
+            if (!migrations[num_migrations]) {
+                fprintf(stderr, "Error: Failed to allocate memory for migration name\n");
+                // Clean up previously allocated strings
+                for (int j = 0; j < num_migrations; j++) {
+                    free(migrations[j]);
+                }
+                for (int j = 0; j < num_applied; j++) {
+                    free(applied[j]);
+                }
+                closedir(dir);
+                return 1;
+            }
+            num_migrations++;
         }
     }
     closedir(dir);
@@ -248,6 +270,12 @@ static int migrateUp(Database* db) {
         if (!is_applied) {
             // Read up.sql
             char path[1024];
+            size_t needed_size = strlen("migrations//up.sql") + strlen(migrations[i]) + 1;
+            if (needed_size >= sizeof(path)) {
+                fprintf(stderr, "Error: Migration path too long for buffer\n");
+                success = false;
+                break;
+            }
             snprintf(path, sizeof(path), "migrations/%s/up.sql", migrations[i]);
             
             char* content;
@@ -271,6 +299,12 @@ static int migrateUp(Database* db) {
             
             // Record migration
             char insert_sql[1024];
+            size_t sql_needed = strlen("INSERT INTO migrations (name, checksum) VALUES ('', '')") + strlen(migrations[i]) + 1;
+            if (sql_needed >= sizeof(insert_sql)) {
+                fprintf(stderr, "Error: Migration name too long for SQL buffer\n");
+                success = false;
+                break;
+            }
             snprintf(insert_sql, sizeof(insert_sql),
                     "INSERT INTO migrations (name, checksum) VALUES ('%s', '')",
                     migrations[i]);
@@ -323,6 +357,12 @@ static int migrateDown(Database* db) {
     
     // Read down.sql
     char path[1024];
+    size_t path_needed = strlen("migrations//down.sql") + strlen(migration_name) + 1;
+    if (path_needed >= sizeof(path)) {
+        fprintf(stderr, "Error: Migration path too long for buffer\n");
+        PQclear(result);
+        return 1;
+    }
     snprintf(path, sizeof(path), "migrations/%s/down.sql", migration_name);
     
     char* content;
@@ -345,6 +385,12 @@ static int migrateDown(Database* db) {
     
     // Remove migration record
     char delete_sql[1024];
+    size_t delete_needed = strlen("DELETE FROM migrations WHERE name = ''") + strlen(migration_name) + 1;
+    if (delete_needed >= sizeof(delete_sql)) {
+        fprintf(stderr, "Error: Migration name too long for SQL buffer\n");
+        PQclear(result);
+        return 1;
+    }
     snprintf(delete_sql, sizeof(delete_sql),
             "DELETE FROM migrations WHERE name = '%s'",
             migration_name);
@@ -381,7 +427,28 @@ static int migrateStatus(Database* db) {
     
     for (int i = 0; i < num_applied && i < 1000; i++) {
         applied[i] = strdup(PQgetvalue(result, i, 0));
+        if (!applied[i]) {
+            fprintf(stderr, "Error: Failed to allocate memory for applied migration name\n");
+            // Clean up previously allocated strings
+            for (int j = 0; j < i; j++) {
+                free(applied[j]);
+                free(timestamps[j]);
+            }
+            PQclear(result);
+            return 1;
+        }
         timestamps[i] = strdup(PQgetvalue(result, i, 1));
+        if (!timestamps[i]) {
+            fprintf(stderr, "Error: Failed to allocate memory for migration timestamp\n");
+            // Clean up previously allocated strings
+            for (int j = 0; j < i; j++) {
+                free(applied[j]);
+                free(timestamps[j]);
+            }
+            free(applied[i]); // Clean up the applied[i] we just allocated
+            PQclear(result);
+            return 1;
+        }
     }
     PQclear(result);
     
@@ -403,7 +470,21 @@ static int migrateStatus(Database* db) {
     
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-            migrations[num_migrations++] = strdup(entry->d_name);
+            migrations[num_migrations] = strdup(entry->d_name);
+            if (!migrations[num_migrations]) {
+                fprintf(stderr, "Error: Failed to allocate memory for migration name\n");
+                // Clean up previously allocated strings
+                for (int j = 0; j < num_migrations; j++) {
+                    free(migrations[j]);
+                }
+                for (int j = 0; j < num_applied; j++) {
+                    free(applied[j]);
+                    free(timestamps[j]);
+                }
+                closedir(dir);
+                return 1;
+            }
+            num_migrations++;
         }
     }
     closedir(dir);

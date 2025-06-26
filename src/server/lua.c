@@ -92,6 +92,9 @@ static LuaChunkEntry* compileAndCacheLuaCode(const char* code, const char* name,
     if (lua_dump(L, bytecodeWriter, &entry->bytecode, 0) != 0) {
         fprintf(stderr, "Failed to compile %s\n", name ? name : "unnamed");
         lua_close(L);
+        if (entry->bytecode.bytecode) {
+            free(entry->bytecode.bytecode);
+        }
         free(entry);
         return NULL;
     }
@@ -1147,37 +1150,45 @@ static lua_State* createLuaState(json_t *requestContext, Arena *arena) {
     lua_newtable(L);
     const char *key;
     json_t *value;
-    json_object_foreach(query, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (query) {
+        json_object_foreach(query, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "query");
     
     // Create body table
     lua_newtable(L);
-    json_object_foreach(body, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (body) {
+        json_object_foreach(body, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "body");
     
     // Create headers table
     lua_newtable(L);
-    json_object_foreach(headers, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (headers) {
+        json_object_foreach(headers, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "headers");
     
     // Create cookies table
     lua_newtable(L);
-    json_object_foreach(cookies, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (cookies) {
+        json_object_foreach(cookies, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "cookies");
 
@@ -1386,19 +1397,23 @@ json_t* executeLuaStep(PipelineStepNode *step, json_t *input, json_t *requestCon
     
     // Create body table
     lua_newtable(L);
-    json_object_foreach(body, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (body) {
+        json_object_foreach(body, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "body");
     
     // Create headers table
     lua_newtable(L);
-    json_object_foreach(headers, key, value) {
-        lua_pushstring(L, key);
-        lua_pushstring(L, json_string_value(value));
-        lua_settable(L, -3);
+    if (headers) {
+        json_object_foreach(headers, key, value) {
+            lua_pushstring(L, key);
+            lua_pushstring(L, json_string_value(value));
+            lua_settable(L, -3);
+        }
     }
     lua_setglobal(L, "headers");
     

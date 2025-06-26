@@ -49,6 +49,9 @@ void* arenaAlloc(Arena *arena, size_t size) {
 }
 
 char* arenaDupString(Arena *arena, const char *str) {
+    if (!str) {
+        return NULL;
+    }
     size_t len = strlen(str) + 1;
     char *dup = arenaAlloc(arena, len);
     if (dup) {

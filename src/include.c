@@ -74,6 +74,10 @@ bool processInclude(Parser *parser, WebsiteNode *website, const char *filepath, 
 
     // Add to included files list
     state->included_files[state->num_included] = strdup(filepath);
+    if (!state->included_files[state->num_included]) {
+        fprintf(stderr, "Error: Failed to allocate memory for filepath '%s'\n", filepath);
+        return false;
+    }
     state->num_included++;
 
     // Parse the included content
@@ -84,6 +88,10 @@ bool processInclude(Parser *parser, WebsiteNode *website, const char *filepath, 
 
     // Parse content and merge into main website
     WebsiteNode *included = parseWebsiteContent(&includeParser);
+    if (!included) {
+        fprintf(stderr, "Error: Failed to parse website content from '%s'\n", filepath);
+        return false;
+    }
     
     // Free the temporary arena that was created
     freeArena(tempArena);

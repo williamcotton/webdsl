@@ -17,6 +17,10 @@ void setupStepExecutor(PipelineStepNode *step) {
   case STEP_DYNAMIC_SQL:
     step->execute = executeSqlStep;
     break;
+  default:
+    // Handle unknown step types
+    step->execute = NULL;
+    break;
   }
 }
 
