@@ -59,8 +59,8 @@ include "pages.flow"
 
 ### Simple Static Page
 ```flow
-GET / -> main_layout {
-  template: `
+GET / -> mainLayout {
+  |> template: `
     <h1>Welcome!</h1>
     <p><a href="/blog">Read our blog</a></p>
     <p>This is a regular paragraph.</p>
@@ -70,8 +70,8 @@ GET / -> main_layout {
 
 ### Page with Data Pipeline
 ```flow
-GET /mustache-test -> blog_layout {
-  data: {
+GET /mustache-test -> blogLayout {
+  |> jq: `{
     title: "My Title"
     message: "My Message" 
     items: ["Wired up Item 1", "Wired up Item 2", "Wired up Item 3"]
@@ -103,8 +103,8 @@ GET /mustache-test -> blog_layout {
 
 ### Complex Page with Database
 ```flow
-GET /employees -> main_layout {
-  data: {limit: (.query.limit // 20), offset: (.query.offset // 0)}
+GET /employees -> mainLayout {
+  |> jq: `{limit: (.query.limit // 20), offset: (.query.offset // 0)}`
   |> lua: `
     return {
       sqlParams = {request.limit, request.offset}
@@ -148,8 +148,8 @@ GET /employees -> main_layout {
 
 ### Form Processing with Validation
 ```flow
-POST /employees -> main_layout {
-  validate: {
+POST /employees -> mainLayout {
+  |> validate: {
     name: string(10..100)
     email: email
     team_id?: number
@@ -171,7 +171,7 @@ POST /employees -> main_layout {
 ### Error/Success Response Blocks
 ```flow
 POST /api/employees -> none {
-  validate: {
+  |> validate: {
     name: string(10..100)
     email: email
     team_id?: number
@@ -325,8 +325,8 @@ POST /api/v1/upload {
 ### Todo Application
 ```flow
 # Main todos page
-GET /todos -> main_layout {
-  auth_required: true
+GET /todos -> mainLayout {
+  |> authRequired: true
   |> lua: `
     local result = sqlQuery(findQuery("getTodos"), {request.user.id})
     return { 
@@ -371,8 +371,8 @@ GET /todos -> main_layout {
 
 # HTMX endpoints
 POST /htmx/todos/create -> none {
-  auth_required: true
-  validate: {
+  |> authRequired: true
+  |> validate: {
     title: string(1..200)
   }
   |> lua: `
@@ -383,7 +383,7 @@ POST /htmx/todos/create -> none {
 }
 
 POST /htmx/todos/toggle/:id -> none {
-  auth_required: true
+  |> authRequired: true
   |> lua: `
     local result = sqlQuery(findQuery("toggleTodo"), {params.id, request.user.id})
     return result.rows[1]
@@ -392,7 +392,7 @@ POST /htmx/todos/toggle/:id -> none {
 }
 
 DELETE /htmx/todos/delete/:id -> none {
-  auth_required: true
+  |> authRequired: true
   |> lua: `
     sqlQuery(findQuery("deleteTodo"), {params.id, request.user.id})
     return {}
@@ -403,7 +403,7 @@ DELETE /htmx/todos/delete/:id -> none {
 
 ### Notes CRUD Application
 ```flow
-GET /htmx/notes -> main_layout {
+GET /htmx/notes -> mainLayout {
   |> lua: `
     local result = sqlQuery(findQuery("getNotes"))
     return { 
@@ -496,7 +496,7 @@ GET /htmx/notes/new -> none {
 ## Layouts
 
 ```flow
-layout main_layout = `
+layout mainLayout = `
   <!DOCTYPE html>
   <html>
     <head>
@@ -555,7 +555,7 @@ layout main_layout = `
   </html>
 `
 
-layout htmx_layout = `
+layout htmxLayout = `
   <!DOCTYPE html>
   <html>
     <head>
@@ -768,7 +768,7 @@ auth {
 }
 
 # Login page
-GET /login -> main_layout {
+GET /login -> mainLayout {
   |> jq: `{
     pageTitle: "Login",
     errorMessage: (
@@ -844,8 +844,8 @@ GET /login -> main_layout {
 }
 
 # Protected route
-GET /profile -> main_layout {
-  auth_required: true
+GET /profile -> mainLayout {
+  |> authRequired: true
   |> lua: `
     return {
       user = request.user,
@@ -943,8 +943,8 @@ styles {
 
 ### Conditional Logic in Templates
 ```flow
-GET /dashboard -> main_layout {
-  auth_required: true
+GET /dashboard -> mainLayout {
+  |> authRequired: true
   |> lua: `
     local todos = sqlQuery(findQuery("getTodos"), {request.user.id})
     local todoCount = #todos.rows
@@ -998,7 +998,7 @@ GET /dashboard -> main_layout {
 ### Complex Validation Rules
 ```flow
 POST /api/users -> none {
-  validate: {
+  |> validate: {
     username: string(3..20).pattern("^[a-zA-Z0-9_]+$")
     email: email
     password: string(8..100).pattern("^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)")
@@ -1070,8 +1070,8 @@ page {
 
 ### New Flow Syntax
 ```flow
-GET /employees -> main_layout {
-  data: {limit: (.query.limit // 20), offset: (.query.offset // 0)}
+GET /employees -> mainLayout {
+  |> jq: `{limit: (.query.limit // 20), offset: (.query.offset // 0)}`
   |> lua: `
     return {sqlParams = {request.limit, request.offset}}
   `
