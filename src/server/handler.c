@@ -793,10 +793,12 @@ enum MHD_Result handleRequest(ServerContext *ctx,
     // Execute pipeline if exists
     json_t *pipelineResult = executePipelineIfExists(ctx, &match, requestContext, requestArena);
     
-    // Handle pipeline redirects
     if (pipelineResult) {
-        enum MHD_Result redirectResult = handlePipelineRedirect(connection, pipelineResult);
-        if (redirectResult != MHD_YES) {
+        // Check if there's a redirect in the pipeline result
+        json_t *redirect = json_object_get(pipelineResult, "redirect");
+        if (redirect) {
+            // There's a redirect, handle it
+            enum MHD_Result redirectResult = handlePipelineRedirect(connection, pipelineResult);
             return redirectResult;
         }
     }
