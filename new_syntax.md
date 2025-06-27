@@ -164,13 +164,13 @@ POST /employees -> mainLayout {
     success: true,
     employee: .data[0].rows[0]
   }`
-  -> redirect: "/employees"
+  |> redirect: "/employees"
 }
 ```
 
 ### Error/Success Response Blocks
 ```flow
-POST /api/employees -> none {
+POST /api/employees {
   |> validate: {
     name: string(10..100)
     email: email
@@ -184,19 +184,37 @@ POST /api/employees -> none {
     success: true,
     employee: .data[0].rows[0]
   }`
-  
-  success: {
-    template: `{
-      "success": true,
-      "data": {{employee}}
-    }`
-  }
-  
-  error: {
-    template: `{
-      "error": "{{error}}",
-      "fields": {{errors}}
-    }`
+  |> result {
+    ok(201) {
+      |> jq: `{
+        success: true,
+        data: .employee,
+        meta: {
+          timestamp: now,
+          version: "1.0"
+        }
+      }`
+    }
+    validationError(400) {
+      |> jq: `{
+        error: "Validation failed",
+        fields: .errors,
+        meta: {
+          timestamp: now,
+          support: "help@example.com"
+        }
+      }`
+    }
+    error(500) {
+      |> jq: `{
+        error: "Internal server error",
+        message: .error,
+        meta: {
+          timestamp: now,
+          contact: "support@example.com"
+        }
+      }`
+    }
   }
 }
 ```
